@@ -11,3 +11,83 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+input::placeholder {
+  font-size: 0.8rem;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.comment-input::placeholder {
+  color: #ccc;
+}
+
+@keyframes bloomOpen {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes fadeInOverlay {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUpFade {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes barFillIn {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
+.quantity-input::placeholder {
+  color: #ccc;
+  font-size: 0.82rem;
+}
+
+@keyframes cardFanOut {
+  from {
+    opacity: 0;
+    transform: rotate(0deg) translateY(8px);
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInFromRight {
+  from { opacity: 0; transform: translateX(30px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInFromLeft {
+  from { opacity: 0; transform: translateX(-30px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes pulseTask {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.75; transform: scale(0.97); }
+}

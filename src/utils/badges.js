@@ -1,0 +1,58 @@
+export const BADGES = [
+  {
+    id: "first_meal",
+    emoji: "🍽️",
+    name: "First Bite",
+    description: "Log your very first meal",
+    check: ({ totalMeals }) => totalMeals >= 1,
+  },
+  {
+    id: "first_week",
+    emoji: "🔥",
+    name: "First Week",
+    description: "Log meals 7 days in a row",
+    check: ({ currentStreak }) => currentStreak >= 7,
+  },
+  {
+    id: "in_sync",
+    emoji: "💑",
+    name: "In Sync",
+    description: "Achieve a couple streak of 3+ days",
+    check: ({ coupleStreak }) => coupleStreak >= 3,
+  },
+  {
+    id: "food_photographer",
+    emoji: "📸",
+    name: "Food Photographer",
+    description: "Log 20 meals with photos",
+    check: ({ mealsWithPhotos }) => mealsWithPhotos >= 20,
+  },
+  {
+    id: "consistent",
+    emoji: "🌟",
+    name: "Consistent",
+    description: "Log 3+ meals on 30 total days",
+    check: ({ daysWithThreePlus }) => daysWithThreePlus >= 30,
+  },
+  {
+    id: "sharing_is_caring",
+    emoji: "🤝",
+    name: "Sharing is Caring",
+    description: "Log 10 shared meals together",
+    check: ({ sharedMeals }) => sharedMeals >= 10,
+  },
+  {
+    id: "early_bird",
+    emoji: "🌅",
+    name: "Early Bird",
+    description: "Log 10 breakfasts",
+    check: ({ breakfasts }) => breakfasts >= 10,
+  },
+  {
+    id: "on_a_roll",
+    emoji: "🎯",
+    name: "On a Roll",
+    description: "Log 50 total meals",
+    check: ({ totalMeals }) => totalMeals >= 50,
+  },
+];
