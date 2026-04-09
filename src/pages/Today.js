@@ -44,6 +44,7 @@ function Today({ setCurrentPage }) {
   const [taskQuantity, setTaskQuantity] = useState("");
   const [taskSaving, setTaskSaving] = useState(false);
   const [isNewUser, setIsNewUser] = useState(false);
+  const [taskCompletedMeals, setTaskCompletedMeals] = useState([]);
 
   useEffect(() => {
     const fetchPartner = async () => {
@@ -149,11 +150,23 @@ function Today({ setCurrentPage }) {
       setMeals(sorted);
       // Calculate today's nutrition from my meals only
       // Include partner's shared meals in your nutrition
-      const mealsWithNutrition = data.filter((m) =>
-        m.uid === user.uid && m.nutrition
-      );
-      if (mealsWithNutrition.length > 0) {
-        const totals = mealsWithNutrition.reduce((acc, m) => ({
+      // ALL user meals including task-completed for accurate nutrition
+      // Get today's date fresh inside the callback
+      const todayNow = new Date();
+      const todayDateStr = formatLocalDateKey(todayNow);
+
+      // Only count TODAY's meals for nutrition — filter by localDate
+      const allMyMeals = snapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((m) => {
+          if (m.uid !== user.uid) return false;
+          if (!m.nutrition) return false;
+          const mealDate = getMealLocalDateKey(m);
+          return mealDate === todayDateStr;
+        });
+
+      if (allMyMeals.length > 0) {
+        const totals = allMyMeals.reduce((acc, m) => ({
           calories: acc.calories + (m.nutrition.calories || 0),
           protein_g: acc.protein_g + (m.nutrition.protein_g || 0),
           carbs_g: acc.carbs_g + (m.nutrition.carbs_g || 0),
@@ -164,6 +177,12 @@ function Today({ setCurrentPage }) {
       } else {
         setNutrition({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 });
       }
+
+      // Store task-completed meals for quantity lookup
+      const taskMeals = snapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((m) => m.sourceMealId && m.uid === user.uid);
+      setTaskCompletedMeals(taskMeals);
     });
     // Fetch user profile for daily goals
     const fetchProfile = async () => {
@@ -457,10 +476,7 @@ function Today({ setCurrentPage }) {
     setTaskSaving(true);
     try {
       const now = new Date();
-      const localTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-      const localDate = now.toLocaleDateString("en-CA");
 
-      // Create her own meal document
       await addDoc(collection(db, "meals"), {
         uid: user.uid,
         name: activeTask.mealName,
@@ -468,11 +484,12 @@ function Today({ setCurrentPage }) {
         photoURL: activeTask.photos?.[0] || null,
         photos: activeTask.photos || [],
         quantity: taskQuantity.trim() || activeTask.fromQuantity || "",
-        isShared: false,
+        isShared: true,
         isRestaurant: activeTask.isRestaurant || false,
         sourceMealId: activeTask.sourceMealId,
-        localDate,
-        localTime,
+        // Both date AND time from original meal — task completion time is irrelevant
+        localDate: activeTask.localDate || now.toLocaleDateString("en-CA"),
+        localTime: activeTask.localTime || "",
         createdAt: now,
       });
 
@@ -498,6 +515,12 @@ function Today({ setCurrentPage }) {
     });
     setActiveTask(null);
     setTaskQuantity("");
+  };
+
+  const getMyQuantityForSharedMeal = (meal) => {
+    return taskCompletedMeals.find(
+      (m) => m.sourceMealId === meal.id
+    )?.quantity || null;
   };
   
   return (
@@ -920,6 +943,16 @@ function Today({ setCurrentPage }) {
               <div style={styles.viewHeader}>
                 <div>
                   <p style={styles.viewName}>{viewMeal.name}</p>
+                {viewMeal.quantity && (
+                  <p style={styles.mealQuantityText}>
+                    {partnerName ? partnerName.split(" ")[0] : "Partner"}'s quantity: {viewMeal.quantity}
+                  </p>
+                )}
+                {getMyQuantityForSharedMeal(viewMeal) && (
+                  <p style={styles.mealQuantityText}>
+                    Your quantity: {getMyQuantityForSharedMeal(viewMeal)}
+                  </p>
+                )}
                   <p style={styles.viewMeta}>
                     {viewMeal.localTime || (viewMeal.createdAt?.toDate
   ? viewMeal.createdAt.toDate().toLocaleTimeString("en-US", {
