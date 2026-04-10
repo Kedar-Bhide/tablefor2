@@ -146,6 +146,17 @@ function Today({ setCurrentPage }) {
             const isRelevantDate = mealLocalDate === todayLocalDate ||
               mealLocalDate === yesterdayLocalDate ||
               mealLocalDate === tomorrowLocalDate;
+
+            // If the meal is from today's localDate, always show it
+            if (mealLocalDate === todayLocalDate) {
+              return withinWindow && isRelevantDate;
+            }
+
+            // For non-today partner meals (yesterday/tomorrow due to timezone),
+            // only keep them visible until 9am local time — after that, let them go
+            const currentHour = now.getHours();
+            if (currentHour >= 9) return false;
+
             return withinWindow && isRelevantDate;
           }
         });
