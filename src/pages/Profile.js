@@ -138,6 +138,13 @@ function Profile() {
         return;
       }
 
+      // Partner already has a pending request from someone else
+      if (partnerData.partnerRequest) {
+        setMessage("❌ This person already has a pending request from someone else.");
+        setSaving(false);
+        return;
+      }
+
       // Already sent a request
       if (requestSent) {
         setMessage("⏳ Request already sent — waiting for them to accept.");
@@ -189,6 +196,20 @@ function Profile() {
     setSaving(true);
     try {
       const fromUid = incomingRequest.fromUid;
+
+      // Verify the sender is still unlinked
+      const fromUserRef = doc(db, "users", fromUid);
+      const fromUserSnap = await getDoc(fromUserRef);
+      if (!fromUserSnap.exists() || fromUserSnap.data().partnerUid) {
+        setMessage("❌ This person has already linked with someone else!");
+        // Clean up our stale request
+        await updateDoc(doc(db, "users", user.uid), {
+          partnerRequest: null,
+        });
+        setIncomingRequest(null);
+        setSaving(false);
+        return;
+      }
 
       // Link both accounts
       await updateDoc(doc(db, "users", user.uid), {

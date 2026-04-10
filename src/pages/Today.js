@@ -7,6 +7,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getPhotos } from "../utils/getPhotos";
 import { formatLocalDateKey, getMealLocalDateKey } from "../utils/dateTime";
 import { shouldShowWeightCheckIn } from "../utils/shouldShowWeightCheckIn";
+import OnboardingPopup from "../components/OnboardingPopup";
 
 function Today({ setCurrentPage }) {
   const user = auth.currentUser;
@@ -93,9 +94,14 @@ function Today({ setCurrentPage }) {
       }
       // Check if new user — no meals logged ever
       if (userSnap.exists()) {
-        const createdAt = userSnap.data().createdAt?.toDate?.() || new Date();
-        const hoursSinceSignup = (new Date() - createdAt) / (1000 * 60 * 60);
-        if (hoursSinceSignup < 24) setIsNewUser(true);
+        const userData = userSnap.data();
+        const createdAt = userData.createdAt?.toDate?.() || new Date();
+        const minutesSinceSignup = (new Date() - createdAt) / (1000 * 60);
+        if (minutesSinceSignup < 10 && !userData.onboardingDismissed) {
+          setIsNewUser(true);
+        } else {
+          setIsNewUser(false);
+        }
       }
     };
     fetchPartner();
@@ -538,15 +544,9 @@ function Today({ setCurrentPage }) {
         </div>
       </div>
 
-      {/* Welcome card for new users */}
-      {isNewUser && meals.length === 0 && (
-        <div style={styles.welcomeCard}>
-          <p style={styles.welcomeTitle}>Welcome to TableFor2! 🍽️</p>
-          <p style={styles.welcomeSub}>
-            Start by logging your first meal — tap the + button below.
-            Head to Profile to add your details for personalized insights!
-          </p>
-        </div>
+      {/* Welcome popup for new users */}
+      {isNewUser && (
+        <OnboardingPopup onDismiss={() => setIsNewUser(false)} />
       )}
 
       {/* Daily Nutrition Card */}
