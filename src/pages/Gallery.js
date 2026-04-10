@@ -19,6 +19,7 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter }) {
   const [carouselIndex, setCarouselIndex] = useState(0);
   const [swipeStartX, setSwipeStartX] = useState(null);
   const [swipeDirection, setSwipeDirection] = useState(null);
+  const [partnerMealMyQuantity, setPartnerMealMyQuantity] = useState(null);
 
   useEffect(() => {
     const fetchPartner = async () => {
@@ -243,10 +244,22 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter }) {
                 <div
                   key={`${meal.id}_${meal._photoIndex}`}
                   style={styles.photoWrapper}
-                  onClick={() => {
+                  onClick={async () => {
                     setViewMeal(meal);
                     setComment(meal.comments?.[user.uid] || "");
                     setCarouselIndex(meal._photoIndex || 0);
+                    setPartnerMealMyQuantity(null);
+                    if (meal.uid !== user.uid) {
+                      const q = query(
+                        collection(db, "meals"),
+                        where("uid", "==", user.uid),
+                        where("sourceMealId", "==", meal.id)
+                      );
+                      const snap = await getDocs(q);
+                      if (!snap.empty) {
+                        setPartnerMealMyQuantity(snap.docs[0].data().quantity);
+                      }
+                    }
                   }}
                 >
                   <img
@@ -306,6 +319,16 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter }) {
                 <p style={styles.viewName}>{viewMeal.name}</p>
                 {viewMeal.uid === user.uid && viewMeal.quantity && (
                   <p style={styles.mealQuantityText}>{viewMeal.quantity}</p>
+                )}
+                {viewMeal.uid !== user.uid && viewMeal.quantity && (
+                  <p style={styles.mealQuantityText}>
+                    {partnerName ? partnerName.split(" ")[0] : "Partner"}'s quantity: {viewMeal.quantity}
+                  </p>
+                )}
+                {viewMeal.uid !== user.uid && partnerMealMyQuantity && (
+                  <p style={styles.mealQuantityText}>
+                    Your quantity: {partnerMealMyQuantity}
+                  </p>
                 )}
                 <p style={styles.viewMeta}>
                   {viewMeal.localTime || (viewMeal.createdAt?.toDate

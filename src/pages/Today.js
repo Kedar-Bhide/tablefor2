@@ -970,6 +970,30 @@ function Today({ setCurrentPage }) {
                 />
               </div>
 
+              {/* Nutrition breakdown */}
+              {viewMeal.nutrition?.calories > 0 && (
+                <div style={styles.mealNutritionCard}>
+                  <p style={styles.mealNutritionTitle}>
+                    Total Calories: {viewMeal.nutrition.calories} kcal
+                  </p>
+                  <div style={styles.mealNutritionRow}>
+                    {[
+                      { label: "Protein", key: "protein_g" },
+                      { label: "Carbs", key: "carbs_g" },
+                      { label: "Fat", key: "fat_g" },
+                      { label: "Fiber", key: "fiber_g" },
+                    ].map((m) => (
+                      <div key={m.key} style={styles.mealNutritionPill}>
+                        <p style={styles.mealNutritionLabel}>{m.label}</p>
+                        <p style={styles.mealNutritionValue}>
+                          {viewMeal.nutrition[m.key] || 0}g
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Your comment only card */}
               {viewMeal.comments?.[user.uid] && (
                 <div style={styles.partnerResponseCard}>
