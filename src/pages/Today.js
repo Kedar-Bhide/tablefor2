@@ -8,6 +8,9 @@ import { getPhotos } from "../utils/getPhotos";
 import { formatLocalDateKey, getMealLocalDateKey } from "../utils/dateTime";
 import { shouldShowWeightCheckIn } from "../utils/shouldShowWeightCheckIn";
 import OnboardingPopup from "../components/OnboardingPopup";
+import PhotoCarousel from "../components/PhotoCarousel";
+import MealNutritionCard from "../components/MealNutritionCard";
+import PartnerResponseCard from "../components/PartnerResponseCard";
 
 function Today({ setCurrentPage }) {
   const user = auth.currentUser;
@@ -31,9 +34,7 @@ function Today({ setCurrentPage }) {
   const [profileFields, setProfileFields] = useState(null);
   const [editQuantity, setEditQuantity] = useState("");
   const [reanalyzing, setReanalyzing] = useState(false);
-  const [carouselIndex, setCarouselIndex] = useState(0);
-  const [swipeStartX, setSwipeStartX] = useState(null);
-  const [swipeDirection, setSwipeDirection] = useState(null);
+
   const [myPhoto, setMyPhoto] = useState(user.photoURL);
   const [weightCheckIn, setWeightCheckIn] = useState(null);
   const [newWeight, setNewWeight] = useState("");
@@ -322,80 +323,7 @@ function Today({ setCurrentPage }) {
   };
 
 
-  const renderCarousel = (rawPhotos) => {
-    const mealPhotos = (rawPhotos || []).filter(Boolean);
-    if (mealPhotos.length === 0) return null;
 
-    if (mealPhotos.length === 1) return (
-      <div style={{ position: "relative" }}>
-        <img src={mealPhotos[0]} alt="meal" style={styles.sheetPhoto} />
-      </div>
-    );
-
-    return (
-      <div style={styles.carouselWrapper}>
-        <div
-          style={styles.carouselPhotoWrapper}
-          onTouchStart={(e) => setSwipeStartX(e.touches[0].clientX)}
-          onTouchEnd={(e) => {
-            if (swipeStartX === null) return;
-            const diff = swipeStartX - e.changedTouches[0].clientX;
-            if (Math.abs(diff) > 40) {
-              if (diff > 0 && carouselIndex < mealPhotos.length - 1) {
-                setSwipeDirection("left");
-                setCarouselIndex((i) => i + 1);
-              } else if (diff < 0 && carouselIndex > 0) {
-                setSwipeDirection("right");
-                setCarouselIndex((i) => i - 1);
-              }
-            }
-            setSwipeStartX(null);
-          }}
-        >
-          <img
-            key={carouselIndex}
-            src={mealPhotos[Math.min(carouselIndex, mealPhotos.length - 1)]}
-            alt="meal"
-            style={{
-              ...styles.sheetPhoto,
-              animation: `${swipeDirection === "left"
-                ? "slideInFromRight"
-                : "slideInFromLeft"} 0.25s cubic-bezier(0.34, 1.2, 0.64, 1) both`,
-            }}
-          />
-          {carouselIndex > 0 && (
-            <button
-              style={{ ...styles.carouselArrow, left: "8px" }}
-              onClick={() => { setSwipeDirection("right"); setCarouselIndex((i) => i - 1); }}
-            >‹</button>
-          )}
-          {carouselIndex < mealPhotos.length - 1 && (
-            <button
-              style={{ ...styles.carouselArrow, right: "8px" }}
-              onClick={() => { setSwipeDirection("left"); setCarouselIndex((i) => i + 1); }}
-            >›</button>
-          )}
-        </div>
-        <div style={styles.carouselDots}>
-          {mealPhotos.map((_, i) => (
-            <div
-              key={i}
-              style={{
-                ...styles.carouselDot,
-                backgroundColor: i === carouselIndex ? "#ff6b6b" : "#e0e0e0",
-                transform: i === carouselIndex ? "scale(1.3)" : "scale(1)",
-                transition: "all 0.2s ease",
-              }}
-              onClick={() => {
-                setSwipeDirection(i > carouselIndex ? "left" : "right");
-                setCarouselIndex(i);
-              }}
-            />
-          ))}
-        </div>
-      </div>
-    );
-  };
 
   const handleWeightCheckInSave = async () => {
     if (!newWeight || weightCheckInSaving) return;
@@ -594,7 +522,6 @@ function Today({ setCurrentPage }) {
               } else {
                 setViewMeal(meal);
                 setComment(meal.comments?.[user.uid] || "");
-                setCarouselIndex(0);
               }
             } else {
               setSelectedMeal(meal);
@@ -602,7 +529,6 @@ function Today({ setCurrentPage }) {
               setEditName(meal.name);
               setEditQuantity(meal.quantity || "");
               setEditMode(false);
-              setCarouselIndex(0);
               const existingPhotos = meal.photos?.length > 0
                 ? meal.photos
                 : meal.photoURL ? [meal.photoURL] : [];
@@ -709,7 +635,7 @@ function Today({ setCurrentPage }) {
                   if (mealPhotos.length === 0) return null;
                   return (
                     <div style={{ position: "relative", marginBottom: "1rem" }}>
-                      {renderCarousel(mealPhotos)}
+                      <PhotoCarousel photos={mealPhotos} />
                       {selectedMeal.reactions?.[partnerUid] && (
                         <span style={{
                           ...styles.reactionOverlay,
@@ -750,42 +676,13 @@ function Today({ setCurrentPage }) {
                 </div>
 
                 {/* Nutrition breakdown */}
-                {selectedMeal.nutrition?.calories > 0 && (
-                  <div style={styles.mealNutritionCard}>
-                    <p style={styles.mealNutritionTitle}>
-                      Total Calories: {selectedMeal.nutrition.calories} kcal
-                    </p>
-                    <div style={styles.mealNutritionRow}>
-                      {[
-                        { label: "Protein", key: "protein_g" },
-                        { label: "Carbs", key: "carbs_g" },
-                        { label: "Fat", key: "fat_g" },
-                        { label: "Fiber", key: "fiber_g" },
-                      ].map((m) => (
-                        <div key={m.key} style={styles.mealNutritionPill}>
-                          <p style={styles.mealNutritionLabel}>{m.label}</p>
-                          <p style={styles.mealNutritionValue}>
-                            {selectedMeal.nutrition[m.key] || 0}g
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <MealNutritionCard nutrition={selectedMeal.nutrition} />
 
                 {/* Partner's comment */}
-                {selectedMeal.comments?.[partnerUid] && (
-                  <div style={styles.partnerResponseCard}>
-                    <div style={styles.partnerResponseContent}>
-                      <p style={styles.partnerResponseComment}>
-                        "{selectedMeal.comments[partnerUid]}"
-                      </p>
-                      <p style={styles.partnerResponseName}>
-                        — {partnerName ? partnerName.split(" ")[0] : "Partner"}
-                      </p>
-                    </div>
-                  </div>
-                )}
+                <PartnerResponseCard
+                  comment={selectedMeal.comments?.[partnerUid]}
+                  authorName={partnerName ? partnerName.split(" ")[0] : "Partner"}
+                />
 
                 {/* Actions */}
                 <div style={styles.actionRow}>
@@ -922,7 +819,7 @@ function Today({ setCurrentPage }) {
               if (mealPhotos.length === 0) return null;
               return (
                 <div style={{ position: "relative", marginBottom: "1rem" }}>
-                  {renderCarousel(mealPhotos)}
+                  <PhotoCarousel photos={mealPhotos} />
                   {viewMeal.reactions?.[user.uid] && (
                     <span style={{
                       ...styles.reactionOverlay,
@@ -971,42 +868,13 @@ function Today({ setCurrentPage }) {
               </div>
 
               {/* Nutrition breakdown */}
-              {viewMeal.nutrition?.calories > 0 && (
-                <div style={styles.mealNutritionCard}>
-                  <p style={styles.mealNutritionTitle}>
-                    Total Calories: {viewMeal.nutrition.calories} kcal
-                  </p>
-                  <div style={styles.mealNutritionRow}>
-                    {[
-                      { label: "Protein", key: "protein_g" },
-                      { label: "Carbs", key: "carbs_g" },
-                      { label: "Fat", key: "fat_g" },
-                      { label: "Fiber", key: "fiber_g" },
-                    ].map((m) => (
-                      <div key={m.key} style={styles.mealNutritionPill}>
-                        <p style={styles.mealNutritionLabel}>{m.label}</p>
-                        <p style={styles.mealNutritionValue}>
-                          {viewMeal.nutrition[m.key] || 0}g
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <MealNutritionCard nutrition={viewMeal.nutrition} />
 
-              {/* Your comment only card */}
-              {viewMeal.comments?.[user.uid] && (
-                <div style={styles.partnerResponseCard}>
-                  <div style={styles.partnerResponseContent}>
-                    <p style={styles.partnerResponseComment}>
-                      "{viewMeal.comments[user.uid]}"
-                    </p>
-                    <p style={styles.partnerResponseName}>
-                      — You
-                    </p>
-                  </div>
-                </div>
-              )}
+              {/* Your comment on partner's meal */}
+              <PartnerResponseCard
+                comment={viewMeal.comments?.[user.uid]}
+                authorName="You"
+              />
             </div>
 
             {/* Only show reaction picker if no reaction yet */}
@@ -1282,7 +1150,7 @@ function Today({ setCurrentPage }) {
             {/* Photo carousel */}
             {activeTask.photos?.length > 0 && (
               <div style={{ position: "relative", marginBottom: "1rem" }}>
-                {renderCarousel(activeTask.photos)}
+                <PhotoCarousel photos={activeTask.photos} />
               </div>
             )}
 
@@ -1546,12 +1414,6 @@ const styles = {
     fontSize: "0.85rem",
     margin: "0 0 1rem 0",
   },
-  sheetPhoto: {
-    width: "100%",
-    borderRadius: "12px",
-    objectFit: "cover",
-    aspectRatio: "4/3",
-  },
   editButton: {
     width: "100%",
     padding: "0.5rem",
@@ -1741,38 +1603,6 @@ const styles = {
     display: "flex",
     gap: "0.5rem",
     marginTop: "0.8rem",
-  },
-  partnerResponseCard: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: "0.6rem",
-    backgroundColor: "#fffaf5",
-    borderRadius: "10px",
-    padding: "0.8rem 1rem",
-    marginTop: "0.8rem",
-    marginBottom: "0.3rem",
-    border: "1px solid #f5ede6",
-  },
-  partnerResponseEmoji: {
-    fontSize: "1.4rem",
-    lineHeight: 1,
-    marginTop: "2px",
-  },
-  partnerResponseContent: {
-    flex: 1,
-  },
-  partnerResponseComment: {
-    fontSize: "0.9rem",
-    color: "#444",
-    margin: "0 0 4px 0",
-    fontStyle: "italic",
-    lineHeight: 1.4,
-  },
-  partnerResponseName: {
-    fontSize: "0.75rem",
-    color: "#bbb",
-    margin: 0,
-    textAlign: "right",
   },
   reactionOverlay: {
     position: "absolute",
@@ -1983,80 +1813,6 @@ const styles = {
     borderRadius: "999px",
     zIndex: 10,
     boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
-  },
-  carouselWrapper: {
-    marginBottom: "1rem",
-  },
-  carouselPhotoWrapper: {
-    position: "relative",
-    width: "100%",
-    borderRadius: "12px",
-    overflow: "hidden",
-  },
-  carouselArrow: {
-    position: "absolute",
-    top: "50%",
-    transform: "translateY(-50%)",
-    backgroundColor: "rgba(255,255,255,0.85)",
-    border: "none",
-    borderRadius: "50%",
-    width: "32px",
-    height: "32px",
-    fontSize: "1.4rem",
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
-    zIndex: 10,
-    lineHeight: 1,
-    color: "#555",
-    padding: 0,
-  },
-  carouselDots: {
-    display: "flex",
-    justifyContent: "center",
-    gap: "6px",
-    marginTop: "8px",
-  },
-  carouselDot: {
-    width: "7px",
-    height: "7px",
-    borderRadius: "50%",
-    cursor: "pointer",
-  },
-  mealNutritionCard: {
-    backgroundColor: "#fafafa",
-    borderRadius: "12px",
-    padding: "0.8rem 1rem",
-    marginBottom: "0.8rem",
-  },
-  mealNutritionTitle: {
-    fontSize: "0.82rem",
-    fontWeight: "600",
-    color: "#ff6b6b",
-    margin: "0 0 0.6rem 0",
-  },
-  mealNutritionRow: {
-    display: "flex",
-    gap: "0.4rem",
-  },
-  mealNutritionPill: {
-    flex: 1,
-    textAlign: "center",
-  },
-  mealNutritionLabel: {
-    fontSize: "0.62rem",
-    color: "#bbb",
-    margin: "0 0 2px 0",
-    textTransform: "uppercase",
-    letterSpacing: "0.04em",
-  },
-  mealNutritionValue: {
-    fontSize: "0.95rem",
-    fontWeight: "700",
-    color: "#555",
-    margin: 0,
   },
   sharedAvatarStack: {
     position: "relative",
