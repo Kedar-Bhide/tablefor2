@@ -46,7 +46,6 @@ function Today({ setCurrentPage }) {
   const [taskQuantity, setTaskQuantity] = useState("");
   const [taskSaving, setTaskSaving] = useState(false);
   const [isNewUser, setIsNewUser] = useState(false);
-  const [taskCompletedMeals, setTaskCompletedMeals] = useState([]);
 
   useEffect(() => {
     const fetchPartner = async () => {
@@ -196,11 +195,6 @@ function Today({ setCurrentPage }) {
         setNutrition({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 });
       }
 
-      // Store task-completed meals for quantity lookup
-      const taskMeals = snapshot.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((m) => m.sourceMealId && m.uid === user.uid);
-      setTaskCompletedMeals(taskMeals);
     });
     // Fetch user profile for daily goals
     const fetchProfile = async () => {
@@ -462,11 +456,6 @@ function Today({ setCurrentPage }) {
     setTaskQuantity("");
   };
 
-  const getMyQuantityForSharedMeal = (meal) => {
-    return taskCompletedMeals.find(
-      (m) => m.sourceMealId === meal.id
-    )?.quantity || null;
-  };
   
   return (
     <div style={styles.container}>
@@ -666,9 +655,6 @@ function Today({ setCurrentPage }) {
                 <div style={styles.viewHeader}>
                   <div>
                     <p style={styles.viewName}>{selectedMeal.name}</p>
-                    {selectedMeal.quantity && (
-                      <p style={styles.mealQuantityText}>{selectedMeal.quantity}</p>
-                    )}
                     <p style={styles.viewMeta}>
                       {selectedMeal.localTime || (selectedMeal.createdAt?.toDate
   ? selectedMeal.createdAt.toDate().toLocaleTimeString("en-US", {
@@ -851,16 +837,6 @@ function Today({ setCurrentPage }) {
               <div style={styles.viewHeader}>
                 <div>
                   <p style={styles.viewName}>{viewMeal.name}</p>
-                {viewMeal.quantity && (
-                  <p style={styles.mealQuantityText}>
-                    {partnerName ? partnerName.split(" ")[0] : "Partner"}'s quantity: {viewMeal.quantity}
-                  </p>
-                )}
-                {getMyQuantityForSharedMeal(viewMeal) && (
-                  <p style={styles.mealQuantityText}>
-                    Your quantity: {getMyQuantityForSharedMeal(viewMeal)}
-                  </p>
-                )}
                   <p style={styles.viewMeta}>
                     {viewMeal.localTime || (viewMeal.createdAt?.toDate
   ? viewMeal.createdAt.toDate().toLocaleTimeString("en-US", {
@@ -1716,12 +1692,6 @@ const styles = {
     fontSize: "1rem",
     fontWeight: "700",
     margin: 0,
-  },
-  mealQuantityText: {
-    fontSize: "0.78rem",
-    color: "#bbb",
-    margin: "2px 0 4px 0",
-    fontStyle: "italic",
   },
   quantityInput: {
     width: "100%",
