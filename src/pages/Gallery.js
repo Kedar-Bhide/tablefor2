@@ -19,7 +19,6 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter }) {
   const [viewMeal, setViewMeal] = useState(null);
   const [comment, setComment] = useState("");
   const [savingComment, setSavingComment] = useState(false);
-  const [partnerMealMyQuantity, setPartnerMealMyQuantity] = useState(null);
 
   useEffect(() => {
     const fetchPartner = async () => {
@@ -178,18 +177,6 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter }) {
                   onClick={async () => {
                     setViewMeal(meal);
                     setComment(meal.comments?.[user.uid] || "");
-                    setPartnerMealMyQuantity(null);
-                    if (meal.uid !== user.uid) {
-                      const q = query(
-                        collection(db, "meals"),
-                        where("uid", "==", user.uid),
-                        where("sourceMealId", "==", meal.id)
-                      );
-                      const snap = await getDocs(q);
-                      if (!snap.empty) {
-                        setPartnerMealMyQuantity(snap.docs[0].data().quantity);
-                      }
-                    }
                   }}
                 >
                   <img
@@ -247,19 +234,6 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter }) {
             <div style={styles.viewHeader}>
               <div>
                 <p style={styles.viewName}>{viewMeal.name}</p>
-                {viewMeal.uid === user.uid && viewMeal.quantity && (
-                  <p style={styles.mealQuantityText}>{viewMeal.quantity}</p>
-                )}
-                {viewMeal.uid !== user.uid && viewMeal.quantity && (
-                  <p style={styles.mealQuantityText}>
-                    {partnerName ? partnerName.split(" ")[0] : "Partner"}'s quantity: {viewMeal.quantity}
-                  </p>
-                )}
-                {viewMeal.uid !== user.uid && partnerMealMyQuantity && (
-                  <p style={styles.mealQuantityText}>
-                    Your quantity: {partnerMealMyQuantity}
-                  </p>
-                )}
                 <p style={styles.viewMeta}>
                   {viewMeal.localTime || (viewMeal.createdAt?.toDate
   ? viewMeal.createdAt.toDate().toLocaleTimeString("en-US", {
@@ -562,12 +536,6 @@ const styles = {
     borderRadius: "8px",
     fontSize: "0.8rem",
     cursor: "pointer",
-  },
-  mealQuantityText: {
-    fontSize: "0.78rem",
-    color: "#bbb",
-    margin: "2px 0 4px 0",
-    fontStyle: "italic",
   },
   galleryCountBadge: {
     position: "absolute",
