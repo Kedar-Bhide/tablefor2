@@ -46,7 +46,6 @@ function Profile() {
   });
   const [editingField, setEditingField] = useState(null);
   const [fieldDraft, setFieldDraft] = useState("");
-  const [weightFlipped, setWeightFlipped] = useState(false);
   const [pendingRequest, setPendingRequest] = useState(null);
   const [incomingRequest, setIncomingRequest] = useState(null);
   const [requestSent, setRequestSent] = useState(false);
@@ -285,6 +284,7 @@ function Profile() {
   };
 
   const handleFieldSave = async (key) => {
+    if (editingField !== key) return;
     const value = fieldDraft.trim();
     const updated = { ...profileFields, [key]: value };
     setProfileFields(updated);
@@ -511,7 +511,6 @@ function Profile() {
               </div>
             </div>
           </div>
-
         </div>
       </div>
       <div style={styles.card}>
@@ -548,182 +547,173 @@ function Profile() {
           Used to personalize your nutrition insights. All optional.
         </p>
         <div style={styles.personalInfoGrid}>
-          {[
-            { key: "age", label: "Age", placeholder: "e.g. 26", suffix: "yrs" },
-            { key: "gender", label: "Gender", placeholder: "e.g. Male, Female", suffix: "" },
-            { key: "height_cm", label: "Height", placeholder: "e.g. 178", suffix: "cm" },
-          ].map((field) => (
-            <div key={field.key} style={styles.personalInfoRow}>
-              <p style={styles.personalInfoLabel}>{field.label}</p>
-              {editingField === field.key ? (
-                <div style={styles.personalInfoEditRow}>
-                  <input
-                    type={field.key === "gender" ? "text" : "number"}
-                    value={fieldDraft}
-                    placeholder={field.placeholder}
-                    onChange={(e) => setFieldDraft(e.target.value)}
-                    style={styles.personalInfoInput}
-                    className="comment-input"
-                    autoFocus
-                  />
-                  <button
-                    style={styles.personalInfoSave}
-                    onClick={() => handleFieldSave(field.key)}
-                  >
-                    ✓
-                  </button>
-                  <button
-                    style={styles.personalInfoCancel}
-                    onClick={() => {
-                      setEditingField(null);
-                      setFieldDraft("");
-                    }}
-                  >
-                    ✕
-                  </button>
-                </div>
+          {/* Row 1: Age & Height */}
+          <div style={styles.personalWeightRow}>
+            {/* Age Segment */}
+            <div style={styles.weightSegment}>
+              <p style={styles.personalInfoLabel}>Age</p>
+              {editingField === "age" ? (
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={fieldDraft}
+                  placeholder="26"
+                  onChange={(e) => setFieldDraft(e.target.value.replace(/[^0-9]/g, ""))}
+                  onBlur={() => handleFieldSave("age")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleFieldSave("age");
+                    if (e.key === "Escape") setEditingField(null);
+                  }}
+                  style={styles.personalInfoInputSmall}
+                  autoFocus
+                />
               ) : (
-                <div style={styles.personalInfoValueRow}>
-                  <p style={styles.personalInfoValue}>
-                    {profileFields[field.key]
-                      ? `${profileFields[field.key]}${field.suffix ? " " + field.suffix : ""}`
-                      : <span style={styles.personalInfoEmpty}>Add</span>}
-                  </p>
-                  <button
-                    style={styles.personalInfoEdit}
-                    onClick={() => {
-                      setEditingField(field.key);
-                      setFieldDraft(profileFields[field.key] || "");
-                    }}
-                  >
-                    edit
-                  </button>
-                </div>
+                <p
+                  style={styles.personalInfoValue}
+                  onClick={() => {
+                    setEditingField("age");
+                    setFieldDraft(profileFields.age || "");
+                  }}
+                >
+                  {profileFields.age ? `${profileFields.age} yrs` : <span style={styles.personalInfoEmpty}>Add</span>}
+                </p>
               )}
             </div>
-          ))}
 
-          {/* Weight flip card */}
-          <div
-            style={styles.weightFlipContainer}
-            onClick={() => setWeightFlipped(!weightFlipped)}
-          >
-            <div style={{
-              ...styles.weightFlipInner,
-              transform: weightFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
-            }}>
-              {/* Front — current weight */}
-              <div style={styles.weightFlipFront}>
-                <p style={styles.personalInfoLabel}>Weight</p>
-                {editingField === "weight_kg" ? (
-                  <div style={styles.personalInfoEditRow}>
-                    <input
-                      type="number"
-                      value={fieldDraft}
-                      placeholder="e.g. 77"
-                      onChange={(e) => setFieldDraft(e.target.value)}
-                      style={styles.personalInfoInput}
-                      className="comment-input"
-                      autoFocus
-                    />
-                    <button
-                      style={styles.personalInfoSave}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleFieldSave("weight_kg");
-                      }}
-                    >
-                      ✓
-                    </button>
-                    <button
-                      style={styles.personalInfoCancel}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingField(null);
-                        setFieldDraft("");
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ) : (
-                  <div style={styles.personalInfoValueRow}>
-                    <p style={styles.personalInfoValue}>
-                      {profileFields.weight_kg
-                        ? `${profileFields.weight_kg} kg`
-                        : <span style={styles.personalInfoEmpty}>Add</span>}
-                    </p>
-                    <button
-                      style={styles.personalInfoEdit}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingField("weight_kg");
-                        setFieldDraft(profileFields.weight_kg || "");
-                      }}
-                    >
-                      edit
-                    </button>
-                  </div>
-                )}
-              </div>
+            <div style={styles.weightDivider} />
 
-              {/* Back — target weight */}
-              <div style={styles.weightFlipBack}>
-                <p style={styles.personalInfoLabel}>Target</p>
-                {editingField === "target_weight_kg" ? (
-                  <div style={styles.personalInfoEditRow}>
-                    <input
-                      type="number"
-                      value={fieldDraft}
-                      placeholder="e.g. 72"
-                      onChange={(e) => setFieldDraft(e.target.value)}
-                      style={styles.personalInfoInput}
-                      className="comment-input"
-                      autoFocus
-                    />
-                    <button
-                      style={styles.personalInfoSave}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleFieldSave("target_weight_kg");
-                      }}
-                    >
-                      ✓
-                    </button>
-                    <button
-                      style={styles.personalInfoCancel}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingField(null);
-                        setFieldDraft("");
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ) : (
-                  <div style={styles.personalInfoValueRow}>
-                    <p style={styles.personalInfoValue}>
-                      {profileFields.target_weight_kg
-                        ? `${profileFields.target_weight_kg} kg`
-                        : <span style={styles.personalInfoEmpty}>Add</span>}
-                    </p>
-                    <button
-                      style={styles.personalInfoEdit}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingField("target_weight_kg");
-                        setFieldDraft(profileFields.target_weight_kg || "");
-                      }}
-                    >
-                      edit
-                    </button>
-                  </div>
-                )}
-              </div>
+            {/* Height Segment */}
+            <div style={styles.weightSegment}>
+              <p style={styles.personalInfoLabel}>Height</p>
+              {editingField === "height_cm" ? (
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={fieldDraft}
+                  placeholder="178"
+                  onChange={(e) => setFieldDraft(e.target.value.replace(/[^0-9]/g, ""))}
+                  onBlur={() => handleFieldSave("height_cm")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleFieldSave("height_cm");
+                    if (e.key === "Escape") setEditingField(null);
+                  }}
+                  style={styles.personalInfoInputSmall}
+                  autoFocus
+                />
+              ) : (
+                <p
+                  style={styles.personalInfoValue}
+                  onClick={() => {
+                    setEditingField("height_cm");
+                    setFieldDraft(profileFields.height_cm || "");
+                  }}
+                >
+                  {profileFields.height_cm ? `${profileFields.height_cm} cm` : <span style={styles.personalInfoEmpty}>Add</span>}
+                </p>
+              )}
             </div>
           </div>
 
+          {/* Row 2: Weights (Current & Target) */}
+          <div style={styles.personalWeightRow}>
+            {/* Current Weight */}
+            <div style={styles.weightSegment}>
+              <p style={styles.personalInfoLabel}>Weight</p>
+              {editingField === "weight_kg" ? (
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={fieldDraft}
+                  placeholder="75"
+                  onChange={(e) => setFieldDraft(e.target.value.replace(/[^0-9.]/g, ""))}
+                  onBlur={() => handleFieldSave("weight_kg")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleFieldSave("weight_kg");
+                    if (e.key === "Escape") setEditingField(null);
+                  }}
+                  style={styles.personalInfoInputSmall}
+                  autoFocus
+                />
+              ) : (
+                <p
+                  style={styles.personalInfoValue}
+                  onClick={() => {
+                    setEditingField("weight_kg");
+                    setFieldDraft(profileFields.weight_kg || "");
+                  }}
+                >
+                  {profileFields.weight_kg ? `${profileFields.weight_kg} kg` : <span style={styles.personalInfoEmpty}>Add</span>}
+                </p>
+              )}
+            </div>
+
+            <div style={styles.weightDivider} />
+
+            {/* Target Weight */}
+            <div style={styles.weightSegment}>
+              <p style={styles.personalInfoLabel}>Target</p>
+              {editingField === "target_weight_kg" ? (
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={fieldDraft}
+                  placeholder="70"
+                  onChange={(e) => setFieldDraft(e.target.value.replace(/[^0-9.]/g, ""))}
+                  onBlur={() => handleFieldSave("target_weight_kg")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleFieldSave("target_weight_kg");
+                    if (e.key === "Escape") setEditingField(null);
+                  }}
+                  style={styles.personalInfoInputSmall}
+                  autoFocus
+                />
+              ) : (
+                <p
+                  style={styles.personalInfoValue}
+                  onClick={() => {
+                    setEditingField("target_weight_kg");
+                    setFieldDraft(profileFields.target_weight_kg || "");
+                  }}
+                >
+                  {profileFields.target_weight_kg ? `${profileFields.target_weight_kg} kg` : <span style={styles.personalInfoEmpty}>Add</span>}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Optional: Gender Card (Conditional) */}
+          {(!profileFields.gender || editingField === "gender") && (
+            <div style={styles.personalInfoRow}>
+              <p style={styles.personalInfoLabel}>Gender</p>
+              {editingField === "gender" ? (
+                <input
+                  type="text"
+                  value={fieldDraft}
+                  placeholder="Male / Female"
+                  onChange={(e) => setFieldDraft(e.target.value)}
+                  onBlur={() => handleFieldSave("gender")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleFieldSave("gender");
+                    if (e.key === "Escape") setEditingField(null);
+                  }}
+                  style={styles.personalInfoInput}
+                  autoFocus
+                />
+              ) : (
+                <p
+                  style={profileFields.gender ? styles.personalInfoValueLocked : styles.personalInfoValue}
+                  onClick={() => {
+                    if (!profileFields.gender) {
+                      setEditingField("gender");
+                      setFieldDraft(profileFields.gender || "");
+                    }
+                  }}
+                >
+                  {profileFields.gender ? profileFields.gender : <span style={styles.personalInfoEmpty}>Add Gender</span>}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </div>
       {/* Notification Settings */}
@@ -1136,132 +1126,128 @@ const styles = {
   personalInfoRow: {
     display: "flex",
     flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
     gap: "0.3rem",
-    padding: "0.6rem",
+    padding: "0.8rem",
     backgroundColor: "#fffaf5",
-    borderRadius: "10px",
-    minHeight: "60px",
+    borderRadius: "12px",
+    minHeight: "70px",
     boxSizing: "border-box",
+    cursor: "pointer",
+    transition: "background-color 0.2s ease",
   },
-  personalInfoLabel: {
-    fontSize: "0.72rem",
-    color: "#bbb",
-    margin: 0,
-    fontWeight: "500",
-    textTransform: "uppercase",
-    letterSpacing: "0.05em",
-    textAlign: "center",
-  },
-  personalInfoValueRow: {
+  personalWeightRow: {
     display: "flex",
     alignItems: "center",
-    gap: "1.0rem",
-    minWidth: "80px",
-    justifyContent: "flex-end",
+    backgroundColor: "#fffaf5",
+    borderRadius: "12px",
+    minHeight: "70px",
+    boxSizing: "border-box",
+  },
+  weightSegment: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "0.3rem",
+    padding: "0.8rem",
+    cursor: "pointer",
+  },
+  weightDivider: {
+    width: "1px",
+    height: "30px",
+    backgroundColor: "#eee",
+  },
+  personalInfoLabel: {
+    fontSize: "0.7rem",
+    color: "#bbb",
+    margin: 0,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
   },
   personalInfoValue: {
-    fontSize: "0.9rem",
-    color: "#888",
+    fontSize: "1.1rem",
+    fontWeight: "700",
+    color: "#444",
     margin: 0,
+    textAlign: "center",
+  },
+  personalInfoValueLocked: {
+    fontSize: "1.1rem",
+    fontWeight: "700",
+    color: "#bbb",
+    margin: 0,
+    textAlign: "center",
+    cursor: "default",
   },
   personalInfoEmpty: {
     color: "#ddd",
     fontStyle: "italic",
-    fontSize: "0.85rem",
-  },
-  personalInfoEdit: {
-    background: "none",
-    border: "none",
-    cursor: "pointer",
-    fontSize: "0.72rem",
-    color: "#ccc",
-    padding: "0",
-    textDecoration: "underline",
-    textUnderlineOffset: "2px",
+    fontSize: "0.9rem",
+    fontWeight: "500",
   },
   personalInfoEditRow: {
     display: "flex",
     alignItems: "center",
+    justifyContent: "center",
     gap: "0.4rem",
   },
   personalInfoInput: {
-    width: "90px",
-    padding: "0.4rem 0.5rem",
-    fontSize: "0.9rem",
+    width: "120px",
+    padding: "0.4rem 0.6rem",
+    fontSize: "1rem",
     borderRadius: "8px",
-    border: "1px solid #eee",
+    border: "1px solid #ffcccc",
     outline: "none",
     color: "#333",
+    textAlign: "center",
+    backgroundColor: "white",
+  },
+  personalInfoInputSmall: {
+    width: "70px",
+    padding: "0.4rem 0.5rem",
+    fontSize: "0.95rem",
+    borderRadius: "8px",
+    border: "1px solid #ffcccc",
+    outline: "none",
+    color: "#333",
+    textAlign: "center",
+    backgroundColor: "white",
   },
   personalInfoSave: {
     background: "#ff6b6b",
     color: "white",
     border: "none",
-    borderRadius: "6px",
-    padding: "0.3rem 0.5rem",
-    fontSize: "0.85rem",
+    borderRadius: "8px",
+    padding: "0.4rem 0.6rem",
+    fontSize: "0.9rem",
     cursor: "pointer",
+    fontWeight: "bold",
   },
   personalInfoCancel: {
     background: "none",
     color: "#ccc",
     border: "none",
-    fontSize: "0.85rem",
+    fontSize: "1.1rem",
     cursor: "pointer",
-    padding: "0.3rem",
+    padding: "0.2rem",
+    lineHeight: 1,
   },
   personalInfoGrid: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: "0.6rem",
-  },
-  weightFlipContainer: {
-    perspective: "600px",
-    cursor: "pointer",
-    borderRadius: "10px",
-  },
-  weightFlipInner: {
-    position: "relative",
-    width: "100%",
-    transformStyle: "preserve-3d",
-    transition: "transform 0.5s cubic-bezier(0.34, 1.26, 0.64, 1)",
-    minHeight: "60px",
-  },
-  weightFlipFront: {
-    position: "absolute",
-    width: "100%",
-    height: "100%",
-    backfaceVisibility: "hidden",
-    WebkitBackfaceVisibility: "hidden",
-    backgroundColor: "#fffaf5",
-    borderRadius: "10px",
-    padding: "0.6rem",
-    boxSizing: "border-box",
     display: "flex",
     flexDirection: "column",
-    gap: "0.3rem",
-  },
-  weightFlipBack: {
-    position: "absolute",
+    gap: "0.8rem",
     width: "100%",
-    height: "100%",
-    backfaceVisibility: "hidden",
-    WebkitBackfaceVisibility: "hidden",
-    backgroundColor: "#fff0ee",
-    borderRadius: "10px",
-    padding: "0.6rem",
-    transform: "rotateY(180deg)",
-    boxSizing: "border-box",
-    display: "flex",
-    flexDirection: "column",
-    gap: "0.3rem",
   },
   completionBanner: {
     backgroundColor: "#fff8ee",
     border: "1px solid #ffe8cc",
     borderRadius: "12px",
-    padding: "0.9rem 1rem",
-    marginBottom: "1rem",
+    padding: "1rem",
+    marginBottom: "1.2rem",
     animation: "slideUpFade 0.4s ease both",
   },
   completionBannerTitle: {
