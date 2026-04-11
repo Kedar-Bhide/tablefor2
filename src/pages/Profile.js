@@ -52,6 +52,14 @@ function Profile() {
   const [requestSent, setRequestSent] = useState(false);
   const [showInviteLink, setShowInviteLink] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [currency, setCurrency] = useState("USD");
+
+  const formatWalletValue = (value) => {
+    if (currency === "INR") {
+      return `₹${Math.round(value * 10)}`;
+    }
+    return `$${value.toFixed(2)}`;
+  };
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -415,35 +423,47 @@ function Profile() {
           <div style={styles.walletFront} onClick={() => setWalletFlipped(true)}>
             <div style={styles.walletHeader}>
               <p style={styles.badgeTitle}>💰 My Wallet</p>
-              {wallet?.resetAt && (
-                <p style={styles.walletReset}>
-                  Since {wallet.resetAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                </p>
-              )}
+              <select
+                value={currency}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  setCurrency(e.target.value);
+                }}
+                style={styles.currencySelect}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <option value="USD">USD ($)</option>
+                <option value="INR">INR (₹)</option>
+              </select>
             </div>
+            {wallet?.resetAt && (
+              <p style={styles.walletReset}>
+                Since {wallet.resetAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+              </p>
+            )}
 
             <div style={styles.walletBalance}>
-              <p style={styles.walletAmount}>${wallet ? wallet.total.toFixed(2) : "0.00"}</p>
-              <p style={styles.walletSub}>earned from meals</p>
+              <p style={styles.walletAmount}>{formatWalletValue(wallet ? wallet.total : 0)}</p>
+              <p style={styles.walletSub}>rewarded from meals</p>
             </div>
 
             <div style={styles.walletBreakdown}>
               <div style={styles.walletItem}>
                 <p style={styles.walletItemEmoji}>🟢</p>
                 <p style={styles.walletItemCount}>{wallet?.fullCount ?? 0}</p>
-                <p style={styles.walletItemLabel}>$2 meals</p>
+                <p style={styles.walletItemLabel}>{currency === "INR" ? "₹20" : "$2"} meals</p>
               </div>
               <div style={styles.walletDivider} />
               <div style={styles.walletItem}>
                 <p style={styles.walletItemEmoji}>🟡</p>
                 <p style={styles.walletItemCount}>{wallet?.halfCount ?? 0}</p>
-                <p style={styles.walletItemLabel}>$1 meals</p>
+                <p style={styles.walletItemLabel}>{currency === "INR" ? "₹10" : "$1"} meals</p>
               </div>
               <div style={styles.walletDivider} />
               <div style={styles.walletItem}>
                 <p style={styles.walletItemEmoji}>🔴</p>
                 <p style={styles.walletItemCount}>{wallet?.quarterCount ?? 0}</p>
-                <p style={styles.walletItemLabel}>$0.50 meals</p>
+                <p style={styles.walletItemLabel}>{currency === "INR" ? "₹5" : "$0.50"} meals</p>
               </div>
             </div>
 
@@ -466,11 +486,27 @@ function Profile() {
 
           {/* Back */}
           <div style={styles.walletBack} onClick={() => setWalletFlipped(false)}>
-            <p style={styles.backTitle}>💰 How Rewards Work</p>
+            <div style={styles.walletHeader}>
+              <p style={styles.backTitle}>💰 How Rewards Work</p>
+              <select
+                value={currency}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  setCurrency(e.target.value);
+                }}
+                style={styles.currencySelect}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <option value="USD">USD ($)</option>
+                <option value="INR">INR (₹)</option>
+              </select>
+            </div>
 
             <div style={{ ...styles.ruleCard, backgroundColor: "#f0fff4" }}>
               <div style={styles.ruleLeft}>
-                <p style={{ ...styles.ruleAmount, color: "#4caf50" }}>$2</p>
+                <p style={{ ...styles.ruleAmount, color: "#4caf50" }}>
+                  {currency === "INR" ? "₹20" : "$2"}
+                </p>
                 <p style={styles.ruleTag}>On time</p>
               </div>
               <div style={styles.ruleRight}>
@@ -485,7 +521,9 @@ function Profile() {
 
             <div style={{ ...styles.ruleCard, backgroundColor: "#fffbf0" }}>
               <div style={styles.ruleLeft}>
-                <p style={{ ...styles.ruleAmount, color: "#ffb347" }}>$1</p>
+                <p style={{ ...styles.ruleAmount, color: "#ffb347" }}>
+                  {currency === "INR" ? "₹10" : "$1"}
+                </p>
                 <p style={styles.ruleTag}>A little late</p>
               </div>
               <div style={styles.ruleRight}>
@@ -500,7 +538,9 @@ function Profile() {
 
             <div style={{ ...styles.ruleCard, backgroundColor: "#fff5f5" }}>
               <div style={styles.ruleLeft}>
-                <p style={{ ...styles.ruleAmount, color: "#ff6b6b" }}>$0.50</p>
+                <p style={{ ...styles.ruleAmount, color: "#ff6b6b" }}>
+                  {currency === "INR" ? "₹5" : "$0.50"}
+                </p>
                 <p style={styles.ruleTag}>Late</p>
               </div>
               <div style={styles.ruleRight}>
@@ -1106,6 +1146,22 @@ const styles = {
     fontSize: "1.1rem",
     color: "#333",
     margin: "0 0 0.2rem 0",
+  },
+  walletHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "0.2rem",
+  },
+  currencySelect: {
+    background: "#f8f8f8",
+    border: "1px solid #eee",
+    borderRadius: "6px",
+    padding: "0.2rem 0.4rem",
+    fontSize: "0.75rem",
+    color: "#666",
+    outline: "none",
+    cursor: "pointer",
   },
   notifRow: {
     display: "flex",
