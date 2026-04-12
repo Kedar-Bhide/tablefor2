@@ -146,21 +146,23 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter }) {
     <div style={styles.container}>
       <h2 style={styles.title}>Gallery</h2>
 
-      <div style={styles.filterRow}>
-        {(partnerUid ? ["mine", "hers"] : ["mine"]).map((f) => (
-          <button
-            key={f}
-            style={{
-              ...styles.filterButton,
-              backgroundColor: filter === f ? "#ff6b6b" : "white",
-              color: filter === f ? "white" : "#aaa",
-            }}
-            onClick={() => setFilter(f)}
-          >
-            {f === "mine" ? "Mine" : partnerName ? partnerName.split(" ")[0] : "Partner"}
-          </button>
-        ))}
-      </div>
+      {partnerUid && (
+        <div style={styles.filterRow}>
+          {["mine", "hers"].map((f) => (
+            <button
+              key={f}
+              style={{
+                ...styles.filterButton,
+                backgroundColor: filter === f ? "#ff6b6b" : "white",
+                color: filter === f ? "white" : "#aaa",
+              }}
+              onClick={() => setFilter(f)}
+            >
+              {f === "mine" ? "Mine" : partnerName ? partnerName.split(" ")[0] : "Partner"}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Grouped Photos */}
       {Object.keys(groupedMeals).length === 0 ? (
