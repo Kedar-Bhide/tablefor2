@@ -546,7 +546,6 @@ function Profile() {
                 </div>
               </div>
             </div>
-            <p style={{ ...styles.flipHint, marginTop: "1rem", color: "#bbb" }}>Tap anywhere outside to close</p>
           </div>
         </div>
       )}
@@ -1111,7 +1110,7 @@ const styles = {
     backgroundColor: "white",
     borderRadius: "20px",
     width: "100%",
-    maxWidth: "400px",
+    maxWidth: "360px",
     padding: "1.5rem",
     boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
     animation: "slideUpFade 0.3s ease-out",
