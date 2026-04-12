@@ -1,14 +1,8 @@
-# Couple Meals
+# Table For 2
 
-A React + Firebase app for couples to log meals, track nutrition trends, and share reactions/comments.
-
-## Scripts
-
-- `npm start`: start the development server.
-- `npm test -- --watchAll=false`: run tests once.
-- `npm run build`: create a production build in `build/`.
+A React + Firebase app to log meals and track nutrition trends.
 
 ## Tech
 
-- React (Create React App)
-- Firebase Auth, Firestore, Storage, Cloud Functions, and Messaging
+- React + Vite
+- Firebase Auth, Firestore, Cloud Functions
