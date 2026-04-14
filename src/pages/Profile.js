@@ -587,13 +587,13 @@ function Profile() {
           <div style={styles.personalWeightRow}>
             {/* Age Segment */}
             <div style={styles.weightSegment}>
-              <p style={styles.personalInfoLabel}>Age</p>
+              <p style={styles.personalInfoLabel}>AGE</p>
               {editingField === "age" ? (
                 <input
                   type="text"
                   inputMode="numeric"
                   value={fieldDraft}
-                  placeholder="26"
+                  // placeholder="26"
                   onChange={(e) => setFieldDraft(e.target.value.replace(/[^0-9]/g, ""))}
                   onBlur={() => handleFieldSave("age")}
                   onKeyDown={(e) => {
@@ -620,13 +620,13 @@ function Profile() {
 
             {/* Height Segment */}
             <div style={styles.weightSegment}>
-              <p style={styles.personalInfoLabel}>Height</p>
+              <p style={styles.personalInfoLabel}>HEIGHT (cm)</p>
               {editingField === "height_cm" ? (
                 <input
                   type="text"
                   inputMode="numeric"
                   value={fieldDraft}
-                  placeholder="178"
+                  // placeholder="178"
                   onChange={(e) => setFieldDraft(e.target.value.replace(/[^0-9]/g, ""))}
                   onBlur={() => handleFieldSave("height_cm")}
                   onKeyDown={(e) => {
@@ -654,13 +654,13 @@ function Profile() {
           <div style={styles.personalWeightRow}>
             {/* Current Weight */}
             <div style={styles.weightSegment}>
-              <p style={styles.personalInfoLabel}>Weight</p>
+              <p style={styles.personalInfoLabel}>WEIGHT (kg)</p>
               {editingField === "weight_kg" ? (
                 <input
                   type="text"
                   inputMode="decimal"
                   value={fieldDraft}
-                  placeholder="75"
+                  // placeholder="75"
                   onChange={(e) => setFieldDraft(e.target.value.replace(/[^0-9.]/g, ""))}
                   onBlur={() => handleFieldSave("weight_kg")}
                   onKeyDown={(e) => {
@@ -687,13 +687,13 @@ function Profile() {
 
             {/* Target Weight */}
             <div style={styles.weightSegment}>
-              <p style={styles.personalInfoLabel}>Target</p>
+              <p style={styles.personalInfoLabel}>TARGET (kg)</p>
               {editingField === "target_weight_kg" ? (
                 <input
                   type="text"
                   inputMode="decimal"
                   value={fieldDraft}
-                  placeholder="70"
+                  // placeholder="70"
                   onChange={(e) => setFieldDraft(e.target.value.replace(/[^0-9.]/g, ""))}
                   onBlur={() => handleFieldSave("target_weight_kg")}
                   onKeyDown={(e) => {
@@ -720,12 +720,12 @@ function Profile() {
           {/* Optional: Gender Card (Conditional) */}
           {(!profileFields.gender || editingField === "gender") && (
             <div style={styles.personalInfoRow}>
-              <p style={styles.personalInfoLabel}>Gender</p>
+              <p style={styles.personalInfoLabel}>GENDER</p>
               {editingField === "gender" ? (
                 <input
                   type="text"
                   value={fieldDraft}
-                  placeholder="Male / Female"
+                  // placeholder="Male / Female"
                   onChange={(e) => setFieldDraft(e.target.value)}
                   onBlur={() => handleFieldSave("gender")}
                   onKeyDown={(e) => {
@@ -1209,11 +1209,11 @@ const styles = {
     backgroundColor: "#eee",
   },
   personalInfoLabel: {
-    fontSize: "0.7rem",
+    fontSize: "0.8rem",
     color: "#bbb",
     margin: 0,
     fontWeight: "600",
-    textTransform: "uppercase",
+    // textTransform: "uppercase",
     letterSpacing: "0.06em",
   },
   personalInfoValue: {
