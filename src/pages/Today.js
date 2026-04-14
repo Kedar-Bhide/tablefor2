@@ -767,7 +767,15 @@ function Today({ setCurrentPage }) {
                   <div style={styles.overlay} onClick={() => setShowEditPhotoOptions(false)}>
                     <div style={styles.sheet} onClick={(e) => e.stopPropagation()}>
                       <p style={styles.sheetTitle}>Add Photo</p>
-                      <button style={styles.editButton} onClick={() => document.getElementById("editPhotoInput").click()}>
+                      <button style={styles.editButton} onClick={async () => {
+                        try {
+                          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                          stream.getTracks().forEach(t => t.stop());
+                          document.getElementById("editPhotoInput").click();
+                        } catch (e) {
+                          alert("Camera access is blocked. Please go to your browser Settings → Site Settings → Camera and allow access for this site, then reload the app.");
+                        }
+                      }}>
                         📷 Take Photo
                       </button>
                       <button style={styles.editButton} onClick={() => document.getElementById("editGalleryInput").click()}>

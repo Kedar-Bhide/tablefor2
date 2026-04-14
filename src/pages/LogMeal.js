@@ -142,14 +142,22 @@ function LogMeal({ setCurrentPage, partnerUid }) {
       {photos.length > 0 && (
         <p style={styles.photoHint}>{photos.length}/5 photos</p>
       )}
-      <input id="photoInput" type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handlePhoto} />
+      <input id="photoInput" type="file" accept="image/*" capture style={{ display: "none" }} onChange={handlePhoto} />
       <input id="galleryInput" type="file" accept="image/*" style={{ display: "none" }} onChange={handlePhoto} />
 
       {showPhotoOptions && (
         <div style={styles.overlay} onClick={() => setShowPhotoOptions(false)}>
           <div style={styles.sheet} onClick={(e) => e.stopPropagation()}>
             <p style={styles.sheetTitle}>Add Photo</p>
-            <button style={styles.editButton} onClick={() => document.getElementById("photoInput").click()}>
+            <button style={styles.editButton} onClick={async () => {
+              try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                stream.getTracks().forEach(t => t.stop());
+                document.getElementById("photoInput").click();
+              } catch (e) {
+                alert("Camera access is blocked. Please go to your browser Settings → Site Settings → Camera and allow access for this site, then reload the app.");
+              }
+            }}>
               📷 Take Photo
             </button>
             <button style={styles.editButton} onClick={() => document.getElementById("galleryInput").click()}>
@@ -190,13 +198,13 @@ function LogMeal({ setCurrentPage, partnerUid }) {
           style={styles.input}
         />
         <input
-              type="text"
-              placeholder="Quantity or ingredients (optional)"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              style={styles.quantityInput}
-              className="quantity-input"
-            />
+          type="text"
+          placeholder="Quantity or ingredients (optional)"
+          value={quantity}
+          onChange={(e) => setQuantity(e.target.value)}
+          style={styles.quantityInput}
+          className="quantity-input"
+        />
       </div>
       <div style={styles.cookTypeRow}>
         <div
@@ -220,7 +228,7 @@ function LogMeal({ setCurrentPage, partnerUid }) {
           <p style={styles.cookTypeLabel}>Restaurant</p>
         </div>
       </div>
-      
+
       {partnerUid && (
         <div style={styles.toggleRow}>
           <div>
