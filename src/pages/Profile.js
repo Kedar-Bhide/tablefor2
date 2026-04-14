@@ -593,7 +593,7 @@ function Profile() {
                   type="text"
                   inputMode="numeric"
                   value={fieldDraft}
-                  placeholder="26"
+                  // placeholder="26"
                   onChange={(e) => setFieldDraft(e.target.value.replace(/[^0-9]/g, ""))}
                   onBlur={() => handleFieldSave("age")}
                   onKeyDown={(e) => {
@@ -626,7 +626,7 @@ function Profile() {
                   type="text"
                   inputMode="numeric"
                   value={fieldDraft}
-                  placeholder="178"
+                  // placeholder="178"
                   onChange={(e) => setFieldDraft(e.target.value.replace(/[^0-9]/g, ""))}
                   onBlur={() => handleFieldSave("height_cm")}
                   onKeyDown={(e) => {
@@ -660,7 +660,7 @@ function Profile() {
                   type="text"
                   inputMode="decimal"
                   value={fieldDraft}
-                  placeholder="75"
+                  // placeholder="75"
                   onChange={(e) => setFieldDraft(e.target.value.replace(/[^0-9.]/g, ""))}
                   onBlur={() => handleFieldSave("weight_kg")}
                   onKeyDown={(e) => {
@@ -693,7 +693,7 @@ function Profile() {
                   type="text"
                   inputMode="decimal"
                   value={fieldDraft}
-                  placeholder="70"
+                  // placeholder="70"
                   onChange={(e) => setFieldDraft(e.target.value.replace(/[^0-9.]/g, ""))}
                   onBlur={() => handleFieldSave("target_weight_kg")}
                   onKeyDown={(e) => {
@@ -725,7 +725,7 @@ function Profile() {
                 <input
                   type="text"
                   value={fieldDraft}
-                  placeholder="Male / Female"
+                  // placeholder="Male / Female"
                   onChange={(e) => setFieldDraft(e.target.value)}
                   onBlur={() => handleFieldSave("gender")}
                   onKeyDown={(e) => {
