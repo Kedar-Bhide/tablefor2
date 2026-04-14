@@ -276,7 +276,6 @@ function Today({ setCurrentPage }) {
       const mealRef = doc(db, "meals", selectedMeal.id);
       const quantityChanged = editQuantity.trim() !== (selectedMeal.quantity || "");
       const nameChanged = editName.trim() !== selectedMeal.name;
-      const photosChanged = JSON.stringify(finalPhotos) !== JSON.stringify(existingURLs);
 
       const updateData = {
         name: editName.trim() || selectedMeal.name,
@@ -288,8 +287,8 @@ function Today({ setCurrentPage }) {
 
       await updateDoc(mealRef, updateData);
 
-      // Reanalyze if name, quantity or photos changed
-      if (nameChanged || quantityChanged || photosChanged) {
+      // Only reanalyze if name or quantity changed — never for photo-only changes
+      if (nameChanged || quantityChanged) {
         setSaving(false);
         setReanalyzing(true);
         try {
@@ -456,7 +455,7 @@ function Today({ setCurrentPage }) {
     setTaskQuantity("");
   };
 
-  
+
   return (
     <div style={styles.container}>
       <h2 style={styles.title}>Today</h2>
@@ -537,41 +536,41 @@ function Today({ setCurrentPage }) {
             }
           }}>
             {(() => {
-                const mealPhotos = getPhotos(meal);
-                if (mealPhotos.length === 0) return null;
-                if (mealPhotos.length === 1) return (
-                  <img src={mealPhotos[0]} alt="meal" style={styles.mealPhoto} />
-                );
-                // Stacked deck for multiple photos
-                // Stacked deck for multiple photos
-                const visiblePhotos = mealPhotos.slice(0, 3);
-                const rotations = [-3, 1.5, 0];
-                const offsets = [{ x: -6, y: 3 }, { x: 4, y: -2 }, { x: 0, y: 0 }];
-                return (
-                  <div style={styles.photoStack}>
-                    {visiblePhotos.map((url, i) => (
-                      <img
-                        key={i}
-                        src={url}
-                        alt="meal"
-                        style={{
-                          ...styles.mealPhoto,
-                          position: "absolute",
-                          top: 0,
-                          left: 0,
-                          transform: `rotate(${rotations[i] || 0}deg) translate(${offsets[i]?.x || 0}px, ${offsets[i]?.y || 0}px)`,
-                          zIndex: visiblePhotos.length - i,
-                          boxShadow: i < visiblePhotos.length - 1
-                            ? "0 4px 12px rgba(0,0,0,0.15)"
-                            : "0 2px 8px rgba(0,0,0,0.1)",
-                          animation: `cardFanOut 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) ${i * 0.08}s both`,
-                          borderRadius: "12px",
-                        }}
-                      />
-                    ))}
-                  </div>
-                );
-              })()}
+              const mealPhotos = getPhotos(meal);
+              if (mealPhotos.length === 0) return null;
+              if (mealPhotos.length === 1) return (
+                <img src={mealPhotos[0]} alt="meal" style={styles.mealPhoto} />
+              );
+              // Stacked deck for multiple photos
+              // Stacked deck for multiple photos
+              const visiblePhotos = mealPhotos.slice(0, 3);
+              const rotations = [-3, 1.5, 0];
+              const offsets = [{ x: -6, y: 3 }, { x: 4, y: -2 }, { x: 0, y: 0 }];
+              return (
+                <div style={styles.photoStack}>
+                  {visiblePhotos.map((url, i) => (
+                    <img
+                      key={i}
+                      src={url}
+                      alt="meal"
+                      style={{
+                        ...styles.mealPhoto,
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        transform: `rotate(${rotations[i] || 0}deg) translate(${offsets[i]?.x || 0}px, ${offsets[i]?.y || 0}px)`,
+                        zIndex: visiblePhotos.length - i,
+                        boxShadow: i < visiblePhotos.length - 1
+                          ? "0 4px 12px rgba(0,0,0,0.15)"
+                          : "0 2px 8px rgba(0,0,0,0.1)",
+                        animation: `cardFanOut 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) ${i * 0.08}s both`,
+                        borderRadius: "12px",
+                      }}
+                    />
+                  ))}
+                </div>
+              );
+            })()}
             <div style={styles.mealInfo}>
               <div style={styles.mealHeader}>
                 <p style={styles.mealName}>{meal.name}</p>
@@ -657,11 +656,11 @@ function Today({ setCurrentPage }) {
                     <p style={styles.viewName}>{selectedMeal.name}</p>
                     <p style={styles.viewMeta}>
                       {selectedMeal.localTime || (selectedMeal.createdAt?.toDate
-  ? selectedMeal.createdAt.toDate().toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-    })
-  : "")}
+                        ? selectedMeal.createdAt.toDate().toLocaleTimeString("en-US", {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })
+                        : "")}
                     </p>
                   </div>
                   <img
@@ -707,13 +706,13 @@ function Today({ setCurrentPage }) {
                   style={styles.editInput}
                 />
                 <input
-                type="text"
-                value={editQuantity}
-                onChange={(e) => setEditQuantity(e.target.value)}
-                style={styles.quantityInput}
-                placeholder="Quantity or ingredients (optional)"
-                className="quantity-input"
-              />
+                  type="text"
+                  value={editQuantity}
+                  onChange={(e) => setEditQuantity(e.target.value)}
+                  style={styles.quantityInput}
+                  placeholder="Quantity or ingredients (optional)"
+                  className="quantity-input"
+                />
                 <p style={styles.editLabel}>Meal Type</p>
                 <div style={styles.typeRow}>
                   {["Breakfast", "Lunch", "Dinner", "Snack"].map((type) => (
@@ -735,35 +734,35 @@ function Today({ setCurrentPage }) {
                 <p style={styles.editLabel}>Photo</p>
                 <div style={styles.photoBox} onClick={() => setShowEditPhotoOptions(true)}>
                   {/* Multi photo edit grid */}
-                <div style={styles.photoGrid}>
-                  {editPhotoPreviews.map((preview, index) => (
-                    <div key={index} style={styles.photoThumbWrapper}>
-                      <img
-                        src={preview}
-                        alt={`meal ${index + 1}`}
-                        style={styles.photoThumb}
-                      />
-                      <button
-                        style={styles.removePhotoBtn}
-                        onClick={() => handleRemoveEditPhoto(index)}
+                  <div style={styles.photoGrid}>
+                    {editPhotoPreviews.map((preview, index) => (
+                      <div key={index} style={styles.photoThumbWrapper}>
+                        <img
+                          src={preview}
+                          alt={`meal ${index + 1}`}
+                          style={styles.photoThumb}
+                        />
+                        <button
+                          style={styles.removePhotoBtn}
+                          onClick={() => handleRemoveEditPhoto(index)}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                    {editPhotoPreviews.length < 5 && (
+                      <div
+                        style={styles.addMorePhoto}
+                        onClick={() => setShowEditPhotoOptions(true)}
                       >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-                  {editPhotoPreviews.length < 5 && (
-                    <div
-                      style={styles.addMorePhoto}
-                      onClick={() => setShowEditPhotoOptions(true)}
-                    >
-                      <p style={styles.addMorePhotoPlus}>+</p>
-                      <p style={styles.addMorePhotoLabel}>Add</p>
-                    </div>
-                  )}
-                </div>
+                        <p style={styles.addMorePhotoPlus}>+</p>
+                        <p style={styles.addMorePhotoLabel}>Add</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <input id="editPhotoInput" type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handleAddEditPhoto} />
-              <input id="editGalleryInput" type="file" accept="image/*" style={{ display: "none" }} onChange={handleAddEditPhoto} />
+                <input id="editGalleryInput" type="file" accept="image/*" style={{ display: "none" }} onChange={handleAddEditPhoto} />
                 {showEditPhotoOptions && (
                   <div style={styles.overlay} onClick={() => setShowEditPhotoOptions(false)}>
                     <div style={styles.sheet} onClick={(e) => e.stopPropagation()}>
@@ -782,12 +781,12 @@ function Today({ setCurrentPage }) {
                 )}
 
                 <button
-                style={styles.editSaveButton}
-                onClick={handleEditSave}
-                disabled={saving || reanalyzing}
-              >
-                {reanalyzing ? "Updating nutrition..." : saving ? "Saving..." : "Save Changes"}
-              </button>
+                  style={styles.editSaveButton}
+                  onClick={handleEditSave}
+                  disabled={saving || reanalyzing}
+                >
+                  {reanalyzing ? "Updating nutrition..." : saving ? "Saving..." : "Save Changes"}
+                </button>
                 <button style={styles.cancelButton} onClick={() => setEditMode(false)}>
                   Cancel
                 </button>
@@ -839,11 +838,11 @@ function Today({ setCurrentPage }) {
                   <p style={styles.viewName}>{viewMeal.name}</p>
                   <p style={styles.viewMeta}>
                     {viewMeal.localTime || (viewMeal.createdAt?.toDate
-  ? viewMeal.createdAt.toDate().toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-    })
-  : "")}
+                      ? viewMeal.createdAt.toDate().toLocaleTimeString("en-US", {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })
+                      : "")}
                   </p>
                 </div>
                 <img
@@ -957,10 +956,10 @@ function Today({ setCurrentPage }) {
           </div>
         </div>
       )}
-    <button style={styles.fab} onClick={() => setCurrentPage("logMeal")}>
+      <button style={styles.fab} onClick={() => setCurrentPage("logMeal")}>
         +
       </button>
-    {/* Weight Check-in Popup */}
+      {/* Weight Check-in Popup */}
       {weightCheckIn && (
         <div style={styles.overlay} onClick={handleWeightSnooze}>
           <div
@@ -1041,7 +1040,7 @@ function Today({ setCurrentPage }) {
           {insightBanner === "error" && (
             <p style={styles.insightBannerText}>⚠️ Couldn't generate insights — try again later</p>
           )}
-          
+
         </div>
       )}
 
@@ -1093,8 +1092,8 @@ function Today({ setCurrentPage }) {
                 {weightInsight.newWeight === weightInsight.previousWeight
                   ? "No change this period"
                   : weightInsight.newWeight < weightInsight.previousWeight
-                  ? `↓ ${(weightInsight.previousWeight - weightInsight.newWeight).toFixed(1)}kg this period`
-                  : `↑ ${(weightInsight.newWeight - weightInsight.previousWeight).toFixed(1)}kg this period`}
+                    ? `↓ ${(weightInsight.previousWeight - weightInsight.newWeight).toFixed(1)}kg this period`
+                    : `↑ ${(weightInsight.newWeight - weightInsight.previousWeight).toFixed(1)}kg this period`}
               </p>
             )}
 
