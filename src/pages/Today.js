@@ -276,7 +276,6 @@ function Today({ setCurrentPage }) {
       const mealRef = doc(db, "meals", selectedMeal.id);
       const quantityChanged = editQuantity.trim() !== (selectedMeal.quantity || "");
       const nameChanged = editName.trim() !== selectedMeal.name;
-      const photosChanged = JSON.stringify(finalPhotos) !== JSON.stringify(existingURLs);
 
       const updateData = {
         name: editName.trim() || selectedMeal.name,
@@ -288,8 +287,8 @@ function Today({ setCurrentPage }) {
 
       await updateDoc(mealRef, updateData);
 
-      // Reanalyze if name, quantity or photos changed
-      if (nameChanged || quantityChanged || photosChanged) {
+      // Only reanalyze if name or quantity changed — never for photo-only changes
+      if (nameChanged || quantityChanged) {
         setSaving(false);
         setReanalyzing(true);
         try {
@@ -762,7 +761,7 @@ function Today({ setCurrentPage }) {
                     )}
                   </div>
                 </div>
-                <input id="editPhotoInput" type="file" accept="image/*" capture style={{ display: "none" }} onChange={handleAddEditPhoto} />
+                <input id="editPhotoInput" type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handleAddEditPhoto} />
                 <input id="editGalleryInput" type="file" accept="image/*" style={{ display: "none" }} onChange={handleAddEditPhoto} />
                 {showEditPhotoOptions && (
                   <div style={styles.overlay} onClick={() => setShowEditPhotoOptions(false)}>
