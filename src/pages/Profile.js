@@ -587,7 +587,7 @@ function Profile() {
           <div style={styles.personalWeightRow}>
             {/* Age Segment */}
             <div style={styles.weightSegment}>
-              <p style={styles.personalInfoLabel}>Age</p>
+              <p style={styles.personalInfoLabel}>AGE</p>
               {editingField === "age" ? (
                 <input
                   type="text"
@@ -620,7 +620,7 @@ function Profile() {
 
             {/* Height Segment */}
             <div style={styles.weightSegment}>
-              <p style={styles.personalInfoLabel}>Height</p>
+              <p style={styles.personalInfoLabel}>HEIGHT (cm)</p>
               {editingField === "height_cm" ? (
                 <input
                   type="text"
@@ -654,7 +654,7 @@ function Profile() {
           <div style={styles.personalWeightRow}>
             {/* Current Weight */}
             <div style={styles.weightSegment}>
-              <p style={styles.personalInfoLabel}>Weight</p>
+              <p style={styles.personalInfoLabel}>WEIGHT (kg)</p>
               {editingField === "weight_kg" ? (
                 <input
                   type="text"
@@ -687,7 +687,7 @@ function Profile() {
 
             {/* Target Weight */}
             <div style={styles.weightSegment}>
-              <p style={styles.personalInfoLabel}>Target</p>
+              <p style={styles.personalInfoLabel}>TARGET (kg)</p>
               {editingField === "target_weight_kg" ? (
                 <input
                   type="text"
@@ -720,7 +720,7 @@ function Profile() {
           {/* Optional: Gender Card (Conditional) */}
           {(!profileFields.gender || editingField === "gender") && (
             <div style={styles.personalInfoRow}>
-              <p style={styles.personalInfoLabel}>Gender</p>
+              <p style={styles.personalInfoLabel}>GENDER</p>
               {editingField === "gender" ? (
                 <input
                   type="text"
@@ -1209,11 +1209,11 @@ const styles = {
     backgroundColor: "#eee",
   },
   personalInfoLabel: {
-    fontSize: "0.7rem",
+    fontSize: "0.8rem",
     color: "#bbb",
     margin: 0,
     fontWeight: "600",
-    textTransform: "uppercase",
+    // textTransform: "uppercase",
     letterSpacing: "0.06em",
   },
   personalInfoValue: {
