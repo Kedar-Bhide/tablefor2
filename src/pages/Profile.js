@@ -111,6 +111,27 @@ function Profile() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  useEffect(() => {
+    if (!user) return;
+
+    const unsub = onSnapshot(doc(db, "users", user.uid), (docSnap) => {
+      const data = docSnap.data();
+
+      if (data?.partnerUid) {
+        setPartnerUid(data.partnerUid);
+        setPartnerName(data.partnerEmail);
+        setRequestSent(false);
+        setPendingRequest(null);
+      }
+
+      if (!data?.pendingPartnerRequest) {
+        setRequestSent(false);
+        setPendingRequest(null);
+      }
+    });
+    return () => unsub();
+  }, [user]);
+
   const handleLinkPartner = async () => {
     if (!partnerEmail) return;
     setSaving(true);
@@ -189,7 +210,7 @@ function Profile() {
       } catch (e) {
         console.error("Notification failed:", e);
       }
-      setRequestSent(true);
+      setRequestSent(!!data.pendingPartnerRequest);
       setPendingRequest({ toUid: partnerDocUid, toEmail: partnerEmail });
       setMessage("✅ Request sent! Waiting for them to accept.");
     } catch (e) {
@@ -198,27 +219,6 @@ function Profile() {
     }
     setSaving(false);
   };
-
-  useEffect(() => {
-    if (!user) return;
-
-    const unsub = onSnapshot(doc(db, "users", user.uid), (docSnap) => {
-      const data = docSnap.data();
-
-      if (data?.partnerUid) {
-        setPartnerUid(data.partnerUid);
-        setPartnerName(data.partnerEmail);
-        setRequestSent(false);
-        setPendingRequest(null);
-      }
-
-      if (!data?.pendingPartnerRequest) {
-        setRequestSent(false);
-        setPendingRequest(null);
-      }
-    });
-    return () => unsub();
-  }, [user]);
   
 
   const handleAcceptRequest = async () => {
@@ -393,7 +393,7 @@ function Profile() {
             )}
 
             {/* Pending outgoing request */}
-            {requestSent && pendingRequest && !partnerName && (
+            {!partnerUid && requestSent && pendingRequest && (
               <div style={styles.pendingRequestCard}>
                 <p style={styles.pendingRequestText}>
                   ⏳ Request sent to <strong>{pendingRequest.toEmail}</strong>
