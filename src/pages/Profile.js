@@ -103,8 +103,8 @@ function Profile() {
         // Check for pending outgoing request
         if (data.pendingPartnerRequest) {
           setPendingRequest(data.pendingPartnerRequest);
-          setRequestSent(!!data.pendingPartnerRequest);
         }
+        setRequestSent(!!data.pendingPartnerRequest);
       }
     };
     fetchProfile();
