@@ -7,6 +7,7 @@ import { compressImage } from "../utils/compressImage";
 import { calculateBadges } from "../utils/calculateBadges";
 import { calculateWallet } from "../utils/calculateWallet";
 import { getFunctions, httpsCallable } from "firebase/functions";
+import { deleteField } from "firebase/firestore";
 
 function Profile() {
   const user = auth.currentUser;
@@ -211,7 +212,7 @@ function Profile() {
         setMessage("❌ This person has already linked with someone else!");
         // Clean up our stale request
         await updateDoc(doc(db, "users", user.uid), {
-          partnerRequest: null,
+          partnerRequest: deleteField(),
         });
         setIncomingRequest(null);
         setSaving(false);
@@ -222,12 +223,12 @@ function Profile() {
       await updateDoc(doc(db, "users", user.uid), {
         partnerUid: fromUid,
         partnerEmail: incomingRequest.fromEmail,
-        partnerRequest: null,
+        partnerRequest: deleteField(),
       });
       await updateDoc(doc(db, "users", fromUid), {
         partnerUid: user.uid,
         partnerEmail: user.email,
-        pendingPartnerRequest: null,
+        pendingPartnerRequest: deleteField(),
       });
 
       // Notify requester that request was accepted
@@ -258,11 +259,11 @@ function Profile() {
     try {
       // Remove request from own document
       await updateDoc(doc(db, "users", user.uid), {
-        partnerRequest: null,
+        partnerRequest: deleteField(),
       });
       // Remove pending from requester's document
       await updateDoc(doc(db, "users", incomingRequest.fromUid), {
-        pendingPartnerRequest: null,
+        pendingPartnerRequest: deleteField(),
       });
       setIncomingRequest(null);
       setMessage("Request declined.");
