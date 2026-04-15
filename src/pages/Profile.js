@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { auth, db, storage } from "../firebase";
 import { signOut } from "firebase/auth";
-import { doc, getDoc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, getDoc, updateDoc, collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { compressImage } from "../utils/compressImage";
 import { calculateBadges } from "../utils/calculateBadges";
@@ -103,7 +103,7 @@ function Profile() {
         // Check for pending outgoing request
         if (data.pendingPartnerRequest) {
           setPendingRequest(data.pendingPartnerRequest);
-          setRequestSent(true);
+          setRequestSent(!!data.pendingPartnerRequest);
         }
       }
     };
@@ -198,6 +198,28 @@ function Profile() {
     }
     setSaving(false);
   };
+
+  useEffect(() => {
+    if (!user) return;
+
+    const unsub = onSnapshot(doc(db, "users", user.uid), (docSnap) => {
+      const data = docSnap.data();
+
+      if (data?.partnerUid) {
+        setPartnerUid(data.partnerUid);
+        setPartnerName(data.partnerEmail);
+        setRequestSent(false);
+        setPendingRequest(null);
+      }
+
+      if (!data?.pendingPartnerRequest) {
+        setRequestSent(false);
+        setPendingRequest(null);
+      }
+    });
+    return () => unsub();
+  }, [user]);
+  
 
   const handleAcceptRequest = async () => {
     if (!incomingRequest) return;
