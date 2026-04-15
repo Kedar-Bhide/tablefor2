@@ -210,7 +210,7 @@ function Profile() {
       } catch (e) {
         console.error("Notification failed:", e);
       }
-      setRequestSent(!!data.pendingPartnerRequest);
+      setRequestSent(true);
       setPendingRequest({ toUid: partnerDocUid, toEmail: partnerEmail });
       setMessage("✅ Request sent! Waiting for them to accept.");
     } catch (e) {
