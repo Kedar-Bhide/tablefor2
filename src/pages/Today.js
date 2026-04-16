@@ -1136,7 +1136,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       {showUnlinkPopup && (
         <div style={styles.overlay}>
           <div style={{ ...styles.sheet, textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
-            <p style={{ fontSize: "2rem", marginBottom: "0.5rem", marginTop: 0 }}>💔</p>
+            {/* <p style={{ fontSize: "2rem", marginBottom: "0.5rem", marginTop: 0 }}>💔</p> */}
             <p style={{ fontWeight: "bold", fontSize: "1.2rem", marginBottom: "0.5rem", color: "#333" }}>
               Your partner unlinked
             </p>
