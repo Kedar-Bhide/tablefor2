@@ -108,7 +108,7 @@ function LogMeal({ setCurrentPage, partnerUid }) {
         <div style={styles.photoBox} onClick={() => setShowPhotoOptions(true)}>
           <div style={styles.photoPlaceholder}>
             <span style={{ fontSize: "2rem" }}>📷</span>
-            <p style={{ color: "#aaa", margin: "0.5rem 0 0 0" }}>Tap to add photo</p>
+            <p style={{ color: "#666", margin: "0.5rem 0 0 0" }}>Tap to add photo</p>
           </div>
         </div>
       ) : (
@@ -411,7 +411,7 @@ const styles = {
     fontSize: "0.95rem",
   },
   toggleSub: {
-    color: "#aaa",
+    color: "#666",
     fontSize: "0.8rem",
     margin: "2px 0 0 0",
   },
@@ -471,7 +471,7 @@ const styles = {
     width: "100%",
     padding: "0.8rem",
     backgroundColor: "transparent",
-    color: "#aaa",
+    color: "#666",
     border: "none",
     borderRadius: "8px",
     fontSize: "1rem",
@@ -514,7 +514,7 @@ const styles = {
   },
   backfillLabel: {
     fontSize: "0.85rem",
-    color: "#aaa",
+    color: "#666",
     margin: 0,
   },
   quantityInput: {
@@ -577,18 +577,18 @@ const styles = {
   },
   addMorePhotoPlus: {
     fontSize: "1.4rem",
-    color: "#ccc",
+    color: "#888",
     margin: 0,
     lineHeight: 1,
   },
   addMorePhotoLabel: {
     fontSize: "0.65rem",
-    color: "#ccc",
+    color: "#888",
     margin: "2px 0 0 0",
   },
   photoHint: {
     fontSize: "0.72rem",
-    color: "#ccc",
+    color: "#888",
     margin: "0 0 0.5rem 0",
     textAlign: "center",
   },

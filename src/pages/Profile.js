@@ -866,7 +866,7 @@ const styles = {
     width: "100%",
     padding: "0.7rem",
     backgroundColor: "transparent",
-    color: "#aaa",
+    color: "#666",
     border: "1px solid #ddd",
     borderRadius: "8px",
     fontSize: "1rem",
@@ -874,7 +874,7 @@ const styles = {
     marginTop: "1rem",
   },
   linkedLabel: {
-    color: "#aaa",
+    color: "#666",
     fontSize: "0.85rem",
     margin: "0 0 4px 0",
   },
@@ -946,7 +946,7 @@ const styles = {
   },
   badgeDesc: {
     fontSize: "0.65rem",
-    color: "#aaa",
+    color: "#666",
     margin: 0,
     lineHeight: 1.3,
   },
@@ -958,7 +958,7 @@ const styles = {
   },
   walletReset: {
     fontSize: "0.75rem",
-    color: "#aaa",
+    color: "#666",
     margin: 0,
   },
   walletBalance: {
@@ -973,7 +973,7 @@ const styles = {
   },
   walletSub: {
     fontSize: "0.8rem",
-    color: "#aaa",
+    color: "#666",
     margin: "4px 0 0 0",
   },
   walletBreakdown: {
@@ -1002,7 +1002,7 @@ const styles = {
   },
   walletItemLabel: {
     fontSize: "0.6rem",
-    color: "#aaa",
+    color: "#666",
     margin: "2px 0 0 0",
     whiteSpace: "nowrap",
   },
@@ -1016,7 +1016,7 @@ const styles = {
     width: "100%",
     padding: "0.6rem",
     backgroundColor: "transparent",
-    color: "#aaa",
+    color: "#666",
     border: "1px solid #eee",
     borderRadius: "8px",
     fontSize: "0.85rem",
@@ -1048,7 +1048,7 @@ const styles = {
     flex: 1,
     padding: "0.6rem",
     backgroundColor: "transparent",
-    color: "#aaa",
+    color: "#666",
     border: "1px solid #eee",
     borderRadius: "8px",
     fontSize: "0.85rem",
@@ -1077,7 +1077,7 @@ const styles = {
   },
   ruleTag: {
     fontSize: "0.65rem",
-    color: "#aaa",
+    color: "#666",
     margin: "2px 0 0 0",
     textAlign: "center",
   },
@@ -1134,7 +1134,7 @@ const styles = {
   flipHint: {
     textAlign: "center",
     fontSize: "0.7rem",
-    color: "#ddd",
+    color: "#666",
     margin: "0.8rem 0 0 0",
   },
   backTitle: {
@@ -1176,7 +1176,7 @@ const styles = {
   },
   personalInfoSubtitle: {
     fontSize: "0.78rem",
-    color: "#bbb",
+    color: "#777",
     margin: "-0.3rem 0 1rem 0",
   },
   personalInfoRow: {
@@ -1218,7 +1218,7 @@ const styles = {
   },
   personalInfoLabel: {
     fontSize: "0.8rem",
-    color: "#bbb",
+    color: "#777",
     margin: 0,
     fontWeight: "600",
     // textTransform: "uppercase",
@@ -1234,13 +1234,13 @@ const styles = {
   personalInfoValueLocked: {
     fontSize: "1.1rem",
     fontWeight: "700",
-    color: "#bbb",
+    color: "#777",
     margin: 0,
     textAlign: "center",
     cursor: "default",
   },
   personalInfoEmpty: {
-    color: "#ddd",
+    color: "#666",
     fontStyle: "italic",
     fontSize: "0.9rem",
     fontWeight: "500",
@@ -1285,7 +1285,7 @@ const styles = {
   },
   personalInfoCancel: {
     background: "none",
-    color: "#ccc",
+    color: "#888",
     border: "none",
     fontSize: "1.1rem",
     cursor: "pointer",
@@ -1314,7 +1314,7 @@ const styles = {
   },
   completionBannerSub: {
     fontSize: "0.78rem",
-    color: "#bbb",
+    color: "#777",
     margin: 0,
     lineHeight: 1.4,
   },
@@ -1359,7 +1359,7 @@ const styles = {
     flex: 1,
     padding: "0.6rem",
     backgroundColor: "transparent",
-    color: "#ccc",
+    color: "#888",
     border: "1px solid #eee",
     borderRadius: "10px",
     fontSize: "0.88rem",
@@ -1379,7 +1379,7 @@ const styles = {
   },
   pendingRequestSub: {
     fontSize: "0.75rem",
-    color: "#bbb",
+    color: "#777",
     margin: 0,
   },
   inviteLinkCard: {
@@ -1391,7 +1391,7 @@ const styles = {
   },
   inviteLinkText: {
     fontSize: "0.78rem",
-    color: "#aaa",
+    color: "#666",
     margin: "0 0 0.5rem 0",
   },
   inviteLinkRow: {

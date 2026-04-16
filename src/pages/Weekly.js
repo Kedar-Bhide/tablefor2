@@ -950,7 +950,7 @@ const styles = {
     margin: "4px 0 0 0",
   },
   streakSub: {
-    color: "#aaa",
+    color: "#666",
     fontSize: "0.8rem",
     margin: 0,
     textAlign: "center",
@@ -994,7 +994,7 @@ const styles = {
   calHeader: {
     textAlign: "center",
     fontSize: "0.75rem",
-    color: "#aaa",
+    color: "#666",
     paddingBottom: "4px",
   },
   calCell: {
@@ -1046,7 +1046,7 @@ const styles = {
   },
   summarySub: {
     fontSize: "0.8rem",
-    color: "#aaa",
+    color: "#666",
     margin: "4px 0 0 0",
   },
   summaryDivider: {
@@ -1073,7 +1073,7 @@ const styles = {
     margin: "0 0 0.3rem 0",
   },
   splitEmpty: {
-    color: "#aaa",
+    color: "#666",
     fontSize: "0.85rem",
     marginTop: "2rem",
   },
@@ -1142,12 +1142,12 @@ const styles = {
   },
   dayPopupMealCount: {
     fontSize: "0.8rem",
-    color: "#aaa",
+    color: "#666",
     margin: 0,
   },
   dayPopupEmpty: {
     fontSize: "0.9rem",
-    color: "#bbb",
+    color: "#777",
     textAlign: "center",
     padding: "2rem 0",
     margin: 0,
@@ -1183,7 +1183,7 @@ const styles = {
   },
   dayMealListTitle: {
     fontSize: "0.8rem",
-    color: "#aaa",
+    color: "#666",
     margin: "0 0 0.6rem 0",
     fontWeight: "600",
   },
@@ -1213,7 +1213,7 @@ const styles = {
   },
   dayMealMeta: {
     fontSize: "0.75rem",
-    color: "#aaa",
+    color: "#666",
     margin: 0,
   },
   dayMealCalories: {
@@ -1238,7 +1238,7 @@ const styles = {
     width: "100%",
     padding: "0.5rem",
     backgroundColor: "transparent",
-    color: "#ccc",
+    color: "#888",
     border: "none",
     borderRadius: "8px",
     fontSize: "0.8rem",
@@ -1281,7 +1281,7 @@ const styles = {
   },
   macroGridLabel: {
     fontSize: "0.72rem",
-    color: "#bbb",
+    color: "#777",
     margin: "0 0 2px 0",
     textTransform: "uppercase",
     letterSpacing: "0.05em",
@@ -1305,7 +1305,7 @@ const styles = {
   },
   monthMacroLabel: {
     fontSize: "0.72rem",
-    color: "#bbb",
+    color: "#777",
     margin: "0 0 4px 0",
     textTransform: "uppercase",
     letterSpacing: "0.05em",
@@ -1317,7 +1317,7 @@ const styles = {
   },
   monthMacroSub: {
     fontSize: "0.7rem",
-    color: "#ccc",
+    color: "#888",
     margin: 0,
   },
   macroTable: {
@@ -1340,7 +1340,7 @@ const styles = {
   macroTableHeaderCell: {
     flex: 1,
     fontSize: "0.7rem",
-    color: "#bbb",
+    color: "#777",
     textAlign: "center",
     fontWeight: "500",
   },
@@ -1351,7 +1351,7 @@ const styles = {
     padding: "0.2rem 0",
   },
   macroTableEmpty: {
-    color: "#ddd",
+    color: "#666",
     fontSize: "0.75rem",
   },
   insightPopup: {
@@ -1400,7 +1400,7 @@ const styles = {
   },
   insightNutritionLabel: {
     fontSize: "0.62rem",
-    color: "#bbb",
+    color: "#777",
     margin: "0 0 2px 0",
     textTransform: "uppercase",
     letterSpacing: "0.04em",
@@ -1412,7 +1412,7 @@ const styles = {
   },
   insightPopupMeta: {
     fontSize: "0.72rem",
-    color: "#bbb",
+    color: "#777",
     margin: "0 0 1.2rem 0",
     textAlign: "center",
   },
@@ -1433,7 +1433,7 @@ const styles = {
     width: "100%",
     padding: "0.7rem",
     backgroundColor: "transparent",
-    color: "#bbb",
+    color: "#777",
     border: "1px solid #eee",
     borderRadius: "10px",
     fontSize: "0.82rem",
@@ -1464,7 +1464,7 @@ const styles = {
   },
   insightPopupPeriod: {
     fontSize: "0.78rem",
-    color: "#bbb",
+    color: "#777",
     margin: "0 0 1rem 0",
   },
   insightWeightRow: {
@@ -1481,7 +1481,7 @@ const styles = {
   },
   insightWeightLabel: {
     fontSize: "0.65rem",
-    color: "#bbb",
+    color: "#777",
     margin: "0 0 2px 0",
     textTransform: "uppercase",
   },
@@ -1493,7 +1493,7 @@ const styles = {
   },
   insightWeightArrow: {
     fontSize: "1rem",
-    color: "#ddd",
+    color: "#666",
   },
   insightWeightDelta: {
     fontSize: "0.82rem",
@@ -1515,7 +1515,7 @@ const styles = {
   },
   insightDisclaimer: {
     fontSize: "0.65rem",
-    color: "#ddd",
+    color: "#666",
     textAlign: "center",
     margin: "0 0 1rem 0",
   },

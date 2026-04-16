@@ -363,7 +363,7 @@ const styles = {
     transition: "transform 0.2s ease",
   },
   empty: {
-    color: "#aaa",
+    color: "#666",
     textAlign: "center",
     marginTop: "3rem",
   },
@@ -402,7 +402,7 @@ const styles = {
     margin: "0 0 4px 0",
   },
   viewMeta: {
-    color: "#aaa",
+    color: "#666",
     fontSize: "0.82rem",
     margin: 0,
   },
@@ -430,7 +430,7 @@ const styles = {
   },
   partnerResponseName: {
     fontSize: "0.75rem",
-    color: "#bbb",
+    color: "#777",
     margin: 0,
     textAlign: "right",
   },
@@ -441,7 +441,7 @@ const styles = {
   },
   viewReactionLabel: {
     fontSize: "0.8rem",
-    color: "#aaa",
+    color: "#666",
     margin: "0 0 0.5rem 0",
     textAlign: "center",
   },
@@ -514,7 +514,7 @@ const styles = {
     flex: 1,
     padding: "0.5rem",
     backgroundColor: "transparent",
-    color: "#ccc",
+    color: "#888",
     border: "none",
     borderRadius: "8px",
     fontSize: "0.8rem",
