@@ -330,13 +330,6 @@ function Profile({ user, globalUserData, globalPartnerData }) {
           <div style={{ textAlign: "center" }}>
             <p style={styles.linkedLabel}>💑 Linked with</p>
             <p style={styles.linkedName}>{partnerName}</p>
-            <button 
-              style={{ ...styles.button, backgroundColor: "#fff0f0", color: "#e03e3e", border: "1px solid #fecaca", marginTop: "1rem" }} 
-              onClick={handleUnlink}
-              disabled={saving}
-            >
-              {saving ? "Unlinking..." : "Unlink Partner"}
-            </button>
           </div>
         ) : (
           <>
@@ -780,6 +773,15 @@ function Profile({ user, globalUserData, globalPartnerData }) {
           </div>
         ))}
       </div>
+      {partnerUid && (
+        <button 
+          style={{ ...styles.signOutButton, marginBottom: "0.4rem" }} 
+          onClick={handleUnlink}
+          disabled={saving}
+        >
+          {saving ? "Unlinking..." : "Unlink Partner"}
+        </button>
+      )}
       <button style={styles.signOutButton} onClick={handleSignOut}>
         Sign Out
       </button>
