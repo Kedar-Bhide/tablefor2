@@ -4,10 +4,10 @@ import { collection, query, where, getDocs, doc, getDoc, updateDoc } from "fireb
 import { PieChart, Pie, Cell } from "recharts";
 import { formatLocalDateKey, getMealLocalDateKey } from "../utils/dateTime";
 
-function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter }) {
+function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserData, globalPartnerData }) {
   const user = auth.currentUser;
-  const [partnerUid, setPartnerUid] = useState(null);
-  const [partnerName, setPartnerName] = useState(null);
+  const partnerUid = globalPartnerData?.uid || null;
+  const partnerName = globalPartnerData?.name || null;
   const [coupleStreakCount, setCoupleStreakCount] = useState(0);
   const [monthDate, setMonthDate] = useState(new Date());
   const [monthMeals, setMonthMeals] = useState([]);
@@ -24,18 +24,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter }) {
   const [showWeightInsight, setShowWeightInsight] = useState(false);
 
   useEffect(() => {
-    const fetchPartner = async () => {
-      const userRef = doc(db, "users", user.uid);
-      const userSnap = await getDoc(userRef);
-      if (userSnap.exists() && userSnap.data().partnerUid) {
-        const pUid = userSnap.data().partnerUid;
-        setPartnerUid(pUid);
-        const partnerRef = doc(db, "users", pUid);
-        const partnerSnap = await getDoc(partnerRef);
-        if (partnerSnap.exists()) {
-          setPartnerName(partnerSnap.data().name);
-        }
-      }
+    const fetchInsights = async () => {
       // Fetch latest weight insight
       try {
         const insightsSnap = await getDocs(
@@ -57,8 +46,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter }) {
         const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth();
         const insightKey = `${prevYear}-${String(prevMonth).padStart(2, "0")}`;
 
-        const userDoc = await getDoc(doc(db, "users", user.uid));
-        const dismissed = userDoc.data()?.dismissedInsights || [];
+        const dismissed = globalUserData?.dismissedInsights || [];
 
         const insightSnap = await getDoc(
           doc(db, "users", user.uid, "insights", insightKey)
@@ -75,8 +63,8 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter }) {
         console.error("Failed to fetch monthly insight:", e);
       }
     };
-    fetchPartner();
-  }, [user.uid]);
+    fetchInsights();
+  }, [user.uid, globalUserData?.dismissedInsights]);
 
   useEffect(() => {
     const fetchWeekMeals = async () => {

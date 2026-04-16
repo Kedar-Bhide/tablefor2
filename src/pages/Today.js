@@ -12,12 +12,15 @@ import PhotoCarousel from "../components/PhotoCarousel";
 import MealNutritionCard from "../components/MealNutritionCard";
 import PartnerResponseCard from "../components/PartnerResponseCard";
 
-function Today({ setCurrentPage }) {
+function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const user = auth.currentUser;
   const [meals, setMeals] = useState([]);
-  const [partnerUid, setPartnerUid] = useState(null);
-  const [partnerPhoto, setPartnerPhoto] = useState(null);
-  const [partnerName, setPartnerName] = useState(null);
+  
+  const partnerUid = globalPartnerData?.uid || null;
+  const partnerPhoto = globalPartnerData?.photoURL || null;
+  const partnerName = globalPartnerData?.name || null;
+  const profileFields = globalUserData || null;
+
   const [selectedMeal, setSelectedMeal] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [editType, setEditType] = useState("");
@@ -31,7 +34,6 @@ function Today({ setCurrentPage }) {
   const [comment, setComment] = useState("");
   const [savingComment, setSavingComment] = useState(false);
   const [nutrition, setNutrition] = useState({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 });
-  const [profileFields, setProfileFields] = useState(null);
   const [editQuantity, setEditQuantity] = useState("");
   const [reanalyzing, setReanalyzing] = useState(false);
 
@@ -48,64 +50,51 @@ function Today({ setCurrentPage }) {
   const [isNewUser, setIsNewUser] = useState(false);
 
   useEffect(() => {
-    const fetchPartner = async () => {
-      const userRef = doc(db, "users", user.uid);
-      const userSnap = await getDoc(userRef);
-      if (userSnap.exists() && userSnap.data().photoURL) {
-        setMyPhoto(userSnap.data().photoURL);
-      }
-      // Weight check-in logic
-      if (userSnap.exists()) {
-        const userData = userSnap.data();
-        const { shouldShow, checkInDate, periodStart, periodEnd, isLastDay, dayNumber } =
-          shouldShowWeightCheckIn({
-            lastWeightCheckIn: userData.lastWeightCheckIn || null,
-            weightInsightSnooze: userData.weightInsightSnooze || null,
-          });
+    if (globalUserData?.photoURL) {
+      setMyPhoto(globalUserData.photoURL);
+    }
+  }, [globalUserData?.photoURL]);
 
-        if (shouldShow) {
-          setWeightCheckIn({ checkInDate, periodStart, periodEnd, isLastDay, dayNumber });
-          setNewWeight(userData.weight_kg || "");
-        }
+  useEffect(() => {
+    const fetchInsights = async () => {
+      if (!globalUserData) return;
+      
+      const { shouldShow, checkInDate, periodStart, periodEnd, isLastDay, dayNumber } =
+        shouldShowWeightCheckIn({
+          lastWeightCheckIn: globalUserData.lastWeightCheckIn || null,
+          weightInsightSnooze: globalUserData.weightInsightSnooze || null,
+        });
 
-        // Check for any ready weight insight to show banner
-        const insightsSnap = await getDocs(
-          collection(db, "users", user.uid, "weightInsights")
-        );
-        if (!insightsSnap.empty) {
-          const latest = insightsSnap.docs
-            .sort((a, b) => b.id.localeCompare(a.id))[0];
-          const insightData = latest.data();
-          if (!insightData.dismissed) {
-            setWeightInsight({ ...insightData, id: latest.id });
-            setInsightBanner("ready");
-          }
+      if (shouldShow) {
+        setWeightCheckIn({ checkInDate, periodStart, periodEnd, isLastDay, dayNumber });
+        setNewWeight(globalUserData.weight_kg || "");
+      }
+
+      // Check for any ready weight insight to show banner
+      const insightsSnap = await getDocs(
+        collection(db, "users", user.uid, "weightInsights")
+      );
+      if (!insightsSnap.empty) {
+        const latest = insightsSnap.docs
+          .sort((a, b) => b.id.localeCompare(a.id))[0];
+        const insightData = latest.data();
+        if (!insightData.dismissed) {
+          setWeightInsight({ ...insightData, id: latest.id });
+          setInsightBanner("ready");
         }
       }
-      if (userSnap.exists() && userSnap.data().partnerUid) {
-        const pUid = userSnap.data().partnerUid;
-        setPartnerUid(pUid);
-        const partnerRef = doc(db, "users", pUid);
-        const partnerSnap = await getDoc(partnerRef);
-        if (partnerSnap.exists()) {
-          setPartnerPhoto(partnerSnap.data().photoURL);
-          setPartnerName(partnerSnap.data().name);
-        }
-      }
+
       // Check if new user — no meals logged ever
-      if (userSnap.exists()) {
-        const userData = userSnap.data();
-        const createdAt = userData.createdAt?.toDate?.() || new Date();
-        const minutesSinceSignup = (new Date() - createdAt) / (1000 * 60);
-        if (minutesSinceSignup < 10 && !userData.onboardingDismissed) {
-          setIsNewUser(true);
-        } else {
-          setIsNewUser(false);
-        }
+      const createdAt = globalUserData.createdAt?.toDate?.() || new Date(globalUserData.createdAt || new Date());
+      const minutesSinceSignup = (new Date() - createdAt) / (1000 * 60);
+      if (minutesSinceSignup < 10 && !globalUserData.onboardingDismissed) {
+        setIsNewUser(true);
+      } else {
+        setIsNewUser(false);
       }
     };
-    fetchPartner();
-  }, [user.uid]);
+    fetchInsights();
+  }, [globalUserData, user.uid]);
 
   useEffect(() => {
     const uids = partnerUid ? [user.uid, partnerUid] : [user.uid];
@@ -196,12 +185,7 @@ function Today({ setCurrentPage }) {
       }
 
     });
-    // Fetch user profile for daily goals
-    const fetchProfile = async () => {
-      const userSnap = await getDoc(doc(db, "users", user.uid));
-      if (userSnap.exists()) setProfileFields(userSnap.data());
-    };
-    fetchProfile();
+    // fetchProfile removed, using globalUserData directly
     // Fetch pending tasks for this user
     const taskQ = query(
       collection(db, "tasks"),
