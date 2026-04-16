@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { db, auth, storage } from "../firebase";
-import { collection, query, where, onSnapshot, updateDoc, deleteDoc, doc, getDoc, getDocs, addDoc } from "firebase/firestore";
+import { collection, query, where, onSnapshot, updateDoc, deleteDoc, doc, getDoc, getDocs, addDoc, deleteField } from "firebase/firestore";
 import { compressImage } from "../utils/compressImage";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -15,7 +15,7 @@ import PartnerResponseCard from "../components/PartnerResponseCard";
 function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const user = auth.currentUser;
   const [meals, setMeals] = useState([]);
-  
+
   const partnerUid = globalPartnerData?.uid || null;
   const partnerPhoto = globalPartnerData?.photoURL || null;
   const partnerName = globalPartnerData?.name || null;
@@ -48,6 +48,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [taskQuantity, setTaskQuantity] = useState("");
   const [taskSaving, setTaskSaving] = useState(false);
   const [isNewUser, setIsNewUser] = useState(false);
+  const [showUnlinkPopup, setShowUnlinkPopup] = useState(false);
 
   useEffect(() => {
     if (globalUserData?.photoURL) {
@@ -58,7 +59,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   useEffect(() => {
     const fetchInsights = async () => {
       if (!globalUserData) return;
-      
+
       const { shouldShow, checkInDate, periodStart, periodEnd, isLastDay, dayNumber } =
         shouldShowWeightCheckIn({
           lastWeightCheckIn: globalUserData.lastWeightCheckIn || null,
@@ -92,9 +93,26 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       } else {
         setIsNewUser(false);
       }
+
+      if (globalUserData.unlinkedNotification) {
+        setShowUnlinkPopup(true);
+      } else {
+        setShowUnlinkPopup(false);
+      }
     };
     fetchInsights();
   }, [globalUserData, user.uid]);
+
+  const handleDismissUnlinkPopup = async () => {
+    try {
+      await updateDoc(doc(db, "users", user.uid), {
+        unlinkedNotification: deleteField()
+      });
+      setShowUnlinkPopup(false);
+    } catch (e) {
+      console.error("Failed to dismiss unlink popup:", e);
+    }
+  };
 
   useEffect(() => {
     const uids = partnerUid ? [user.uid, partnerUid] : [user.uid];
@@ -1113,6 +1131,38 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
           </div>
         </div>
       )}
+
+      {/* Unlinked Popup */}
+      {showUnlinkPopup && (
+        <div style={styles.overlay}>
+          <div style={{ ...styles.sheet, textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
+            {/* <p style={{ fontSize: "2rem", marginBottom: "0.5rem", marginTop: 0 }}>💔</p> */}
+            <p style={{ fontWeight: "bold", fontSize: "1.2rem", marginBottom: "0.5rem", color: "#333" }}>
+              Your partner unlinked
+            </p>
+            <p style={{ color: "#666", fontSize: "0.95rem", marginBottom: "1.5rem", lineHeight: 1.4 }}>
+              If you wish to link again, or link with a new partner, you can send them a new request from your profile.
+            </p>
+            <button
+              style={{
+                width: "100%",
+                padding: "0.8rem",
+                backgroundColor: "#ff6b6b",
+                color: "white",
+                border: "none",
+                borderRadius: "10px",
+                fontSize: "1rem",
+                fontWeight: "bold",
+                cursor: "pointer",
+              }}
+              onClick={handleDismissUnlinkPopup}
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Task Completion Popup */}
       {activeTask && (
         <div

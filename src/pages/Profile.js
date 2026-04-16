@@ -29,6 +29,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
   const [badges, setBadges] = useState([]);
   const [wallet, setWallet] = useState(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showUnlinkConfirm, setShowUnlinkConfirm] = useState(false);
   const [showRewardsModal, setShowRewardsModal] = useState(false);
   const [message, setMessage] = useState("");
   const [editingField, setEditingField] = useState(null);
@@ -234,6 +235,37 @@ function Profile({ user, globalUserData, globalPartnerData }) {
 
   const handleSignOut = () => {
     signOut(auth);
+  };
+
+  const handleUnlink = async () => {
+    if (!partnerUid) return;
+    
+    setSaving(true);
+    try {
+      const prevPartnerUid = partnerUid;
+      
+      // Update own document
+      await updateDoc(doc(db, "users", user.uid), {
+        partnerUid: deleteField(),
+        partnerEmail: deleteField()
+      });
+      
+      // Update partner document
+      await updateDoc(doc(db, "users", prevPartnerUid), {
+        partnerUid: deleteField(),
+        partnerEmail: deleteField(),
+        pendingPartnerRequest: deleteField(),
+        unlinkedNotification: true
+      });
+      
+      setMessage("Successfully unlinked.");
+      setShowUnlinkConfirm(false);
+    } catch (e) {
+      console.error("Unlink error:", e);
+      setMessage("❌ Something went wrong while unlinking.");
+      setShowUnlinkConfirm(false);
+    }
+    setSaving(false);
   };
 
   const handleWalletReset = async () => {
@@ -742,6 +774,24 @@ function Profile({ user, globalUserData, globalPartnerData }) {
           </div>
         ))}
       </div>
+      {partnerUid && !showUnlinkConfirm && (
+        <button 
+          style={{ ...styles.signOutButton, marginBottom: "0.4rem" }} 
+          onClick={() => setShowUnlinkConfirm(true)}
+          disabled={saving}
+        >
+          {saving ? "Unlinking..." : "Unlink Partner"}
+        </button>
+      )}
+      {partnerUid && showUnlinkConfirm && (
+        <div style={{ ...styles.confirmRow, marginBottom: "0.4rem" }} onClick={(e) => e.stopPropagation()}>
+          <p style={styles.confirmText}>Are you sure? This will remove your partner connection.</p>
+          <div style={styles.confirmButtons}>
+            <button style={styles.confirmYes} onClick={handleUnlink}>Yes, Unlink</button>
+            <button style={styles.confirmNo} onClick={() => setShowUnlinkConfirm(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
       <button style={styles.signOutButton} onClick={handleSignOut}>
         Sign Out
       </button>
