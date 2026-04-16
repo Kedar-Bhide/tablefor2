@@ -1297,7 +1297,7 @@ const styles = {
     margin: "2px 0",
   },
   mealCount: {
-    color: "#aaa",
+    color: "#666",
     fontSize: "0.85rem",
     margin: 0,
   },
@@ -1331,7 +1331,7 @@ const styles = {
     marginBottom: "0.8rem",
   },
   empty: {
-    color: "#aaa",
+    color: "#666",
     fontSize: "0.95rem",
     textAlign: "center",
     marginTop: "2rem",
@@ -1363,7 +1363,7 @@ const styles = {
     fontSize: "0.95rem",
   },
   mealMeta: {
-    color: "#aaa",
+    color: "#666",
     fontSize: "0.85rem",
     margin: "2px 0 0 0",
   },
@@ -1406,7 +1406,7 @@ const styles = {
   },
   ownerName: {
     fontSize: "0.7rem",
-    color: "#aaa",
+    color: "#666",
     margin: 0,
   },
   overlay: {
@@ -1438,7 +1438,7 @@ const styles = {
     margin: "0 0 4px 0",
   },
   sheetMeta: {
-    color: "#aaa",
+    color: "#666",
     fontSize: "0.85rem",
     margin: "0 0 1rem 0",
   },
@@ -1468,7 +1468,7 @@ const styles = {
     width: "100%",
     padding: "0.5rem",
     backgroundColor: "transparent",
-    color: "#ccc",
+    color: "#888",
     border: "none",
     borderRadius: "8px",
     fontSize: "0.8rem",
@@ -1569,7 +1569,7 @@ const styles = {
     margin: "0 0 4px 0",
   },
   viewMeta: {
-    color: "#aaa",
+    color: "#666",
     fontSize: "0.85rem",
     margin: 0,
   },
@@ -1580,7 +1580,7 @@ const styles = {
   },
   viewReaction: {
     fontSize: "0.85rem",
-    color: "#aaa",
+    color: "#666",
     margin: "0.5rem 0 0 0",
   },
   viewReactionRow: {
@@ -1589,7 +1589,7 @@ const styles = {
   },
   viewReactionLabel: {
     fontSize: "0.8rem",
-    color: "#aaa",
+    color: "#666",
     margin: "0 0 0.5rem 0",
     textAlign: "center",
   },
@@ -1705,7 +1705,7 @@ const styles = {
   },
   macroGoal: {
     fontSize: "0.72rem",
-    color: "#ccc",
+    color: "#888",
     margin: 0,
     minWidth: "40px",
   },
@@ -1724,7 +1724,7 @@ const styles = {
   },
   macroPillLabel: {
     fontSize: "0.65rem",
-    color: "#bbb",
+    color: "#777",
     margin: "0 0 2px 0",
     textTransform: "uppercase",
     letterSpacing: "0.04em",
@@ -1750,7 +1750,7 @@ const styles = {
     width: "100%",
     padding: "0.75rem",
     backgroundColor: "#ffffff",
-    color: "#ccc",
+    color: "#888",
     border: "none",
     borderRadius: "10px",
     fontSize: "0.85rem",
@@ -1807,13 +1807,13 @@ const styles = {
   },
   addMorePhotoPlus: {
     fontSize: "1.4rem",
-    color: "#ccc",
+    color: "#888",
     margin: 0,
     lineHeight: 1,
   },
   addMorePhotoLabel: {
     fontSize: "0.65rem",
-    color: "#ccc",
+    color: "#888",
     margin: "2px 0 0 0",
   },
   photoStack: {
@@ -1866,7 +1866,7 @@ const styles = {
   },
   weightCheckInPeriod: {
     fontSize: "0.78rem",
-    color: "#bbb",
+    color: "#777",
     margin: "0 0 1.5rem 0",
   },
   weightInputWrapper: {
@@ -1890,7 +1890,7 @@ const styles = {
   },
   weightInputUnit: {
     fontSize: "1rem",
-    color: "#bbb",
+    color: "#777",
     fontWeight: "500",
   },
   weightCheckInButton: {
@@ -1909,7 +1909,7 @@ const styles = {
     width: "100%",
     padding: "0.5rem",
     backgroundColor: "transparent",
-    color: "#ccc",
+    color: "#888",
     border: "none",
     fontSize: "0.82rem",
     cursor: "pointer",
@@ -1949,7 +1949,7 @@ const styles = {
   },
   insightPopupPeriod: {
     fontSize: "0.78rem",
-    color: "#bbb",
+    color: "#777",
     margin: "0 0 1rem 0",
   },
   insightWeightRow: {
@@ -1966,7 +1966,7 @@ const styles = {
   },
   insightWeightLabel: {
     fontSize: "0.65rem",
-    color: "#bbb",
+    color: "#777",
     margin: "0 0 2px 0",
     textTransform: "uppercase",
   },
@@ -1978,7 +1978,7 @@ const styles = {
   },
   insightWeightArrow: {
     fontSize: "1rem",
-    color: "#ddd",
+    color: "#666",
   },
   insightWeightDelta: {
     fontSize: "0.82rem",
@@ -2000,7 +2000,7 @@ const styles = {
   },
   insightDisclaimer: {
     fontSize: "0.65rem",
-    color: "#ddd",
+    color: "#666",
     textAlign: "center",
     margin: "0 0 1rem 0",
   },
@@ -2042,7 +2042,7 @@ const styles = {
   },
   taskPartnerQuantityLabel: {
     fontSize: "0.72rem",
-    color: "#bbb",
+    color: "#777",
     margin: "0 0 3px 0",
     textTransform: "uppercase",
     letterSpacing: "0.04em",
@@ -2087,14 +2087,14 @@ const styles = {
     width: "100%",
     padding: "0.5rem",
     backgroundColor: "transparent",
-    color: "#ccc",
+    color: "#888",
     border: "none",
     fontSize: "0.78rem",
     cursor: "pointer",
   },
   taskQuantityHint: {
     fontSize: "0.7rem",
-    color: "#ccc",
+    color: "#888",
     margin: "-0.6rem 0 1rem 0",
     textAlign: "center",
   },
@@ -2114,7 +2114,7 @@ const styles = {
   },
   welcomeSub: {
     fontSize: "0.82rem",
-    color: "#aaa",
+    color: "#666",
     margin: 0,
     lineHeight: 1.5,
   },

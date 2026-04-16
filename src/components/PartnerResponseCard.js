@@ -33,7 +33,7 @@ const styles = {
   },
   partnerResponseName: {
     fontSize: "0.75rem",
-    color: "#bbb",
+    color: "#777",
     margin: 0,
     textAlign: "right",
   },

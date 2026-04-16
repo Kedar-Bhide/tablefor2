@@ -50,7 +50,7 @@ const styles = {
   },
   mealNutritionLabel: {
     fontSize: "0.62rem",
-    color: "#bbb",
+    color: "#777",
     margin: "0 0 2px 0",
     textTransform: "uppercase",
     letterSpacing: "0.04em",
