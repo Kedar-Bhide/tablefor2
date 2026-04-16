@@ -1,43 +1,25 @@
 import React, { useEffect, useState, useRef } from "react";
 import { auth, db } from "../firebase";
-import { collection, query, where, getDocs, getDoc, updateDoc, doc } from "firebase/firestore";
+import { collection, query, where, getDocs, updateDoc, doc } from "firebase/firestore";
 import { getPhotos } from "../utils/getPhotos";
 import { getMealLocalDateKey } from "../utils/dateTime";
 import PhotoCarousel from "../components/PhotoCarousel";
 import MealNutritionCard from "../components/MealNutritionCard";
 import PartnerResponseCard from "../components/PartnerResponseCard";
 
-function Gallery({ galleryDate, setGalleryDate, galleryFilter }) {
+function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, globalPartnerData }) {
   const user = auth.currentUser;
   const [filter, setFilter] = useState(galleryFilter || "mine");
   const [groupedMeals, setGroupedMeals] = useState({});
-  const [partnerUid, setPartnerUid] = useState(null);
-  const [partnerName, setPartnerName] = useState(null);
-  const [partnerPhoto, setPartnerPhoto] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const partnerUid = globalPartnerData?.uid || null;
+  const partnerName = globalPartnerData?.name || null;
+  const partnerPhoto = globalPartnerData?.photoURL || null;
   const scrollRefs = useRef({});
   const [viewMeal, setViewMeal] = useState(null);
   const [comment, setComment] = useState("");
   const [savingComment, setSavingComment] = useState(false);
 
-  useEffect(() => {
-    const fetchPartner = async () => {
-      const userRef = doc(db, "users", user.uid);
-      const userSnap = await getDoc(userRef);
-      if (userSnap.exists() && userSnap.data().partnerUid) {
-        const pUid = userSnap.data().partnerUid;
-        setPartnerUid(pUid);
-        const partnerRef = doc(db, "users", pUid);
-        const partnerSnap = await getDoc(partnerRef);
-        if (partnerSnap.exists()) {
-          setPartnerName(partnerSnap.data().name);
-          setPartnerPhoto(partnerSnap.data().photoURL);
-        }
-      }
-      setLoading(false);
-    };
-    fetchPartner();
-  }, [user.uid]);
+  // fetchPartner removed 
 
   useEffect(() => {
     setFilter(galleryFilter || "mine");
@@ -53,7 +35,6 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter }) {
   }, [galleryDate, groupedMeals, setGalleryDate]);
 
   useEffect(() => {
-    if (loading) return;
     const fetchMeals = async () => {
       let meals = [];
 
@@ -119,7 +100,7 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter }) {
     };
 
     fetchMeals();
-  }, [filter, partnerUid, loading, user.uid]);
+  }, [filter, partnerUid, user.uid]);
 
   const handleReaction = async (meal, emoji) => {
     const mealRef = doc(db, "meals", meal.id);

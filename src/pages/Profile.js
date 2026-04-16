@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { auth, db, storage } from "../firebase";
 import { signOut } from "firebase/auth";
-import { doc, getDoc, updateDoc, collection, query, where, getDocs, onSnapshot } from "firebase/firestore";
+import { doc, getDoc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { compressImage } from "../utils/compressImage";
 import { calculateBadges } from "../utils/calculateBadges";
@@ -9,9 +9,8 @@ import { calculateWallet } from "../utils/calculateWallet";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { deleteField } from "firebase/firestore";
 
-function Profile() {
-  const user = auth.currentUser;
-  const [photoURL, setPhotoURL] = useState(user.photoURL);
+function Profile({ user, globalUserData, globalPartnerData }) {
+  const [photoURL, setPhotoURL] = useState(user?.photoURL);
 
   const handleProfilePhoto = async (e) => {
     const file = e.target.files[0];
@@ -24,35 +23,40 @@ function Profile() {
     setPhotoURL(url);
   };
 
-  const [partnerEmail, setPartnerEmail] = useState("");
-  const [partnerName, setPartnerName] = useState(null);
-  const [partnerUid, setPartnerUid] = useState(null);
+  // State
+  const [partnerEmail, setPartnerEmail] = useState(""); // Input field for linking
   const [saving, setSaving] = useState(false);
   const [badges, setBadges] = useState([]);
   const [wallet, setWallet] = useState(null);
-  const [notifSettings, setNotifSettings] = useState({
-    partnerMeal: true,
-    badgeEarned: true,
-    mealReminder: true,
-  });
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showRewardsModal, setShowRewardsModal] = useState(false);
   const [message, setMessage] = useState("");
-  const [profileFields, setProfileFields] = useState({
-    age: "",
-    gender: "",
-    height_cm: "",
-    weight_kg: "",
-    target_weight_kg: "",
-  });
   const [editingField, setEditingField] = useState(null);
   const [fieldDraft, setFieldDraft] = useState("");
-  const [pendingRequest, setPendingRequest] = useState(null);
-  const [incomingRequest, setIncomingRequest] = useState(null);
-  const [requestSent, setRequestSent] = useState(false);
   const [showInviteLink, setShowInviteLink] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [currency, setCurrency] = useState("USD");
+
+  // Derive from global props
+  const partnerUid = globalUserData?.partnerUid || null;
+  const partnerName = globalPartnerData?.name || null;
+  const incomingRequest = globalUserData?.partnerRequest || null;
+  const pendingRequest = globalUserData?.pendingPartnerRequest || null;
+  const requestSent = !!pendingRequest;
+  
+  const notifSettings = globalUserData?.notifSettings || {
+    partnerMeal: true,
+    badgeEarned: true,
+    mealReminder: true,
+  };
+
+  const profileFields = {
+    age: globalUserData?.age || "",
+    gender: globalUserData?.gender || "",
+    height_cm: globalUserData?.height_cm || "",
+    weight_kg: globalUserData?.weight_kg || "",
+    target_weight_kg: globalUserData?.target_weight_kg || "",
+  };
 
   const formatWalletValue = (value) => {
     if (currency === "INR") {
@@ -61,76 +65,16 @@ function Profile() {
     return `$${value.toFixed(2)}`;
   };
 
+  // Calculate badges and wallets since they rely on calculations
   useEffect(() => {
-    const fetchProfile = async () => {
-      const userRef2 = doc(db, "users", user.uid);
-      const userSnap2 = await getDoc(userRef2);
-      const fetchedPartnerUid = userSnap2.exists() ? userSnap2.data().partnerUid : null;
-      setPartnerUid(fetchedPartnerUid);
+    const fetchCalculations = async () => {
       const earnedBadges = await calculateBadges(user.uid, partnerUid);
       setBadges(earnedBadges);
       const walletData = await calculateWallet(user.uid);
       setWallet(walletData);
-      if (userSnap2.exists() && userSnap2.data().notifSettings) {
-        setNotifSettings(userSnap2.data().notifSettings);
-      }
-      if (userSnap2.exists()) {
-        const d = userSnap2.data();
-        setProfileFields({
-          age: d.age || "",
-          gender: d.gender || "",
-          height_cm: d.height_cm || "",
-          weight_kg: d.weight_kg || "",
-          target_weight_kg: d.target_weight_kg || "",
-        });
-      }
-      const userRef = doc(db, "users", user.uid);
-      const userSnap = await getDoc(userRef);
-      if (userSnap.exists()) {
-        const data = userSnap.data();
-        if (data.partnerEmail) setPartnerEmail(data.partnerEmail);
-        if (data.partnerUid) {
-          const partnerRef = doc(db, "users", data.partnerUid);
-          const partnerSnap = await getDoc(partnerRef);
-          if (partnerSnap.exists()) {
-            setPartnerName(partnerSnap.data().name);
-          }
-        }
-        // Check for incoming partner request
-        if (data.partnerRequest) {
-          setIncomingRequest(data.partnerRequest);
-        }
-        // Check for pending outgoing request
-        if (data.pendingPartnerRequest) {
-          setPendingRequest(data.pendingPartnerRequest);
-        }
-        setRequestSent(!!data.pendingPartnerRequest);
-      }
     };
-    fetchProfile();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
-
-  useEffect(() => {
-    if (!user) return;
-
-    const unsub = onSnapshot(doc(db, "users", user.uid), (docSnap) => {
-      const data = docSnap.data();
-
-      if (data?.partnerUid) {
-        setPartnerUid(data.partnerUid);
-        setPartnerName(data.partnerEmail);
-        setRequestSent(false);
-        setPendingRequest(null);
-      }
-
-      if (!data?.pendingPartnerRequest) {
-        setRequestSent(false);
-        setPendingRequest(null);
-      }
-    });
-    return () => unsub();
-  }, [user]);
+    fetchCalculations();
+  }, [user.uid, partnerUid]);
 
   const handleLinkPartner = async () => {
     if (!partnerEmail) return;
@@ -210,8 +154,6 @@ function Profile() {
       } catch (e) {
         console.error("Notification failed:", e);
       }
-      setRequestSent(true);
-      setPendingRequest({ toUid: partnerDocUid, toEmail: partnerEmail });
       setMessage("✅ Request sent! Waiting for them to accept.");
     } catch (e) {
       console.error("Link partner error:", e);
@@ -236,7 +178,6 @@ function Profile() {
         await updateDoc(doc(db, "users", user.uid), {
           partnerRequest: deleteField(),
         });
-        setIncomingRequest(null);
         setSaving(false);
         return;
       }
@@ -265,9 +206,7 @@ function Profile() {
         console.error("Notification failed:", e);
       }
 
-      setIncomingRequest(null);
-      setPartnerName(incomingRequest.fromName);
-      setPartnerUid(fromUid);
+      setPartnerEmail("");
       setMessage("🎉 You're now linked with " + incomingRequest.fromName + "!");
     } catch (e) {
       console.error("Accept request error:", e);
@@ -287,7 +226,6 @@ function Profile() {
       await updateDoc(doc(db, "users", incomingRequest.fromUid), {
         pendingPartnerRequest: deleteField(),
       });
-      setIncomingRequest(null);
       setMessage("Request declined.");
     } catch (e) {
       console.error("Decline request error:", e);
@@ -308,7 +246,6 @@ function Profile() {
 
   const handleNotifToggle = async (key) => {
     const updated = { ...notifSettings, [key]: !notifSettings[key] };
-    setNotifSettings(updated);
     await updateDoc(doc(db, "users", user.uid), {
       notifSettings: updated,
     });
@@ -317,8 +254,6 @@ function Profile() {
   const handleFieldSave = async (key) => {
     if (editingField !== key) return;
     const value = fieldDraft.trim();
-    const updated = { ...profileFields, [key]: value };
-    setProfileFields(updated);
     await updateDoc(doc(db, "users", user.uid), { [key]: value });
     setEditingField(null);
     setFieldDraft("");
