@@ -236,6 +236,37 @@ function Profile({ user, globalUserData, globalPartnerData }) {
     signOut(auth);
   };
 
+  const handleUnlink = async () => {
+    if (!partnerUid) return;
+    const confirm = window.confirm("Are you sure? This will remove your partner connection.");
+    if (!confirm) return;
+    
+    setSaving(true);
+    try {
+      const prevPartnerUid = partnerUid;
+      
+      // Update own document
+      await updateDoc(doc(db, "users", user.uid), {
+        partnerUid: deleteField(),
+        partnerEmail: deleteField()
+      });
+      
+      // Update partner document
+      await updateDoc(doc(db, "users", prevPartnerUid), {
+        partnerUid: deleteField(),
+        partnerEmail: deleteField(),
+        pendingPartnerRequest: deleteField(),
+        unlinkedNotification: true
+      });
+      
+      setMessage("Successfully unlinked.");
+    } catch (e) {
+      console.error("Unlink error:", e);
+      setMessage("❌ Something went wrong while unlinking.");
+    }
+    setSaving(false);
+  };
+
   const handleWalletReset = async () => {
     const userRef = doc(db, "users", user.uid);
     await updateDoc(userRef, { walletResetAt: new Date() });
@@ -299,6 +330,13 @@ function Profile({ user, globalUserData, globalPartnerData }) {
           <div style={{ textAlign: "center" }}>
             <p style={styles.linkedLabel}>💑 Linked with</p>
             <p style={styles.linkedName}>{partnerName}</p>
+            <button 
+              style={{ ...styles.button, backgroundColor: "#fff0f0", color: "#e03e3e", border: "1px solid #fecaca", marginTop: "1rem" }} 
+              onClick={handleUnlink}
+              disabled={saving}
+            >
+              {saving ? "Unlinking..." : "Unlink Partner"}
+            </button>
           </div>
         ) : (
           <>
