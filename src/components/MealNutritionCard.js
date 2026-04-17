@@ -1,12 +1,38 @@
 import React from "react";
 
-export default function MealNutritionCard({ nutrition }) {
+export default function MealNutritionCard({ nutrition, editable = false, onNutritionChange = null }) {
   if (!nutrition || !nutrition.calories || nutrition.calories <= 0) return null;
 
   return (
-    <div style={styles.mealNutritionCard}>
+    <>
+      <style>
+        {`
+          .editable-macro {
+            padding: 0 4px;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+          }
+          .editable-macro:focus {
+            outline: 1px dashed #aaa !important;
+            background-color: #fff;
+            padding: 0 4px;
+          }
+        `}
+      </style>
+      <div style={styles.mealNutritionCard}>
       <p style={styles.mealNutritionTitle}>
-        Total Calories: {nutrition.calories} kcal
+        Total Calories:{" "}
+        <span 
+          className="editable-macro"
+          contentEditable={editable} 
+          suppressContentEditableWarning 
+          onBlur={(e) => onNutritionChange && onNutritionChange('calories', Number(e.target.innerText.replace(/\D/g, '')))}
+          onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.target.blur())}
+          style={{ outline: "none", cursor: editable ? "text" : "default" }}
+        >
+          {nutrition.calories}
+        </span>
+        {" "}kcal
       </p>
       <div style={styles.mealNutritionRow}>
         {[
@@ -18,12 +44,23 @@ export default function MealNutritionCard({ nutrition }) {
           <div key={m.key} style={styles.mealNutritionPill}>
             <p style={styles.mealNutritionLabel}>{m.label}</p>
             <p style={styles.mealNutritionValue}>
-              {nutrition[m.key] || 0}g
+              <span 
+                className="editable-macro"
+                contentEditable={editable} 
+                suppressContentEditableWarning 
+                onBlur={(e) => onNutritionChange && onNutritionChange(m.key, Number(e.target.innerText.replace(/\D/g, '')))}
+                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.target.blur())}
+                style={{ outline: "none", cursor: editable ? "text" : "default" }}
+              >
+                {nutrition[m.key] || 0}
+              </span>
+              <span style={styles.mealNutritionUnit}>g</span>
             </p>
           </div>
         ))}
       </div>
     </div>
+    </>
   );
 }
 
@@ -61,4 +98,9 @@ const styles = {
     color: "#555",
     margin: 0,
   },
+  mealNutritionUnit: {
+    display: "inline-block",
+    marginLeft: "1px",
+    pointerEvents: "none"
+  }
 };
