@@ -674,7 +674,26 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                 </div>
 
                 {/* Nutrition breakdown */}
-                <MealNutritionCard nutrition={selectedMeal.nutrition} />
+                <MealNutritionCard 
+                  nutrition={selectedMeal.nutrition} 
+                  editable={selectedMeal.uid === user.uid}
+                  onNutritionChange={async (key, value) => {
+                    try {
+                      setSelectedMeal((prev) => ({
+                        ...prev,
+                        nutrition: {
+                          ...prev.nutrition,
+                          [key]: value
+                        }
+                      }));
+                      await updateDoc(doc(db, "meals", selectedMeal.id), {
+                        [`nutrition.${key}`]: value
+                      });
+                    } catch (e) {
+                      console.error("Failed to update nutrition inline", e);
+                    }
+                  }}
+                />
 
                 {/* Partner's comment */}
                 <PartnerResponseCard
