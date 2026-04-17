@@ -1,5 +1,5 @@
 import { messaging, getToken, VAPID_KEY } from "../firebase";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
 
 export async function requestNotificationPermission(uid) {
@@ -15,17 +15,22 @@ export async function requestNotificationPermission(uid) {
 
     const token = await getToken(messaging, { vapidKey: VAPID_KEY });
     if (token) {
-    const now = new Date();
-    const utcOffsetMinutes = -now.getTimezoneOffset();
-    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
-    await updateDoc(doc(db, "users", uid), {
-      fcmToken: token,
-      notificationsEnabled: true,
-      timezone,
-      utcOffsetMinutes,
-      // Keep legacy field for backward compatibility.
-      utcOffset: utcOffsetMinutes / 60,
-    });
+      const now = new Date();
+      const utcOffsetMinutes = -now.getTimezoneOffset();
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+      // Get existing token — if same, don't update (prevents duplicate registrations)
+      const userSnap = await getDoc(doc(db, "users", uid));
+      const existingToken = userSnap.data()?.fcmToken;
+      if (token !== existingToken) {
+        await updateDoc(doc(db, "users", uid), {
+          fcmToken: token,
+          notificationsEnabled: true,
+          timezone,
+          utcOffsetMinutes,
+          // Keep legacy field for backward compatibility.
+          utcOffset: utcOffsetMinutes / 60,
+        });
+      }
       console.log("FCM token saved:", token);
       return token;
     }
