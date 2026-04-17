@@ -1018,7 +1018,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
               </button>
             ) : (
               <p style={styles.weightLastDayWarning}>
-                This is your last chance until the 15th!
+                This is your last chance until the {weightCheckIn.checkInDate.endsWith("-01") ? "15th" : "1st"}!
               </p>
             )}
           </div>
