@@ -629,7 +629,7 @@ async function sendMealReminder(mealType, reminderLocalHour, reminderLocalMinute
       return;
     }
 
-    const { hour: localHour, minute: localMinute } = getUserLocalClock(user);
+    const { dateStr: localDateStr, hour: localHour, minute: localMinute } = getUserLocalClock(user);
     console.log(
       `User ${user.name} local time: ${localHour}:${String(localMinute).padStart(2, "0")}, target: ${reminderLocalHour}:${String(reminderLocalMinute).padStart(2, "0")}`
     );
@@ -644,6 +644,12 @@ async function sendMealReminder(mealType, reminderLocalHour, reminderLocalMinute
       return;
     }
 
+    // De-duplication check: Don't send if we already sent a reminder for this local day/type
+    if (user.lastReminders?.[mealType] === localDateStr) {
+      console.log(`Skipping ${user.name} - already sent ${mealType} reminder today`);
+      return;
+    }
+
     const already = await hasLoggedToday(userDoc.id, mealType);
     console.log(`User ${user.name} already logged ${mealType}: ${already}`);
     if (already) return;
@@ -651,6 +657,11 @@ async function sendMealReminder(mealType, reminderLocalHour, reminderLocalMinute
     const body = messages[Math.floor(Math.random() * messages.length)];
     console.log(`Sending ${mealType} reminder to ${user.name}`);
     await sendNotification(user.fcmToken, "TableFor2 ⏰", body);
+
+    // Save that we sent this reminder
+    await db.collection("users").doc(userDoc.id).update({
+      [`lastReminders.${mealType}`]: localDateStr,
+    });
   });
   await Promise.all(promises);
 }
