@@ -121,7 +121,7 @@ function App() {
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [user, globalUserData?.timezone, globalUserData?.utcOffsetMinutes]);
+  }, [user, globalUserData]);
 
   // Global Partner Data Listener
   useEffect(() => {
