@@ -584,8 +584,8 @@ async function hasLoggedToday(uid, mealType) {
   return false;
 }
 
-// Runs every 30 mins and checks each user's local time
-exports.breakfastReminder = onSchedule("30 * * * *", async () => {
+// Runs every 15 mins to check each user's local time accurately across all offsets
+exports.breakfastReminder = onSchedule("*/15 * * * *", async () => {
   await sendMealReminder("Breakfast", 10, 30, [
     "Good morning! Don't skip breakfast 🌅",
     "Breakfast time! Log it before 11am for $2 💰",
@@ -593,7 +593,7 @@ exports.breakfastReminder = onSchedule("30 * * * *", async () => {
   ]);
 });
 
-exports.lunchReminder = onSchedule("30 * * * *", async () => {
+exports.lunchReminder = onSchedule("*/15 * * * *", async () => {
   await sendMealReminder("Lunch", 13, 30, [
     "Lunchtime! Don't forget to log it 🥗",
     "It's almost 2pm — log lunch for $2 💰",
@@ -601,7 +601,7 @@ exports.lunchReminder = onSchedule("30 * * * *", async () => {
   ]);
 });
 
-exports.dinnerReminder = onSchedule("30 * * * *", async () => {
+exports.dinnerReminder = onSchedule("*/15 * * * *", async () => {
   await sendMealReminder("Dinner", 20, 30, [
     "Dinner time! Log it before 9pm for $2 💰",
     "Almost 9pm — don't miss your dinner reward 🌙",
@@ -634,9 +634,10 @@ async function sendMealReminder(mealType, reminderLocalHour, reminderLocalMinute
       `User ${user.name} local time: ${localHour}:${String(localMinute).padStart(2, "0")}, target: ${reminderLocalHour}:${String(reminderLocalMinute).padStart(2, "0")}`
     );
 
+    // Since we run every 15 mins, we use a tighter 7-min window to avoid double triggers
     const isRightTime = localHour === reminderLocalHour &&
-      localMinute >= reminderLocalMinute - 10 &&
-      localMinute <= reminderLocalMinute + 10;
+      localMinute >= reminderLocalMinute - 7 &&
+      localMinute <= reminderLocalMinute + 7;
 
     if (!isRightTime) {
       console.log(`Skipping ${user.name} - not right time`);
