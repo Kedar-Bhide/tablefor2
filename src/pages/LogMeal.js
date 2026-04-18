@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { auth, db, storage } from "../firebase";
-import { collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, updateDoc, doc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { compressImage } from "../utils/compressImage";
 import { formatLocalDateKey, formatLocalTimeHHMM, getCurrentTimezone } from "../utils/dateTime";
@@ -78,6 +78,7 @@ function LogMeal({ setCurrentPage, partnerUid }) {
     const timezone = getCurrentTimezone();
     const utcOffsetMinutesAtLog = -createdAt.getTimezoneOffset();
 
+    // Update meal
     await addDoc(collection(db, "meals"), {
       uid: user.uid,
       name: mealName,
@@ -93,6 +94,17 @@ function LogMeal({ setCurrentPage, partnerUid }) {
       utcOffsetMinutesAtLog,
       ...(quantity.trim() ? { quantity: quantity.trim() } : {}),
     });
+
+    // Also update user's current timezone/offset to ensure reminders are accurate
+    try {
+      await updateDoc(doc(db, "users", user.uid), {
+        timezone: timezone || null,
+        utcOffsetMinutes: utcOffsetMinutesAtLog,
+        utcOffset: utcOffsetMinutesAtLog / 60,
+      });
+    } catch (e) {
+      console.error("Failed to update user timezone during meal log:", e);
+    }
 
     setSaving(false);
     setCurrentPage("today");

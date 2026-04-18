@@ -79,6 +79,50 @@ function App() {
     return () => unsub();
   }, [user]);
 
+  // Proactive Timezone Sync
+  useEffect(() => {
+    if (!user) return;
+
+    const syncTimezone = async () => {
+      const now = new Date();
+      const timezone = getCurrentTimezone();
+      const utcOffsetMinutes = -now.getTimezoneOffset();
+
+      // Only update if something actually changed to save on writes
+      if (
+        globalUserData && (
+          globalUserData.timezone !== timezone ||
+          globalUserData.utcOffsetMinutes !== utcOffsetMinutes
+        )
+      ) {
+        console.log("Detecting timezone change... Updating Firestore.");
+        await setDoc(
+          doc(db, "users", user.uid),
+          {
+            timezone: timezone || null,
+            utcOffsetMinutes,
+            utcOffset: utcOffsetMinutes / 60,
+          },
+          { merge: true }
+        );
+      }
+    };
+
+    // Initial check on mount/user change
+    if (globalUserData) {
+      syncTimezone();
+    }
+
+    // Listen for visibility changes (app resume from background)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        syncTimezone();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [user, globalUserData?.timezone, globalUserData?.utcOffsetMinutes]);
+
   // Global Partner Data Listener
   useEffect(() => {
     const partnerUid = globalUserData?.partnerUid;
