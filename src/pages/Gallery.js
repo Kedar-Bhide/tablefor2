@@ -167,11 +167,6 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
                     alt={meal.name}
                     style={styles.photo}
                   />
-                  {meal._isFirstInGroup && meal._totalPhotos > 1 && (
-                    <div style={styles.galleryCountBadge}>
-                      {meal._totalPhotos} 📷
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
@@ -519,18 +514,6 @@ const styles = {
     borderRadius: "8px",
     fontSize: "0.8rem",
     cursor: "pointer",
-  },
-  galleryCountBadge: {
-    position: "absolute",
-    bottom: "6px",
-    right: "6px",
-    backgroundColor: "rgba(255,255,255,0.9)",
-    color: "#555",
-    fontSize: "0.65rem",
-    fontWeight: "600",
-    padding: "3px 7px",
-    borderRadius: "999px",
-    boxShadow: "0 2px 6px rgba(0,0,0,0.1)",
   },
 };
 
