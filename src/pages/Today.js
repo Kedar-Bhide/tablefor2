@@ -35,6 +35,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [savingComment, setSavingComment] = useState(false);
   const [nutrition, setNutrition] = useState({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 });
   const [editQuantity, setEditQuantity] = useState("");
+  const [editIngredients, setEditIngredients] = useState("");
+  const [editPortionSize, setEditPortionSize] = useState("");
   const [reanalyzing, setReanalyzing] = useState(false);
 
   const [myPhoto, setMyPhoto] = useState(user.photoURL);
@@ -46,6 +48,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [pendingTasks, setPendingTasks] = useState([]);
   const [activeTask, setActiveTask] = useState(null);
   const [taskQuantity, setTaskQuantity] = useState("");
+  const [taskIngredients, setTaskIngredients] = useState("");
+  const [taskPortionSize, setTaskPortionSize] = useState("");
   const [taskSaving, setTaskSaving] = useState(false);
   const [isNewUser, setIsNewUser] = useState(false);
   const [showUnlinkPopup, setShowUnlinkPopup] = useState(false);
@@ -276,7 +280,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       const finalPhotos = [...keptExistingURLs, ...newlyUploadedURLs];
 
       const mealRef = doc(db, "meals", selectedMeal.id);
-      const quantityChanged = editQuantity.trim() !== (selectedMeal.quantity || "");
+      const ingredientsChanged = editIngredients.trim() !== (selectedMeal.ingredients || selectedMeal.quantity || "");
+      const portionSizeChanged = editPortionSize.trim() !== (selectedMeal.portionSize || "");
       const nameChanged = editName.trim() !== selectedMeal.name;
 
       const updateData = {
@@ -284,13 +289,15 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         type: editType,
         photoURL: finalPhotos[0] || null,
         photos: finalPhotos,
-        ...(editQuantity.trim() ? { quantity: editQuantity.trim() } : { quantity: "" }),
+        ingredients: editIngredients.trim(),
+        portionSize: editPortionSize.trim(),
+        quantity: "", // Clear old quantity field
       };
 
       await updateDoc(mealRef, updateData);
 
-      // Only reanalyze if name or quantity changed — never for photo-only changes
-      if (nameChanged || quantityChanged) {
+      // Only reanalyze if name, ingredients or portion size changed
+      if (nameChanged || ingredientsChanged || portionSizeChanged) {
         setSaving(false);
         setReanalyzing(true);
         try {
@@ -423,7 +430,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         type: activeTask.mealType,
         photoURL: activeTask.photos?.[0] || null,
         photos: activeTask.photos || [],
-        quantity: taskQuantity.trim() || activeTask.fromQuantity || "",
+        ingredients: taskIngredients.trim() || activeTask.fromIngredients || activeTask.fromQuantity || "",
+        portionSize: taskPortionSize.trim() || activeTask.fromPortionSize || "",
         isShared: true,
         isRestaurant: activeTask.isRestaurant || false,
         sourceMealId: activeTask.sourceMealId,
@@ -441,6 +449,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
       setActiveTask(null);
       setTaskQuantity("");
+      setTaskIngredients("");
+      setTaskPortionSize("");
     } catch (e) {
       console.error("Task completion failed:", e);
     } finally {
@@ -529,6 +539,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
               setEditType(meal.type);
               setEditName(meal.name);
               setEditQuantity(meal.quantity || "");
+              setEditIngredients(meal.ingredients || meal.quantity || "");
+              setEditPortionSize(meal.portionSize || "");
               setEditMode(false);
               const existingPhotos = meal.photos?.length > 0
                 ? meal.photos
@@ -726,13 +738,21 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                   onChange={(e) => setEditName(e.target.value)}
                   style={styles.editInput}
                 />
+                <p style={styles.editLabel}>Ingredients/Notes</p>
                 <input
                   type="text"
-                  value={editQuantity}
-                  onChange={(e) => setEditQuantity(e.target.value)}
-                  style={styles.quantityInput}
-                  placeholder="Quantity or ingredients (optional)"
-                  className="quantity-input"
+                  value={editIngredients}
+                  onChange={(e) => setEditIngredients(e.target.value)}
+                  style={styles.editInput}
+                  placeholder="What was in it?"
+                />
+                <p style={styles.editLabel}>Portion Size</p>
+                <input
+                  type="text"
+                  value={editPortionSize}
+                  onChange={(e) => setEditPortionSize(e.target.value)}
+                  style={styles.editInput}
+                  placeholder="Standard, Large, etc."
                 />
                 <p style={styles.editLabel}>Meal Type</p>
                 <div style={styles.typeRow}>
@@ -1215,32 +1235,50 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
               />
             </div>
 
-            {/* Partner's quantity */}
-            {activeTask.fromQuantity && (
+            {/* Partner's details */}
+            {(activeTask.fromIngredients || activeTask.fromPortionSize || activeTask.fromQuantity) && (
               <div style={styles.taskPartnerQuantity}>
                 <p style={styles.taskPartnerQuantityLabel}>
                   {partnerName ? partnerName.split(" ")[0] : "Partner"} had:
                 </p>
-                <p style={styles.taskPartnerQuantityText}>
-                  "{activeTask.fromQuantity}"
-                </p>
+                {activeTask.fromIngredients || activeTask.fromQuantity ? (
+                  <p style={styles.taskPartnerQuantityText}>
+                    "{activeTask.fromIngredients || activeTask.fromQuantity}"
+                  </p>
+                ) : null}
+                {activeTask.fromPortionSize && (
+                  <p style={{ ...styles.taskPartnerQuantityText, fontSize: "0.85rem", color: "#888", marginTop: "2px" }}>
+                    Portion: {activeTask.fromPortionSize}
+                  </p>
+                )}
               </div>
             )}
 
             <div style={styles.insightDivider} />
 
-            {/* Her quantity input */}
-            <p style={styles.taskYourQuantityLabel}>Your quantity</p>
+            {/* Your details input */}
+            <p style={styles.taskYourQuantityLabel}>Your ingredients</p>
             <input
               type="text"
-              placeholder={activeTask.fromQuantity || "What did you have?"}
-              value={taskQuantity}
-              onChange={(e) => setTaskQuantity(e.target.value)}
+              placeholder={activeTask.fromIngredients || activeTask.fromQuantity || "What did you have?"}
+              value={taskIngredients}
+              onChange={(e) => setTaskIngredients(e.target.value)}
               style={styles.taskQuantityInput}
               className="comment-input"
             />
+            
+            <p style={{ ...styles.taskYourQuantityLabel, marginTop: "1rem" }}>Your portion size</p>
+            <input
+              type="text"
+              placeholder={activeTask.fromPortionSize || "Standard portion?"}
+              value={taskPortionSize}
+              onChange={(e) => setTaskPortionSize(e.target.value)}
+              style={styles.taskQuantityInput}
+              className="comment-input"
+            />
+            
             <p style={styles.taskQuantityHint}>
-              Leave blank to use the same quantity as {partnerName ? partnerName.split(" ")[0] : "your partner"}
+              Leave blank to use the same details as {partnerName ? partnerName.split(" ")[0] : "your partner"}
             </p>
 
             {/* Complete button */}
