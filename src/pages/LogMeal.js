@@ -539,7 +539,7 @@ const styles = {
   saveButton: {
     width: "100%",
     padding: "1.1rem",
-    backgroundColor: "#333",
+    backgroundColor: "#ff6b6b",
     color: "white",
     border: "none",
     borderRadius: "16px",
