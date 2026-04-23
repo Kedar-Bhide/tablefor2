@@ -262,21 +262,40 @@ async function aggregateMonthlyNutrition(uid, year, month) {
     typeBreakdown: typeMap,
   };
 }
-
-async function analyzeMealNutrition(mealName, photoURL, userProfile, quantity, isRestaurant = false) {
+async function analyzeMealNutrition(mealName, photoURL, userProfile, ingredients, portionSize, cookType = "Homemade") {
   const isVague = (!mealName || mealName.trim().split(" ").length < 2 ||
     ["food", "meal", "lunch", "dinner", "breakfast", "snack", "ate", "eating"].includes(
       mealName.trim().toLowerCase()
-    )) && !quantity;
+    )) && !ingredients;
 
   const profileContext = userProfile
     ? `User profile: ${userProfile.age ? userProfile.age + " years old" : "unknown age"}, ${userProfile.gender || "unknown gender"}, ${userProfile.height_cm ? userProfile.height_cm + "cm" : "unknown height"}, ${userProfile.weight_kg ? userProfile.weight_kg + "kg" : "unknown weight"}.`
     : "No user profile available.";
 
+  const details = [];
+  if (ingredients) details.push(`Ingredients/Notes: ${ingredients}`);
+  if (portionSize) details.push(`Portion Size: ${portionSize}`);
+  const detailsStr = details.length > 0 ? details.join(". ") : "No specific quantity provided.";
+
+  const systemInstruction = `
+    Analyze the meal details and estimate nutritional content.
+    Meal Source: ${cookType} (Homemade, Restaurant, or Packaged).
+    
+    Guidelines:
+    1. Prioritize provided ingredients and portion size as the primary evidence.
+    2. Cook Type Adjustments:
+       - HOMEMADE: Assume standard preparation.
+       - RESTAURANT: Assume professional preparation (often higher in fats/oils and sodium). Add a realistic 15-25% caloric buffer compared to a lean home version, but do not over-penalize if the dish is inherently healthy.
+       - PACKAGED: Assume commercial nutritional standards for the described item.
+    3. Portions: Treat "Standard" as one serving, "Large" as 1.5x, and "Small" as 0.7x.
+    4. Objectivity: Provide an unbiased, realistic estimate. Never return 0 for calories.
+    
+    Return ONLY a JSON object: {"calories": number, "protein_g": number, "carbs_g": number, "fat_g": number, "fiber_g": number, "descriptor": "2-4 word description", "analyzed_by": "ai"}.
+  `;
+
   const messages = [];
 
   if (isVague && photoURL) {
-    // Fallback to image analysis
     messages.push({
       role: "user",
       content: [
@@ -289,16 +308,15 @@ async function analyzeMealNutrition(mealName, photoURL, userProfile, quantity, i
         },
         {
           type: "text",
-          text: `${profileContext} Analyze this meal photo and estimate its nutritional content. This is a ${isRestaurant ? "RESTAURANT" : "HOMEMADE"} meal. ${isRestaurant ? "Restaurant meals typically use more oil, butter, salt and larger portions — estimate calories accordingly." : "Homemade meals are typically 60-70% of the calories of a restaurant equivalent — use conservative calorie estimates."} Return ONLY a JSON object with these exact fields: {"calories": number, "protein_g": number, "carbs_g": number, "fat_g": number, "fiber_g": number, "descriptor": "2-4 word description", "analyzed_by": "image"}. All numbers must be positive integers. Never return null or 0 for calories. Assume a standard single serving portion.`,
+          text: `${profileContext} ${systemInstruction} Analyze this meal photo.`,
         },
       ],
     });
   } else {
-    // Text analysis from meal name
     messages.push({
       role: "user",
-      content: `${profileContext} Analyze this meal: "${(mealName || "").slice(0, 100)}"${quantity ? `. Quantity and ingredients: "${quantity.slice(0, 200)}"` : ""}. This is a ${isRestaurant ? "RESTAURANT" : "HOMEMADE"} meal. ${isRestaurant ? "Restaurant meals typically use more oil, butter, salt and larger portions — estimate calories accordingly." : "Homemade meals are typically 60-70% of the calories of a restaurant equivalent — use conservative calorie estimates."} Estimate its nutritional content based on the provided details. Return ONLY a JSON object with these exact fields: {"calories": number, "protein_g": number, "carbs_g": number, "fat_g": number, "fiber_g": number, "descriptor": "2-4 word description", "analyzed_by": "name"}. All numbers must be positive integers. Never return null or 0 for calories. No explanation, no markdown, just the JSON object.`,
-      });
+      content: `${profileContext} ${systemInstruction} Analyze this meal: "${mealName}". Details: ${detailsStr}`,
+    });
   }
 
   return new Promise((resolve, reject) => {
@@ -384,8 +402,9 @@ exports.onMealCreated = onDocumentCreated(
           meal.name,
           primaryPhoto,
           user || null,
-          meal.quantity || null,
-          meal.isRestaurant || false
+          meal.ingredients || meal.quantity || null,
+          meal.portionSize || null,
+          meal.cookType || (meal.isRestaurant ? "Restaurant" : "Homemade")
         );
         if (nutrition && nutrition.calories > 0) {
           await db.collection("meals").doc(mealId).update({ nutrition });
@@ -411,8 +430,9 @@ exports.onMealCreated = onDocumentCreated(
           meal.name,
           primaryPhoto,
           user || null,
-          meal.quantity || null,
-          meal.isRestaurant || false
+          meal.ingredients || meal.quantity || null,
+          meal.portionSize || null,
+          meal.cookType || (meal.isRestaurant ? "Restaurant" : "Homemade")
         );
         await db.collection("meals").doc(mealId).update({ nutrition });
         console.log(`Nutrition saved for meal ${mealId}:`, nutrition);
@@ -446,7 +466,9 @@ exports.onMealCreated = onDocumentCreated(
             mealName: meal.name || "",
             mealType: meal.type || "Meal",
             photos: meal.photos?.length > 0 ? meal.photos : meal.photoURL ? [meal.photoURL] : [],
-            fromQuantity: meal.quantity || "",
+            fromIngredients: meal.ingredients || meal.quantity || "",
+            fromPortionSize: meal.portionSize || "",
+            fromQuantity: "", // Legacy cleanup
             localDate: meal.localDate || "",
             localTime: meal.localTime || "",
             isRestaurant: meal.isRestaurant || false,
@@ -704,8 +726,9 @@ exports.reanalyzeMeal = onCall(
         meal.name,
         primaryPhoto,
         user || null,
-        meal.quantity || null,
-        meal.isRestaurant || false
+        meal.ingredients || meal.quantity || null,
+        meal.portionSize || null,
+        meal.cookType || (meal.isRestaurant ? "Restaurant" : "Homemade")
       );
 
       // Only update if we got valid nutrition back
