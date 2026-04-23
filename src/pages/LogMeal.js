@@ -4,6 +4,7 @@ import { collection, addDoc, updateDoc, doc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { compressImage } from "../utils/compressImage";
 import { formatLocalDateKey, formatLocalTimeHHMM, getCurrentTimezone } from "../utils/dateTime";
+import MealNutritionCard from "../components/MealNutritionCard";
 
 function getMealTypeByTime() {
   const hour = new Date().getHours();
@@ -31,8 +32,10 @@ function LogMeal({ setCurrentPage, partnerUid }) {
   const localMinDate = formatLocalDateKey(minDate);
   const [isShared, setIsShared] = useState(false);
   const [showPhotoOptions, setShowPhotoOptions] = useState(false);
-  const [quantity, setQuantity] = useState("");
-  const [isRestaurant, setIsRestaurant] = useState(false);
+  const [ingredients, setIngredients] = useState("");
+  const [portionSize, setPortionSize] = useState("");
+  const [cookType, setCookType] = useState("Homemade"); // Homemade, Restaurant, Packaged
+  const [previewNutrition, setPreviewNutrition] = useState(null);
 
   useEffect(() => {
     setMealType(getMealTypeByTime());
@@ -86,13 +89,15 @@ function LogMeal({ setCurrentPage, partnerUid }) {
       photoURL: uploadedURLs[0] || null,
       photos: uploadedURLs,
       isShared: isShared,
-      isRestaurant: isRestaurant,
+      isRestaurant: cookType === "Restaurant",
+      isPackaged: cookType === "Packaged",
       createdAt,
       localDate,
       localTime,
       timezone: timezone || null,
       utcOffsetMinutesAtLog,
-      ...(quantity.trim() ? { quantity: quantity.trim() } : {}),
+      ingredients: ingredients.trim(),
+      portionSize: portionSize.trim(),
     });
 
     // Also update user's current timezone/offset to ensure reminders are accurate
@@ -112,140 +117,148 @@ function LogMeal({ setCurrentPage, partnerUid }) {
 
   return (
     <div style={styles.container}>
-      <button style={styles.back} onClick={() => setCurrentPage("today")}>← Back</button>
-      <h2 style={styles.title}>Add Meal</h2>
-
-      {/* Photo Upload */}
-      {photoPreviews.length === 0 ? (
-        <div style={styles.photoBox} onClick={() => setShowPhotoOptions(true)}>
-          <div style={styles.photoPlaceholder}>
-            <span style={{ fontSize: "2rem" }}>📷</span>
-            <p style={{ color: "#666", margin: "0.5rem 0 0 0" }}>Tap to add photo</p>
+      <button style={styles.back} onClick={() => setCurrentPage("today")}>
+        <span style={{ transform: "translateX(-1px)" }}>←</span>
+      </button>
+      <h2 style={styles.title}>
+        Log a <span style={{ color: "#ff6b6b" }}>Meal</span>
+      </h2>
+      {/* Photo Upload Area */}
+      <div style={styles.photoUploadContainer}>
+        {photoPreviews.length === 0 ? (
+          <div style={styles.dashedPhotoBox}>
+            <div style={styles.photoOption} onClick={() => document.getElementById("photoInput").click()}>
+              <div style={styles.photoIconCircle}>📸</div>
+              <p style={styles.photoOptionLabel}>Take Photo</p>
+            </div>
+            <div style={styles.photoDivider} />
+            <div style={styles.photoOption} onClick={() => document.getElementById("galleryInput").click()}>
+              <div style={styles.photoIconCircle}>🖼️</div>
+              <p style={styles.photoOptionLabel}>From Library</p>
+            </div>
           </div>
-        </div>
-      ) : (
-        <div style={styles.photoGrid}>
-          {photoPreviews.map((preview, index) => (
-            <div key={index} style={styles.photoThumbWrapper}>
-              <img
-                src={preview}
-                alt={`meal ${index + 1}`}
-                style={styles.photoThumb}
-              />
-              <button
-                style={styles.removePhotoBtn}
-                onClick={() => handleRemovePhoto(index)}
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-          {photos.length < 5 && (
-            <div
-              style={styles.addMorePhoto}
-              onClick={() => setShowPhotoOptions(true)}
-            >
-              <p style={styles.addMorePhotoPlus}>+</p>
-              <p style={styles.addMorePhotoLabel}>Add</p>
-            </div>
-          )}
-        </div>
-      )}
-      {photos.length > 0 && (
-        <p style={styles.photoHint}>{photos.length}/5 photos</p>
-      )}
+        ) : (
+          <div style={styles.photoGrid}>
+            {photoPreviews.map((preview, index) => (
+              <div key={index} style={styles.photoThumbWrapper}>
+                <img src={preview} alt={`meal ${index + 1}`} style={styles.photoThumb} />
+                <button style={styles.removePhotoBtn} onClick={() => handleRemovePhoto(index)}>✕</button>
+              </div>
+            ))}
+            {photos.length < 5 && (
+              <div style={styles.addMorePhoto} onClick={() => setShowPhotoOptions(true)}>
+                <p style={styles.addMorePhotoPlus}>+</p>
+                <p style={styles.addMorePhotoLabel}>Add</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {photos.length > 0 && <p style={styles.photoHint}>{photos.length}/5 photos</p>}
       <input id="photoInput" type="file" accept="image/*" capture style={{ display: "none" }} onChange={handlePhoto} />
       <input id="galleryInput" type="file" accept="image/*" style={{ display: "none" }} onChange={handlePhoto} />
 
-      {showPhotoOptions && (
-        <div style={styles.overlay} onClick={() => setShowPhotoOptions(false)}>
-          <div style={styles.sheet} onClick={(e) => e.stopPropagation()}>
-            <p style={styles.sheetTitle}>Add Photo</p>
-            <button style={styles.editButton} onClick={async () => {
-              try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                stream.getTracks().forEach(t => t.stop());
-                document.getElementById("photoInput").click();
-              } catch (e) {
-                alert("Camera access is blocked. Please go to your browser Settings → Site Settings → Camera and allow access for this site, then reload the app.");
-              }
-            }}>
-              📷 Take Photo
-            </button>
-            <button style={styles.editButton} onClick={() => document.getElementById("galleryInput").click()}>
-              🖼️ Choose from Gallery
-            </button>
-            <button style={styles.cancelButton} onClick={() => setShowPhotoOptions(false)}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Meal Type */}
+      <p style={styles.sectionHeader}>MEAL TYPE</p>
       <div style={styles.typeRow}>
-        {["Breakfast", "Lunch", "Dinner", "Snack"].map((type) => (
+        {[
+          { label: "Breakfast", icon: "🌅" },
+          { label: "Lunch", icon: "☀️" },
+          { label: "Dinner", icon: "🌙" },
+          { label: "Snack", icon: "🍎" }
+        ].map((item) => (
           <button
-            key={type}
+            key={item.label}
             style={{
               ...styles.typeButton,
-              backgroundColor: mealType === type ? "#ff6b6b" : "white",
-              color: mealType === type ? "white" : "#aaa",
+              backgroundColor: mealType === item.label ? "#fff0f0" : "white",
+              borderColor: mealType === item.label ? "#ff6b6b" : "#eee",
+              color: mealType === item.label ? "#ff6b6b" : "#333",
             }}
-            onClick={() => setMealType(type)}
+            onClick={() => setMealType(item.label)}
           >
-            {type}
+            <span style={{ fontSize: "1.2rem", marginBottom: "4px" }}>{item.icon}</span>
+            {item.label}
           </button>
         ))}
       </div>
 
-      {/* Meal Name */}
-      <div style={styles.card}>
-        <label style={styles.label}>Meal Name</label>
-        <input
-          type="text"
-          placeholder="What's on your plate? 🍽️"
-          value={mealName}
-          onChange={(e) => setMealName(e.target.value)}
-          style={styles.input}
-        />
-        <input
-          type="text"
-          placeholder="Quantity or ingredients (optional)"
-          value={quantity}
-          onChange={(e) => setQuantity(e.target.value)}
-          style={styles.quantityInput}
-          className="quantity-input"
-        />
+      {/* Meal Details Card */}
+      <div style={styles.detailsCard}>
+        <div style={styles.inputRow}>
+          <span style={styles.inputIcon}>🍽️</span>
+          <input
+            type="text"
+            placeholder="Name your meal..."
+            value={mealName}
+            onChange={(e) => setMealName(e.target.value)}
+            style={styles.nakedInput}
+          />
+        </div>
+        <div style={styles.inputDivider} />
+        <div style={styles.inputRow}>
+          <span style={styles.inputIcon}>📝</span>
+          <input
+            type="text"
+            placeholder="Ingredients or notes (optional)"
+            value={ingredients}
+            onChange={(e) => setIngredients(e.target.value)}
+            style={styles.nakedInput}
+          />
+        </div>
+        <div style={styles.inputDivider} />
+        <div style={styles.inputRow}>
+          <span style={styles.inputIcon}>📏</span>
+          <input
+            type="text"
+            placeholder="Portion size (optional)"
+            value={portionSize}
+            onChange={(e) => setPortionSize(e.target.value)}
+            style={styles.nakedInput}
+          />
+        </div>
       </div>
-      <div style={styles.cookTypeRow}>
-        <div
-          style={{
-            ...styles.cookTypeButton,
-            backgroundColor: !isRestaurant ? "#ff6b6b" : "#f5f5f5",
-            color: !isRestaurant ? "white" : "#aaa",
-          }}
-          onClick={() => setIsRestaurant(false)}
-        >
-          <p style={styles.cookTypeLabel}>Homemade</p>
-        </div>
-        <div
-          style={{
-            ...styles.cookTypeButton,
-            backgroundColor: isRestaurant ? "#ff6b6b" : "#f5f5f5",
-            color: isRestaurant ? "white" : "#aaa",
-          }}
-          onClick={() => setIsRestaurant(true)}
-        >
-          <p style={styles.cookTypeLabel}>Restaurant</p>
-        </div>
+
+      {/* Nutrition Section */}
+      <p style={styles.sectionHeader}>NUTRITION <span style={{ fontWeight: "normal", fontSize: "0.7rem", color: "#aaa" }}>— tap to edit</span></p>
+      <MealNutritionCard 
+        nutrition={previewNutrition || { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 }} 
+        editable={true}
+        onNutritionChange={(key, val) => setPreviewNutrition(prev => ({ ...(prev || { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 }), [key]: val }))}
+      />
+
+      {/* Meal Source Row */}
+      <div style={styles.sourceRow}>
+        {[
+          { label: "Homemade", icon: "🏠" },
+          { label: "Restaurant", icon: "🍴" },
+          { label: "Packaged", icon: "📦" }
+        ].map((item) => (
+          <div
+            key={item.label}
+            style={{
+              ...styles.sourceButton,
+              backgroundColor: cookType === item.label ? "white" : "transparent",
+              boxShadow: cookType === item.label ? "0 2px 8px rgba(0,0,0,0.1)" : "none",
+            }}
+            onClick={() => setCookType(item.label)}
+          >
+            <span style={{ fontSize: "1rem", marginRight: "6px" }}>{item.icon}</span>
+            <p style={{ ...styles.sourceLabel, fontWeight: cookType === item.label ? "700" : "400" }}>{item.label}</p>
+          </div>
+        ))}
       </div>
 
       {partnerUid && (
         <div style={styles.toggleRow}>
           <div>
-            <p style={styles.toggleLabel}>Shared meal 💑</p>
-            <p style={styles.toggleSub}>Tag this as a shared dining experience</p>
+            <div style={styles.sharedAvatarStack}>
+              <img src={user.photoURL} alt="me" style={styles.smallAvatar} referrerPolicy="no-referrer" />
+              <div style={styles.smallAvatarPlaceholder}>👩</div>
+            </div>
+            <p style={styles.toggleLabel}>Shared meal</p>
+            <p style={styles.toggleSub}>Tag dining partners</p>
           </div>
           <div
             style={{
@@ -324,24 +337,215 @@ const styles = {
   container: {
     maxWidth: "400px",
     margin: "0 auto",
-    padding: "2rem 1.5rem",
-    backgroundColor: "#fffaf5",
+    padding: "1rem 1.2rem",
+    backgroundColor: "#fffaf7",
     minHeight: "100vh",
   },
   back: {
-    background: "none",
+    background: "#fff",
     border: "none",
-    fontSize: "1rem",
+    width: "36px",
+    height: "36px",
+    borderRadius: "50%",
+    fontSize: "1.2rem",
     cursor: "pointer",
-    color: "#ff6b6b",
-    padding: 0,
-    marginBottom: "0.5rem",
-    display: "block",
+    color: "#333",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: "1rem",
+    boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
   },
   title: {
-    fontSize: "1.8rem",
+    fontSize: "2.2rem",
+    fontFamily: "'Playfair Display', serif",
     color: "#333",
     margin: "0 0 1.5rem 0",
+  },
+  photoUploadContainer: {
+    marginBottom: "1.5rem",
+  },
+  dashedPhotoBox: {
+    width: "100%",
+    height: "140px",
+    backgroundColor: "transparent",
+    borderRadius: "20px",
+    border: "2px dashed #e5e5e5",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  photoOption: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+  },
+  photoIconCircle: {
+    fontSize: "1.8rem",
+    marginBottom: "8px",
+  },
+  photoOptionLabel: {
+    fontSize: "0.85rem",
+    color: "#666",
+    margin: 0,
+  },
+  photoDivider: {
+    width: "1px",
+    height: "60px",
+    backgroundColor: "#eee",
+  },
+  sectionHeader: {
+    fontSize: "0.75rem",
+    fontWeight: "800",
+    color: "#aaa",
+    letterSpacing: "0.05em",
+    margin: "1.5rem 0 0.8rem 0",
+  },
+  typeRow: {
+    display: "flex",
+    gap: "0.6rem",
+    marginBottom: "1rem",
+  },
+  typeButton: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    padding: "0.8rem 0",
+    border: "1.5px solid #eee",
+    borderRadius: "16px",
+    fontSize: "0.8rem",
+    fontWeight: "600",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+  },
+  detailsCard: {
+    backgroundColor: "white",
+    borderRadius: "20px",
+    padding: "0.5rem 1rem",
+    marginBottom: "1.5rem",
+    boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
+  },
+  inputRow: {
+    display: "flex",
+    alignItems: "center",
+    padding: "0.8rem 0",
+  },
+  inputIcon: {
+    fontSize: "1.2rem",
+    marginRight: "12px",
+  },
+  nakedInput: {
+    flex: 1,
+    border: "none",
+    outline: "none",
+    fontSize: "1rem",
+    color: "#333",
+    padding: 0,
+  },
+  inputDivider: {
+    height: "1px",
+    backgroundColor: "#f5f5f5",
+    marginLeft: "32px",
+  },
+  sourceRow: {
+    display: "flex",
+    backgroundColor: "#f2efed",
+    borderRadius: "16px",
+    padding: "4px",
+    marginBottom: "1.5rem",
+  },
+  sourceButton: {
+    flex: 1,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "0.6rem 0",
+    borderRadius: "12px",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+  },
+  sourceLabel: {
+    fontSize: "0.85rem",
+    color: "#333",
+    margin: 0,
+  },
+  toggleRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "white",
+    borderRadius: "20px",
+    padding: "1rem 1.2rem",
+    marginBottom: "1rem",
+    boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
+  },
+  sharedAvatarStack: {
+    display: "flex",
+    marginBottom: "8px",
+  },
+  smallAvatar: {
+    width: "32px",
+    height: "32px",
+    borderRadius: "50%",
+    border: "2px solid white",
+    objectFit: "cover",
+  },
+  smallAvatarPlaceholder: {
+    width: "32px",
+    height: "32px",
+    borderRadius: "50%",
+    border: "2px solid white",
+    backgroundColor: "#f5f5f5",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: "-12px",
+    fontSize: "1rem",
+  },
+  toggleLabel: {
+    fontWeight: "700",
+    color: "#333",
+    margin: 0,
+    fontSize: "0.95rem",
+  },
+  toggleSub: {
+    color: "#aaa",
+    fontSize: "0.8rem",
+    margin: "2px 0 0 0",
+  },
+  toggleTrack: {
+    width: "50px",
+    height: "28px",
+    borderRadius: "14px",
+    cursor: "pointer",
+    position: "relative",
+    transition: "background-color 0.2s ease",
+  },
+  toggleThumb: {
+    position: "absolute",
+    top: "3px",
+    width: "22px",
+    height: "22px",
+    borderRadius: "50%",
+    backgroundColor: "white",
+    boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
+    transition: "transform 0.2s ease",
+  },
+  saveButton: {
+    width: "100%",
+    padding: "1.1rem",
+    backgroundColor: "#333",
+    color: "white",
+    border: "none",
+    borderRadius: "16px",
+    fontSize: "1rem",
+    fontWeight: "700",
+    cursor: "pointer",
+    marginTop: "1rem",
   },
   photoBox: {
     width: "100%",
@@ -361,185 +565,11 @@ const styles = {
     flexDirection: "column",
     alignItems: "center",
   },
-  typeRow: {
-    display: "flex",
-    gap: "0.5rem",
-    marginBottom: "1rem",
-  },
-  typeButton: {
-    flex: 1,
-    padding: "0.5rem 0",
-    border: "1px solid #eee",
-    borderRadius: "8px",
-    fontSize: "0.75rem",
-    cursor: "pointer",
-  },
-  card: {
-    backgroundColor: "white",
-    borderRadius: "12px",
-    padding: "1.2rem",
-    marginBottom: "1rem",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-  },
-  label: {
-    fontSize: "0.9rem",
-    color: "#555",
-    marginBottom: "0.4rem",
-    display: "block",
-  },
-  input: {
-    width: "100%",
-    padding: "0.6rem",
-    fontSize: "1rem",
-    borderRadius: "8px",
-    border: "1px solid #ddd",
-    marginBottom: "1rem",
-    boxSizing: "border-box",
-  },
-  saveButton: {
-    width: "100%",
-    padding: "0.9rem",
-    backgroundColor: "#ff6b6b",
-    color: "white",
-    border: "none",
-    borderRadius: "8px",
-    fontSize: "1rem",
-    cursor: "pointer",
-  },
-  toggleRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "white",
-    borderRadius: "12px",
-    padding: "1rem 1.2rem",
-    marginBottom: "1rem",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-  },
-  toggleLabel: {
-    fontWeight: "bold",
-    color: "#333",
-    margin: 0,
-    fontSize: "0.95rem",
-  },
-  toggleSub: {
-    color: "#666",
-    fontSize: "0.8rem",
-    margin: "2px 0 0 0",
-  },
-  toggleTrack: {
-    width: "46px",
-    height: "26px",
-    borderRadius: "13px",
-    cursor: "pointer",
-    position: "relative",
-    transition: "background-color 0.2s ease",
-  },
-  toggleThumb: {
-    position: "absolute",
-    top: "3px",
-    width: "20px",
-    height: "20px",
-    borderRadius: "50%",
-    backgroundColor: "white",
-    boxShadow: "0 1px 4px rgba(0,0,0,0.2)",
-    transition: "transform 0.2s ease",
-  },
-  overlay: {
-    position: "fixed",
-    top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    zIndex: 150,
-    display: "flex",
-    alignItems: "flex-end",
-  },
-  sheet: {
-    backgroundColor: "white",
-    borderRadius: "20px 20px 0 0",
-    padding: "1.5rem",
-    width: "100%",
-    maxWidth: "400px",
-    margin: "0 auto",
-  },
-  sheetTitle: {
-    fontWeight: "bold",
-    fontSize: "1.1rem",
-    color: "#333",
-    margin: "0 0 1rem 0",
+  photoHint: {
+    fontSize: "0.72rem",
+    color: "#888",
+    margin: "0 0 0.5rem 0",
     textAlign: "center",
-  },
-  editButton: {
-    width: "100%",
-    padding: "0.8rem",
-    backgroundColor: "#ff6b6b",
-    color: "white",
-    border: "none",
-    borderRadius: "8px",
-    fontSize: "1rem",
-    cursor: "pointer",
-    marginBottom: "0.5rem",
-  },
-  cancelButton: {
-    width: "100%",
-    padding: "0.8rem",
-    backgroundColor: "transparent",
-    color: "#666",
-    border: "none",
-    borderRadius: "8px",
-    fontSize: "1rem",
-    cursor: "pointer",
-  },
-  datePicker: {
-    border: "1px solid #eee",
-    borderRadius: "8px",
-    padding: "0.4rem 0.6rem",
-    fontSize: "0.85rem",
-    color: "#555",
-    cursor: "pointer",
-    backgroundColor: "#fffaf5",
-  },
-  datePickerExpanded: {
-    backgroundColor: "white",
-    borderRadius: "12px",
-    padding: "1rem 1.2rem",
-    marginBottom: "1rem",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-    display: "flex",
-    flexDirection: "column",
-    gap: "0.8rem",
-  },
-  datePickerRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  datePickerLabel: {
-    fontSize: "0.9rem",
-    color: "#555",
-  },
-  backfillToggleRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "0.8rem",
-    padding: "0 0.2rem",
-  },
-  backfillLabel: {
-    fontSize: "0.85rem",
-    color: "#666",
-    margin: 0,
-  },
-  quantityInput: {
-    width: "100%",
-    padding: "0.7rem 1rem",
-    fontSize: "0.88rem",
-    borderRadius: "10px",
-    border: "1px solid #eee",
-    outline: "none",
-    color: "#333",
-    backgroundColor: "#fafafa",
-    boxSizing: "border-box",
-    marginTop: "0.5rem",
   },
   photoGrid: {
     display: "flex",
@@ -598,31 +628,45 @@ const styles = {
     color: "#888",
     margin: "2px 0 0 0",
   },
-  photoHint: {
-    fontSize: "0.72rem",
-    color: "#888",
-    margin: "0 0 0.5rem 0",
-    textAlign: "center",
-  },
-  cookTypeRow: {
+  backfillToggleRow: {
     display: "flex",
-    gap: "0.6rem",
-    marginBottom: "1rem",
-  },
-  cookTypeButton: {
-    flex: 1,
-    display: "flex",
+    justifyContent: "space-between",
     alignItems: "center",
-    justifyContent: "center",
-    padding: "0.4rem",
-    borderRadius: "10px",
-    cursor: "pointer",
-    transition: "all 0.2s ease",
+    marginBottom: "0.8rem",
+    padding: "0 0.2rem",
   },
-  cookTypeLabel: {
-    fontSize: "0.78rem",
-    fontWeight: "600",
+  backfillLabel: {
+    fontSize: "0.85rem",
+    color: "#666",
     margin: 0,
+  },
+  datePickerExpanded: {
+    backgroundColor: "white",
+    borderRadius: "20px",
+    padding: "1rem 1.2rem",
+    marginBottom: "1rem",
+    boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
+    display: "flex",
+    flexDirection: "column",
+    gap: "0.8rem",
+  },
+  datePickerRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  datePickerLabel: {
+    fontSize: "0.9rem",
+    color: "#555",
+  },
+  datePicker: {
+    border: "1px solid #eee",
+    borderRadius: "8px",
+    padding: "0.4rem 0.6rem",
+    fontSize: "0.85rem",
+    color: "#555",
+    cursor: "pointer",
+    backgroundColor: "#fffaf5",
   },
 };
 
