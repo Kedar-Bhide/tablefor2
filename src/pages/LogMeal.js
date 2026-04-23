@@ -15,7 +15,7 @@ function getMealTypeByTime() {
   return "Breakfast";
 }
 
-function LogMeal({ setCurrentPage, partnerUid }) {
+function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
   const user = auth.currentUser;
   const [mealName, setMealName] = useState("");
   const [mealType, setMealType] = useState(getMealTypeByTime());
@@ -31,7 +31,6 @@ function LogMeal({ setCurrentPage, partnerUid }) {
   const minDate = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
   const localMinDate = formatLocalDateKey(minDate);
   const [isShared, setIsShared] = useState(false);
-  const [showPhotoOptions, setShowPhotoOptions] = useState(false);
   const [ingredients, setIngredients] = useState("");
   const [portionSize, setPortionSize] = useState("");
   const [cookType, setCookType] = useState("Homemade"); // Homemade, Restaurant, Packaged
@@ -47,7 +46,6 @@ function LogMeal({ setCurrentPage, partnerUid }) {
     if (photos.length >= 5) return;
     setPhotos((prev) => [...prev, file]);
     setPhotoPreviews((prev) => [...prev, URL.createObjectURL(file)]);
-    setShowPhotoOptions(false);
   };
 
   const handleRemovePhoto = (index) => {
@@ -146,7 +144,7 @@ function LogMeal({ setCurrentPage, partnerUid }) {
               </div>
             ))}
             {photos.length < 5 && (
-              <div style={styles.addMorePhoto} onClick={() => setShowPhotoOptions(true)}>
+              <div style={styles.addMorePhoto} onClick={() => document.getElementById("galleryInput").click()}>
                 <p style={styles.addMorePhotoPlus}>+</p>
                 <p style={styles.addMorePhotoLabel}>Add</p>
               </div>
@@ -221,7 +219,6 @@ function LogMeal({ setCurrentPage, partnerUid }) {
       </div>
 
       {/* Nutrition Section */}
-      <p style={styles.sectionHeader}>NUTRITION <span style={{ fontWeight: "normal", fontSize: "0.7rem", color: "#aaa" }}>— tap to edit</span></p>
       <MealNutritionCard 
         nutrition={previewNutrition || { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 }} 
         editable={true}
@@ -250,12 +247,16 @@ function LogMeal({ setCurrentPage, partnerUid }) {
         ))}
       </div>
 
-      {partnerUid && (
+      {globalPartnerData && (
         <div style={styles.toggleRow}>
           <div>
             <div style={styles.sharedAvatarStack}>
-              <img src={user.photoURL} alt="me" style={styles.smallAvatar} referrerPolicy="no-referrer" />
-              <div style={styles.smallAvatarPlaceholder}>👩</div>
+              <img src={globalUserData?.photoURL} alt="me" style={styles.smallAvatar} referrerPolicy="no-referrer" />
+              {globalPartnerData.photoURL ? (
+                <img src={globalPartnerData.photoURL} alt="partner" style={{ ...styles.smallAvatar, marginLeft: "-12px" }} referrerPolicy="no-referrer" />
+              ) : (
+                <div style={styles.smallAvatarPlaceholder}>👩</div>
+              )}
             </div>
             <p style={styles.toggleLabel}>Shared meal</p>
             <p style={styles.toggleSub}>Tag dining partners</p>

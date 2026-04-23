@@ -34,7 +34,6 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [comment, setComment] = useState("");
   const [savingComment, setSavingComment] = useState(false);
   const [nutrition, setNutrition] = useState({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 });
-  const [editQuantity, setEditQuantity] = useState("");
   const [editIngredients, setEditIngredients] = useState("");
   const [editPortionSize, setEditPortionSize] = useState("");
   const [reanalyzing, setReanalyzing] = useState(false);
@@ -47,7 +46,6 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [weightInsight, setWeightInsight] = useState(null);
   const [pendingTasks, setPendingTasks] = useState([]);
   const [activeTask, setActiveTask] = useState(null);
-  const [taskQuantity, setTaskQuantity] = useState("");
   const [taskIngredients, setTaskIngredients] = useState("");
   const [taskPortionSize, setTaskPortionSize] = useState("");
   const [taskSaving, setTaskSaving] = useState(false);
@@ -448,7 +446,6 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       });
 
       setActiveTask(null);
-      setTaskQuantity("");
       setTaskIngredients("");
       setTaskPortionSize("");
     } catch (e) {
@@ -464,7 +461,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       dismissed: true,
     });
     setActiveTask(null);
-    setTaskQuantity("");
+    setTaskIngredients("");
+    setTaskPortionSize("");
   };
 
 
@@ -529,7 +527,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
               const pendingTask = getPendingTaskForMeal(meal);
               if (pendingTask) {
                 setActiveTask(pendingTask);
-                setTaskQuantity("");
+                setTaskIngredients("");
               } else {
                 setViewMeal(meal);
                 setComment(meal.comments?.[user.uid] || "");
@@ -538,7 +536,6 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
               setSelectedMeal(meal);
               setEditType(meal.type);
               setEditName(meal.name);
-              setEditQuantity(meal.quantity || "");
               setEditIngredients(meal.ingredients || meal.quantity || "");
               setEditPortionSize(meal.portionSize || "");
               setEditMode(false);

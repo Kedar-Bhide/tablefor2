@@ -27,23 +27,26 @@ export default function MealNutritionCard({ nutrition, editable = false, onNutri
             { label: "Carbs", key: "carbs_g", unit: "g" },
             { label: "Fat", key: "fat_g", unit: "g" },
             { label: "Fiber", key: "fiber_g", unit: "g" },
-          ].map((m) => (
-            <div key={m.key} style={styles.mealNutritionPill}>
-              <p style={styles.mealNutritionLabel}>{m.label}</p>
-              <p style={styles.mealNutritionValue}>
-                <span 
-                  className="editable-macro"
-                  contentEditable={editable} 
-                  suppressContentEditableWarning 
-                  onBlur={(e) => onNutritionChange && onNutritionChange(m.key, Number(e.target.innerText.replace(/\D/g, '')))}
-                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.target.blur())}
-                  style={{ outline: "none", cursor: editable ? "text" : "default" }}
-                >
-                  {nutrition[m.key] || 0}
-                </span>
-                <span style={styles.mealNutritionUnit}>{m.unit}</span>
-              </p>
-            </div>
+          ].map((m, idx, arr) => (
+            <React.Fragment key={m.key}>
+              <div style={styles.mealNutritionPill}>
+                <p style={styles.mealNutritionLabel}>{m.label}</p>
+                <p style={styles.mealNutritionValue}>
+                  <span 
+                    className="editable-macro"
+                    contentEditable={editable} 
+                    suppressContentEditableWarning 
+                    onBlur={(e) => onNutritionChange && onNutritionChange(m.key, Number(e.target.innerText.replace(/\D/g, '')))}
+                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.target.blur())}
+                    style={{ outline: "none", cursor: editable ? "text" : "default" }}
+                  >
+                    {nutrition[m.key] || 0}
+                  </span>
+                  <span style={styles.mealNutritionUnit}>{m.unit}</span>
+                </p>
+              </div>
+              {idx < arr.length - 1 && <div style={styles.separator} />}
+            </React.Fragment>
           ))}
         </div>
       </div>
@@ -92,5 +95,11 @@ const styles = {
     fontWeight: "400",
     marginLeft: "1px",
     pointerEvents: "none"
+  },
+  separator: {
+    width: "1px",
+    backgroundColor: "#eee",
+    height: "20px",
+    alignSelf: "center",
   }
 };
