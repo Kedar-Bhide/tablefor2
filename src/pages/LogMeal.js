@@ -219,8 +219,8 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
       </div>
 
       {/* Nutrition Section */}
-      <MealNutritionCard 
-        nutrition={previewNutrition || { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 }} 
+      <MealNutritionCard
+        nutrition={previewNutrition || { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 }}
         editable={true}
         onNutritionChange={(key, val) => setPreviewNutrition(prev => ({ ...(prev || { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 }), [key]: val }))}
       />
