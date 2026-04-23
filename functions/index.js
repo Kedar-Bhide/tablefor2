@@ -404,11 +404,7 @@ exports.onMealCreated = onDocumentCreated(
           user || null,
           meal.ingredients || meal.quantity || null,
           meal.portionSize || null,
-<<<<<<< HEAD
-          meal.isRestaurant || false
-=======
           meal.cookType || (meal.isRestaurant ? "Restaurant" : "Homemade")
->>>>>>> fix/macros-calculation
         );
         if (nutrition && nutrition.calories > 0) {
           await db.collection("meals").doc(mealId).update({ nutrition });
@@ -436,11 +432,7 @@ exports.onMealCreated = onDocumentCreated(
           user || null,
           meal.ingredients || meal.quantity || null,
           meal.portionSize || null,
-<<<<<<< HEAD
-          meal.isRestaurant || false
-=======
           meal.cookType || (meal.isRestaurant ? "Restaurant" : "Homemade")
->>>>>>> fix/macros-calculation
         );
         await db.collection("meals").doc(mealId).update({ nutrition });
         console.log(`Nutrition saved for meal ${mealId}:`, nutrition);
@@ -476,10 +468,7 @@ exports.onMealCreated = onDocumentCreated(
             photos: meal.photos?.length > 0 ? meal.photos : meal.photoURL ? [meal.photoURL] : [],
             fromIngredients: meal.ingredients || meal.quantity || "",
             fromPortionSize: meal.portionSize || "",
-<<<<<<< HEAD
-=======
             fromQuantity: "", // Legacy cleanup
->>>>>>> fix/macros-calculation
             localDate: meal.localDate || "",
             localTime: meal.localTime || "",
             isRestaurant: meal.isRestaurant || false,
@@ -751,11 +740,7 @@ exports.reanalyzeMeal = onCall(
         user || null,
         meal.ingredients || meal.quantity || null,
         meal.portionSize || null,
-<<<<<<< HEAD
-        meal.isRestaurant || false
-=======
         meal.cookType || (meal.isRestaurant ? "Restaurant" : "Homemade")
->>>>>>> fix/macros-calculation
       );
 
       // Only update if we got valid nutrition back
