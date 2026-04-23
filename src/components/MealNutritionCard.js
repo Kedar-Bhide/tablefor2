@@ -20,87 +20,86 @@ export default function MealNutritionCard({ nutrition, editable = false, onNutri
         `}
       </style>
       <div style={styles.mealNutritionCard}>
-      <p style={styles.mealNutritionTitle}>
-        Total Calories:{" "}
-        <span 
-          className="editable-macro"
-          contentEditable={editable} 
-          suppressContentEditableWarning 
-          onBlur={(e) => onNutritionChange && onNutritionChange('calories', Number(e.target.innerText.replace(/\D/g, '')))}
-          onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.target.blur())}
-          style={{ outline: "none", cursor: editable ? "text" : "default" }}
-        >
-          {nutrition.calories}
-        </span>
-        {" "}kcal
-      </p>
-      <div style={styles.mealNutritionRow}>
-        {[
-          { label: "Protein", key: "protein_g" },
-          { label: "Carbs", key: "carbs_g" },
-          { label: "Fat", key: "fat_g" },
-          { label: "Fiber", key: "fiber_g" },
-        ].map((m) => (
-          <div key={m.key} style={styles.mealNutritionPill}>
-            <p style={styles.mealNutritionLabel}>{m.label}</p>
-            <p style={styles.mealNutritionValue}>
-              <span 
-                className="editable-macro"
-                contentEditable={editable} 
-                suppressContentEditableWarning 
-                onBlur={(e) => onNutritionChange && onNutritionChange(m.key, Number(e.target.innerText.replace(/\D/g, '')))}
-                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.target.blur())}
-                style={{ outline: "none", cursor: editable ? "text" : "default" }}
-              >
-                {nutrition[m.key] || 0}
-              </span>
-              <span style={styles.mealNutritionUnit}>g</span>
-            </p>
-          </div>
-        ))}
+        <div style={styles.mealNutritionRow}>
+          {[
+            { label: "Calories", key: "calories", unit: "kcal" },
+            { label: "Protein", key: "protein_g", unit: "g" },
+            { label: "Carbs", key: "carbs_g", unit: "g" },
+            { label: "Fat", key: "fat_g", unit: "g" },
+            { label: "Fiber", key: "fiber_g", unit: "g" },
+          ].map((m, idx, arr) => (
+            <React.Fragment key={m.key}>
+              <div style={styles.mealNutritionPill}>
+                <p style={styles.mealNutritionLabel}>{m.label}</p>
+                <p style={styles.mealNutritionValue}>
+                  <span 
+                    className="editable-macro"
+                    contentEditable={editable} 
+                    suppressContentEditableWarning 
+                    onBlur={(e) => onNutritionChange && onNutritionChange(m.key, Number(e.target.innerText.replace(/\D/g, '')))}
+                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.target.blur())}
+                    style={{ outline: "none", cursor: editable ? "text" : "default" }}
+                  >
+                    {nutrition[m.key] || 0}
+                  </span>
+                  <span style={styles.mealNutritionUnit}>{m.unit}</span>
+                </p>
+              </div>
+              {idx < arr.length - 1 && <div style={styles.separator} />}
+            </React.Fragment>
+          ))}
+        </div>
       </div>
-    </div>
     </>
   );
 }
 
 const styles = {
   mealNutritionCard: {
-    backgroundColor: "#fafafa",
-    borderRadius: "12px",
-    padding: "0.8rem 1rem",
-    marginBottom: "0.8rem",
-  },
-  mealNutritionTitle: {
-    fontSize: "0.82rem",
-    fontWeight: "600",
-    color: "#ff6b6b",
-    margin: "0 0 0.6rem 0",
+    backgroundColor: "#fff",
+    borderRadius: "16px",
+    padding: "1rem",
+    marginBottom: "1rem",
+    boxShadow: "0 2px 10px rgba(0,0,0,0.04)",
   },
   mealNutritionRow: {
     display: "flex",
-    gap: "0.4rem",
+    gap: "0.25rem",
+    justifyContent: "space-between",
   },
   mealNutritionPill: {
     flex: 1,
     textAlign: "center",
+    minWidth: 0, // Allow shrinking
   },
   mealNutritionLabel: {
-    fontSize: "0.62rem",
-    color: "#777",
-    margin: "0 0 2px 0",
+    fontSize: "0.58rem",
+    color: "#888",
+    margin: "0 0 4px 0",
     textTransform: "uppercase",
-    letterSpacing: "0.04em",
+    fontWeight: "600",
+    letterSpacing: "0.02em",
   },
   mealNutritionValue: {
-    fontSize: "0.95rem",
-    fontWeight: "700",
-    color: "#555",
+    fontSize: "0.85rem",
+    fontWeight: "800",
+    color: "#333",
     margin: 0,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
   },
   mealNutritionUnit: {
-    display: "inline-block",
+    fontSize: "0.6rem",
+    color: "#aaa",
+    fontWeight: "400",
     marginLeft: "1px",
     pointerEvents: "none"
+  },
+  separator: {
+    width: "1px",
+    backgroundColor: "#eee",
+    height: "20px",
+    alignSelf: "center",
   }
 };

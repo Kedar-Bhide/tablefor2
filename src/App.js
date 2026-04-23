@@ -148,7 +148,7 @@ function App() {
   return (
     <div style={{ paddingBottom: "70px" }}>
       {currentPage === "today" && <Today setCurrentPage={setCurrentPage} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />}
-      {currentPage === "logMeal" && <LogMeal setCurrentPage={setCurrentPage} partnerUid={globalUserData?.partnerUid} />}
+      {currentPage === "logMeal" && <LogMeal setCurrentPage={setCurrentPage} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />}
       {currentPage === "weekly" && <Weekly setCurrentPage={setCurrentPage} setGalleryDate={setGalleryDate} setGalleryFilter={setGalleryFilter} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />}
       {currentPage === "gallery" && <Gallery galleryDate={galleryDate} setGalleryDate={setGalleryDate} galleryFilter={galleryFilter} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />}
       {currentPage === "profile" && <Profile user={user} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />}
