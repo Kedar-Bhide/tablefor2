@@ -11,18 +11,31 @@ const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
 admin.initializeApp();
 const db = admin.firestore();
 
-async function sendNotification(token, title, body) {
+async function sendNotification(token, title, body, extraTokens = []) {
   if (!token) return;
-  const message = {
-    notification: { title, body },
-    token,
-  };
-  try {
-    await admin.messaging().send(message);
-    console.log("Notification sent:", title);
-  } catch (error) {
-    console.error("Error sending notification:", error);
-  }
+
+  // Deduplicate all tokens
+  const allTokens = [...new Set([token, ...extraTokens].filter(Boolean))];
+
+  // Send to all unique tokens
+  const promises = allTokens.map(async (t) => {
+    try {
+      await admin.messaging().send({
+        notification: { title, body },
+        token: t,
+      });
+      console.log("Notification sent to token:", t.slice(-10));
+    } catch (error) {
+      // Token expired/invalid — remove it
+      if (error.code === 'messaging/registration-token-not-registered') {
+        console.log("Removing invalid token:", t.slice(-10));
+      } else {
+        console.error("Error sending notification:", error);
+      }
+    }
+  });
+
+  await Promise.all(promises);
 }
 
 async function getUser(uid) {
@@ -85,24 +98,24 @@ async function generateInsightForUser(uid, year, month) {
       return;
     }
 
-  const nutrition = await aggregateMonthlyNutrition(uid, year, month);
-  if (!nutrition) {
-    console.log(`Not enough data for user ${uid} in ${year}-${month}`);
-    return;
-  }
+    const nutrition = await aggregateMonthlyNutrition(uid, year, month);
+    if (!nutrition) {
+      console.log(`Not enough data for user ${uid} in ${year}-${month}`);
+      return;
+    }
 
-  const monthName = new Date(year, month - 1, 1)
-    .toLocaleDateString("en-US", { month: "long" });
+    const monthName = new Date(year, month - 1, 1)
+      .toLocaleDateString("en-US", { month: "long" });
 
-  const profileContext = [
-    user.age ? `Age: ${user.age}` : null,
-    user.gender ? `Gender: ${user.gender}` : null,
-    user.height_cm ? `Height: ${user.height_cm}cm` : null,
-    user.weight_kg ? `Current weight: ${user.weight_kg}kg` : null,
-    user.target_weight_kg ? `Target weight: ${user.target_weight_kg}kg` : null,
-  ].filter(Boolean).join(", ");
+    const profileContext = [
+      user.age ? `Age: ${user.age}` : null,
+      user.gender ? `Gender: ${user.gender}` : null,
+      user.height_cm ? `Height: ${user.height_cm}cm` : null,
+      user.weight_kg ? `Current weight: ${user.weight_kg}kg` : null,
+      user.target_weight_kg ? `Target weight: ${user.target_weight_kg}kg` : null,
+    ].filter(Boolean).join(", ");
 
-  const nutritionContext = `
+    const nutritionContext = `
 Monthly averages for ${monthName}:
 - Calories: ${nutrition.avgCalories} kcal/day
 - Protein: ${nutrition.avgProtein}g/day
@@ -115,7 +128,7 @@ Monthly averages for ${monthName}:
 - Common meal descriptors: ${nutrition.topDescriptors.join(", ")}
   `.trim();
 
-  const prompt = `${profileContext ? `User profile: ${profileContext}.` : ""}
+    const prompt = `${profileContext ? `User profile: ${profileContext}.` : ""}
 
 ${nutritionContext}
 
@@ -127,62 +140,62 @@ Do not use bullet points. Write in flowing sentences only.
 Do not mention consulting a doctor or nutritionist.
 Keep it under 60 words total.`;
 
-  return new Promise((resolve, reject) => {
-    const body = JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 150,
-      system: "You are a warm, knowledgeable personal nutrition coach. You give concise, specific, encouraging insights based on real data. You never use bullet points. You always write in 2-3 flowing sentences. You never recommend consulting professionals. You keep responses under 60 words.",
-      messages: [{ role: "user", content: prompt }],
-    });
-
-    const options = {
-      hostname: "api.anthropic.com",
-      path: "/v1/messages",
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-    };
-
-    const req = https.request(options, (res) => {
-      let data = "";
-      res.on("data", (chunk) => { data += chunk; });
-      res.on("end", async () => {
-        try {
-          const parsed = JSON.parse(data);
-          const insight = parsed.content?.[0]?.text?.trim() || "";
-          if (!insight) { resolve(); return; }
-
-          // Save to Firestore
-          const insightKey = `${year}-${String(month).padStart(2, "0")}`;
-          await db.collection("users").doc(uid).collection("insights")
-            .doc(insightKey).set({
-              insight,
-              month: monthName,
-              year,
-              nutrition,
-              createdAt: new Date(),
-            });
-
-          console.log(`Insight saved for ${uid} - ${insightKey}`);
-          resolve();
-        } catch (e) {
-          console.error("Failed to parse insight:", e);
-          resolve();
-        }
+    return new Promise((resolve, reject) => {
+      const body = JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 150,
+        system: "You are a warm, knowledgeable personal nutrition coach. You give concise, specific, encouraging insights based on real data. You never use bullet points. You always write in 2-3 flowing sentences. You never recommend consulting professionals. You keep responses under 60 words.",
+        messages: [{ role: "user", content: prompt }],
       });
-    });
 
-    req.on("error", (e) => {
-      console.error("Anthropic API error:", e);
-      resolve();
-    });
+      const options = {
+        hostname: "api.anthropic.com",
+        path: "/v1/messages",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": process.env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+        },
+      };
 
-    req.write(body);
-    req.end();
-  });
+      const req = https.request(options, (res) => {
+        let data = "";
+        res.on("data", (chunk) => { data += chunk; });
+        res.on("end", async () => {
+          try {
+            const parsed = JSON.parse(data);
+            const insight = parsed.content?.[0]?.text?.trim() || "";
+            if (!insight) { resolve(); return; }
+
+            // Save to Firestore
+            const insightKey = `${year}-${String(month).padStart(2, "0")}`;
+            await db.collection("users").doc(uid).collection("insights")
+              .doc(insightKey).set({
+                insight,
+                month: monthName,
+                year,
+                nutrition,
+                createdAt: new Date(),
+              });
+
+            console.log(`Insight saved for ${uid} - ${insightKey}`);
+            resolve();
+          } catch (e) {
+            console.error("Failed to parse insight:", e);
+            resolve();
+          }
+        });
+      });
+
+      req.on("error", (e) => {
+        console.error("Anthropic API error:", e);
+        resolve();
+      });
+
+      req.write(body);
+      req.end();
+    });
   } catch (e) {
     console.error(`generateInsightForUser failed for ${uid}:`, e);
   }
@@ -386,11 +399,11 @@ exports.onMealCreated = onDocumentCreated(
   { document: "meals/{mealId}", secrets: [ANTHROPIC_API_KEY] },
   async (event) => {
 
-  const meal = event.data.data();
-  const uid = meal.uid;
-  const mealId = event.params.mealId;
+    const meal = event.data.data();
+    const uid = meal.uid;
+    const mealId = event.params.mealId;
 
-  // Skip task creation for meals completed from a task
+    // Skip task creation for meals completed from a task
     // (they have sourceMealId set)
     if (meal.sourceMealId) {
       // Still run nutrition analysis but skip task/notification
@@ -415,94 +428,94 @@ exports.onMealCreated = onDocumentCreated(
       return;
     }
 
-  const user = await getUser(uid);
+    const user = await getUser(uid);
 
-  // Run nutrition analysis and partner notification in parallel
-  await Promise.all([
-    // Nutrition analysis
-    (async () => {
-      try {
-        const primaryPhoto = (meal.photos?.length > 0)
-        ? meal.photos[0]
-        : meal.photoURL || null;
-
-      const nutrition = await analyzeMealNutrition(
-          meal.name,
-          primaryPhoto,
-          user || null,
-          meal.ingredients || meal.quantity || null,
-          meal.portionSize || null,
-          meal.cookType || (meal.isRestaurant ? "Restaurant" : "Homemade")
-        );
-        await db.collection("meals").doc(mealId).update({ nutrition });
-        console.log(`Nutrition saved for meal ${mealId}:`, nutrition);
-      } catch (e) {
-        console.error("Nutrition analysis failed:", e);
-      }
-    })(),
-
-    // Partner notification + task creation
-    (async () => {
-      if (!user || !user.partnerUid) return;
-      const partner = await getUser(user.partnerUid);
-      if (!partner) return;
-
-      // Create task if meal is shared
-      if (meal.isShared) {
+    // Run nutrition analysis and partner notification in parallel
+    await Promise.all([
+      // Nutrition analysis
+      (async () => {
         try {
-          // Check if task already exists for this meal
-          const existingTask = await db.collection("tasks")
-            .where("sourceMealId", "==", mealId)
-            .where("toUid", "==", user.partnerUid)
-            .get();
+          const primaryPhoto = (meal.photos?.length > 0)
+            ? meal.photos[0]
+            : meal.photoURL || null;
 
-          if (!existingTask.empty) {
-            console.log(`Task already exists for meal ${mealId}, skipping`);
-          } else {
-            await db.collection("tasks").add({
-            sourceMealId: mealId,
-            fromUid: uid,
-            toUid: user.partnerUid,
-            mealName: meal.name || "",
-            mealType: meal.type || "Meal",
-            photos: meal.photos?.length > 0 ? meal.photos : meal.photoURL ? [meal.photoURL] : [],
-            fromIngredients: meal.ingredients || meal.quantity || "",
-            fromPortionSize: meal.portionSize || "",
-            fromQuantity: "", // Legacy cleanup
-            localDate: meal.localDate || "",
-            localTime: meal.localTime || "",
-            isRestaurant: meal.isRestaurant || false,
-            completed: false,
-            dismissed: false,
-            completedAt: null,
-            createdAt: new Date(),
-          });
-          console.log(`Task created for shared meal ${mealId}`);
-            }
+          const nutrition = await analyzeMealNutrition(
+            meal.name,
+            primaryPhoto,
+            user || null,
+            meal.ingredients || meal.quantity || null,
+            meal.portionSize || null,
+            meal.cookType || (meal.isRestaurant ? "Restaurant" : "Homemade")
+          );
+          await db.collection("meals").doc(mealId).update({ nutrition });
+          console.log(`Nutrition saved for meal ${mealId}:`, nutrition);
         } catch (e) {
-          console.error("Failed to create task:", e);
+          console.error("Nutrition analysis failed:", e);
         }
-      }
+      })(),
 
-      // Send notification
-      if (partner.fcmToken && partner.notifSettings?.partnerMeal !== false) {
-        const firstName = user.name ? user.name.split(" ")[0] : "Your partner";
-        let body;
+      // Partner notification + task creation
+      (async () => {
+        if (!user || !user.partnerUid) return;
+        const partner = await getUser(user.partnerUid);
+        if (!partner) return;
+
+        // Create task if meal is shared
         if (meal.isShared) {
-          body = `${firstName} logged a shared ${meal.type.toLowerCase()} 🍽️ — add your quantities!`;
-        } else {
-          const messages = [
-            `${firstName} just logged ${meal.type.toLowerCase()} 🍽️`,
-            `${firstName} is eating! Don't fall behind 😄`,
-            `${firstName} logged a meal — your turn! 🍴`,
-          ];
-          body = messages[Math.floor(Math.random() * messages.length)];
+          try {
+            // Check if task already exists for this meal
+            const existingTask = await db.collection("tasks")
+              .where("sourceMealId", "==", mealId)
+              .where("toUid", "==", user.partnerUid)
+              .get();
+
+            if (!existingTask.empty) {
+              console.log(`Task already exists for meal ${mealId}, skipping`);
+            } else {
+              await db.collection("tasks").add({
+                sourceMealId: mealId,
+                fromUid: uid,
+                toUid: user.partnerUid,
+                mealName: meal.name || "",
+                mealType: meal.type || "Meal",
+                photos: meal.photos?.length > 0 ? meal.photos : meal.photoURL ? [meal.photoURL] : [],
+                fromIngredients: meal.ingredients || meal.quantity || "",
+                fromPortionSize: meal.portionSize || "",
+                fromQuantity: "", // Legacy cleanup
+                localDate: meal.localDate || "",
+                localTime: meal.localTime || "",
+                isRestaurant: meal.isRestaurant || false,
+                completed: false,
+                dismissed: false,
+                completedAt: null,
+                createdAt: new Date(),
+              });
+              console.log(`Task created for shared meal ${mealId}`);
+            }
+          } catch (e) {
+            console.error("Failed to create task:", e);
+          }
         }
-        await sendNotification(partner.fcmToken, "TableFor2", body);
-      }
-    })(),
-  ]);
-});
+
+        // Send notification
+        if (partner.fcmToken && partner.notifSettings?.partnerMeal !== false) {
+          const firstName = user.name ? user.name.split(" ")[0] : "Your partner";
+          let body;
+          if (meal.isShared) {
+            body = `${firstName} logged a shared ${meal.type.toLowerCase()} 🍽️ — add your quantities!`;
+          } else {
+            const messages = [
+              `${firstName} just logged ${meal.type.toLowerCase()} 🍽️`,
+              `${firstName} is eating! Don't fall behind 😄`,
+              `${firstName} logged a meal — your turn! 🍴`,
+            ];
+            body = messages[Math.floor(Math.random() * messages.length)];
+          }
+          await sendNotification(partner.fcmToken, "TableFor2", body, partner.fcmTokens || []);
+        }
+      })(),
+    ]);
+  });
 
 // Triggered when a user's earnedBadges array grows
 exports.onBadgeEarned = onDocumentUpdated("users/{uid}", async (event) => {
@@ -537,7 +550,7 @@ exports.onBadgeEarned = onDocumentUpdated("users/{uid}", async (event) => {
       `Achievement unlocked: ${badgeName}!`,
     ];
     const body = messages[Math.floor(Math.random() * messages.length)];
-    await sendNotification(token, "TableFor2 🏆", body);
+    await sendNotification(token, "TableFor2 🏆", body, partner.fcmTokens || []);
   }
 });
 
@@ -581,7 +594,7 @@ exports.onMealReacted = onDocumentUpdated("meals/{mealId}", async (event) => {
     body = `${actorName} commented on your ${after.type.toLowerCase()}: "${newCommentEntry[1]}" 💬`;
   }
 
-  await sendNotification(mealOwner.fcmToken, "TableFor2", body);
+  await sendNotification(mealOwner.fcmToken, "TableFor2", body, mealOwner.fcmTokens || []);
 });
 
 
@@ -634,10 +647,17 @@ exports.dinnerReminder = onSchedule("*/15 * * * *", async () => {
 async function sendMealReminder(mealType, reminderLocalHour, reminderLocalMinute, messages) {
   console.log(`Running ${mealType} reminder check at UTC: ${new Date().toISOString()}`);
   const usersSnap = await db.collection("users").get();
-  console.log(`Found ${usersSnap.docs.length} users`);
 
   const promises = usersSnap.docs.map(async (userDoc) => {
     const user = userDoc.data();
+
+    // Cooldown check — don't send same reminder type twice within 2 hours
+    const cooldownKey = `lastReminder_${mealType}`;
+    const lastSent = user[cooldownKey] ? new Date(user[cooldownKey]) : null;
+    if (lastSent && (new Date() - lastSent) < 2 * 60 * 60 * 1000) {
+      console.log(`Skipping ${user.name} — ${mealType} reminder sent recently`);
+      return;
+    }
     console.log(
       `Checking user: ${user.name}, fcmToken: ${!!user.fcmToken}, timezone: ${user.timezone || "n/a"}, utcOffsetMinutes: ${user.utcOffsetMinutes ?? "n/a"}`
     );
@@ -678,7 +698,11 @@ async function sendMealReminder(mealType, reminderLocalHour, reminderLocalMinute
 
     const body = messages[Math.floor(Math.random() * messages.length)];
     console.log(`Sending ${mealType} reminder to ${user.name}`);
-    await sendNotification(user.fcmToken, "TableFor2 ⏰", body);
+    await sendNotification(user.fcmToken, "TableFor2 ⏰", body, user.fcmTokens || []);
+    // Save cooldown timestamp
+    await db.collection("users").doc(userDoc.id).update({
+      [`lastReminder_${mealType}`]: new Date().toISOString(),
+    });
 
     // Save that we sent this reminder
     await db.collection("users").doc(userDoc.id).update({
@@ -996,7 +1020,8 @@ exports.sendPartnerRequestNotification = onCall(async (request) => {
     await sendNotification(
       partner.fcmToken,
       "TableFor2 💑",
-      `${fromName} wants to link accounts with you — check your Profile!`
+      `${fromName} wants to link accounts with you — check your Profile!`,
+      partner.fcmTokens || []
     );
   } catch (e) {
     console.error("sendPartnerRequestNotification error:", e);
@@ -1015,7 +1040,8 @@ exports.sendPartnerAcceptedNotification = onCall(async (request) => {
     await sendNotification(
       partner.fcmToken,
       "TableFor2 🎉",
-      `${fromName} accepted your partner request! You're now linked.`
+      `${fromName} accepted your partner request! You're now linked.`,
+      partner.fcmTokens || []
     );
   } catch (e) {
     console.error("sendPartnerAcceptedNotification error:", e);
