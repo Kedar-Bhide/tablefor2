@@ -1,12 +1,9 @@
 import { messaging, getToken, VAPID_KEY } from "../firebase";
-import { doc, updateDoc, getDoc } from "firebase/firestore";
+import { doc, updateDoc, getDoc, arrayUnion } from "firebase/firestore";
 import { db } from "../firebase";
 
 export async function requestNotificationPermission(uid) {
   try {
-    if (!("Notification" in window) || !messaging) {
-      return null;
-    }
     const permission = await Notification.requestPermission();
     if (permission !== "granted") {
       console.log("Notification permission denied");
@@ -15,23 +12,28 @@ export async function requestNotificationPermission(uid) {
 
     const token = await getToken(messaging, { vapidKey: VAPID_KEY });
     if (token) {
-      const now = new Date();
-      const utcOffsetMinutes = -now.getTimezoneOffset();
-      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
-      // Get existing token — if same, don't update (prevents duplicate registrations)
+      const utcOffset = -new Date().getTimezoneOffset() / 60;
+
+      // Get existing tokens
       const userSnap = await getDoc(doc(db, "users", uid));
       const existingToken = userSnap.data()?.fcmToken;
-      if (token !== existingToken) {
+      const existingTokens = userSnap.data()?.fcmTokens || [];
+
+      // Only update if token is new
+      if (token !== existingToken && !existingTokens.includes(token)) {
         await updateDoc(doc(db, "users", uid), {
-          fcmToken: token,
+          fcmToken: token, // Keep primary token for backwards compat
+          fcmTokens: arrayUnion(token), // Store all tokens
           notificationsEnabled: true,
-          timezone,
-          utcOffsetMinutes,
-          // Keep legacy field for backward compatibility.
-          utcOffset: utcOffsetMinutes / 60,
+          utcOffset: utcOffset,
+        });
+        console.log("New FCM token saved:", token);
+      } else {
+        // Still update utcOffset even if token unchanged
+        await updateDoc(doc(db, "users", uid), {
+          utcOffset: utcOffset,
         });
       }
-      console.log("FCM token saved:", token);
       return token;
     }
   } catch (error) {
