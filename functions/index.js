@@ -408,6 +408,12 @@ exports.onMealCreated = onDocumentCreated(
     if (meal.sourceMealId) {
       // Still run nutrition analysis but skip task/notification
       try {
+        // Check if nutrition is already provided (e.g. from a frequent meal)
+        if (meal.nutrition && meal.nutrition.calories > 0) {
+          console.log(`Meal ${mealId} already has nutrition, skipping analysis.`);
+          return;
+        }
+
         const primaryPhoto = (meal.photos?.length > 0)
           ? meal.photos[0]
           : meal.photoURL || null;
@@ -435,6 +441,12 @@ exports.onMealCreated = onDocumentCreated(
       // Nutrition analysis
       (async () => {
         try {
+          // Check if nutrition is already provided (e.g. from a frequent meal)
+          if (meal.nutrition && meal.nutrition.calories > 0) {
+            console.log(`Meal ${mealId} already has nutrition, skipping analysis.`);
+            return;
+          }
+
           const primaryPhoto = (meal.photos?.length > 0)
             ? meal.photos[0]
             : meal.photoURL || null;
