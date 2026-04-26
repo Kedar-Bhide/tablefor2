@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { auth, db, storage } from "../firebase";
-import { collection, addDoc, updateDoc, doc, query, where, getDocs, limit, orderBy } from "firebase/firestore";
+import { collection, addDoc, updateDoc, doc, query, where, getDocs, limit } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { compressImage } from "../utils/compressImage";
 import { formatLocalDateKey, formatLocalTimeHHMM, getCurrentTimezone } from "../utils/dateTime";
@@ -71,14 +71,14 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
           collection(db, "frequentMeals"),
           where("uid", "==", user.uid),
           where("mealType", "in", types),
-          orderBy("lastUsed", "desc"),
-          limit(20)
+          limit(50)
         );
         const snap = await getDocs(q);
         const templates = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setFrequentMeals(templates);
       } catch (e) {
         console.error("Error fetching frequent meals:", e);
+        // alert("Fetch error: " + e.message); // Uncomment for debugging if needed
       }
     };
     fetchTemplates();
@@ -193,6 +193,7 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
         setFrequentMeals(prev => [{ id: docRef.id, ...templateData }, ...prev]);
       } catch (e) {
         console.error("Error saving frequent meal:", e);
+        alert("Failed to save favorite: " + e.message + ". Check if your Firestore rules allow access to 'frequentMeals' collection.");
       }
     }
 
