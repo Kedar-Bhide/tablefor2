@@ -102,6 +102,14 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
     ingredients === lastSelectedTemplate.ingredients && 
     portionSize === lastSelectedTemplate.portionSize;
 
+  // If user edits a pre-filled meal, clear the saved nutrition so it gets re-analyzed
+  useEffect(() => {
+    if (lastSelectedTemplate && !isMatchWithTemplate) {
+      setPreviewNutrition(null);
+      setLastSelectedTemplate(null);
+    }
+  }, [mealName, ingredients, portionSize, isMatchWithTemplate, lastSelectedTemplate]);
+
   const showSaveOption = !isMatchWithTemplate && mealName.trim().length > 0;
 
   const handleSelectSuggestion = (template) => {
