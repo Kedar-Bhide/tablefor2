@@ -427,22 +427,22 @@ exports.onMealCreated = onDocumentCreated(
         );
         if (nutrition && nutrition.calories > 0) {
           await db.collection("meals").doc(mealId).update({ nutrition });
-          
-          // Save to Favorites if flagged
-          if (meal.saveToFrequent) {
-            try {
-              await db.collection("frequentMeals").add({
-                uid: meal.uid,
-                mealType: meal.type,
-                name: meal.name.trim(),
-                ingredients: (meal.ingredients || "").trim(),
-                portionSize: (meal.portionSize || "").trim(),
-                nutrition: nutrition,
-                lastUsed: new Date(),
-              });
-            } catch (favError) {
-              console.error("Failed to save favorite for task meal:", favError);
-            }
+        }
+        
+        // Save to Favorites if flagged
+        if (meal.saveToFrequent) {
+          try {
+            await db.collection("frequentMeals").add({
+              uid: meal.uid,
+              mealType: meal.type,
+              name: meal.name.trim(),
+              ingredients: (meal.ingredients || "").trim(),
+              portionSize: (meal.portionSize || "").trim(),
+              nutrition: nutrition || meal.nutrition || null,
+              lastUsed: new Date(),
+            });
+          } catch (favError) {
+            console.error("Failed to save favorite for task meal:", favError);
           }
         }
       } catch (e) {
@@ -458,26 +458,30 @@ exports.onMealCreated = onDocumentCreated(
       // Nutrition analysis
       (async () => {
         try {
-          // Check if nutrition is already provided (e.g. from a frequent meal)
-          if (meal.nutrition && meal.nutrition.calories > 0) {
+          let finalNutrition = meal.nutrition || null;
+
+          if (!finalNutrition || !finalNutrition.calories) {
+            const primaryPhoto = (meal.photos?.length > 0)
+              ? meal.photos[0]
+              : meal.photoURL || null;
+
+            const nutrition = await analyzeMealNutrition(
+              meal.name,
+              primaryPhoto,
+              user || null,
+              meal.ingredients || meal.quantity || null,
+              meal.portionSize || null,
+              meal.cookType || (meal.isRestaurant ? "Restaurant" : "Homemade")
+            );
+            
+            if (nutrition && nutrition.calories > 0) {
+              finalNutrition = nutrition;
+              await db.collection("meals").doc(mealId).update({ nutrition: finalNutrition });
+              console.log(`Nutrition saved for meal ${mealId}:`, finalNutrition);
+            }
+          } else {
             console.log(`Meal ${mealId} already has nutrition, skipping analysis.`);
-            return;
           }
-
-          const primaryPhoto = (meal.photos?.length > 0)
-            ? meal.photos[0]
-            : meal.photoURL || null;
-
-          const nutrition = await analyzeMealNutrition(
-            meal.name,
-            primaryPhoto,
-            user || null,
-            meal.ingredients || meal.quantity || null,
-            meal.portionSize || null,
-            meal.cookType || (meal.isRestaurant ? "Restaurant" : "Homemade")
-          );
-          await db.collection("meals").doc(mealId).update({ nutrition });
-          console.log(`Nutrition saved for meal ${mealId}:`, nutrition);
 
           // Save to Favorites if flagged
           if (meal.saveToFrequent) {
@@ -488,7 +492,7 @@ exports.onMealCreated = onDocumentCreated(
                 name: meal.name.trim(),
                 ingredients: (meal.ingredients || "").trim(),
                 portionSize: (meal.portionSize || "").trim(),
-                nutrition: nutrition,
+                nutrition: finalNutrition,
                 lastUsed: new Date(),
               });
               console.log(`Favorite saved for meal ${mealId}`);
