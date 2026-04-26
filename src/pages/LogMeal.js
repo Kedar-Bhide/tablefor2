@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { auth, db, storage } from "../firebase";
-import { collection, addDoc, updateDoc, doc } from "firebase/firestore";
+import { collection, addDoc, updateDoc, doc, query, where, getDocs, limit, orderBy } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { compressImage } from "../utils/compressImage";
 import { formatLocalDateKey, formatLocalTimeHHMM, getCurrentTimezone } from "../utils/dateTime";
@@ -35,10 +35,85 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [portionSize, setPortionSize] = useState("");
   const [cookType, setCookType] = useState("Homemade"); // Homemade, Restaurant, Packaged
   const [previewNutrition, setPreviewNutrition] = useState(null);
+  
+  // Frequent Meals States
+  const [frequentMeals, setFrequentMeals] = useState([]);
+  const [filteredSuggestions, setFilteredSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [saveAsFrequent, setSaveAsFrequent] = useState(false);
+  const [lastSelectedTemplate, setLastSelectedTemplate] = useState(null);
+
+  // Close suggestions on click outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showSuggestions && !event.target.closest(".details-card")) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showSuggestions]);
 
   useEffect(() => {
     setMealType(getMealTypeByTime());
   }, []);
+
+  // Fetch Frequent Meals
+  useEffect(() => {
+    if (!user) return;
+    const fetchTemplates = async () => {
+      const types = (mealType === "Lunch" || mealType === "Dinner") 
+        ? ["Lunch", "Dinner"] 
+        : [mealType];
+      
+      try {
+        const q = query(
+          collection(db, "frequentMeals"),
+          where("uid", "==", user.uid),
+          where("mealType", "in", types),
+          orderBy("lastUsed", "desc"),
+          limit(20)
+        );
+        const snap = await getDocs(q);
+        const templates = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setFrequentMeals(templates);
+      } catch (e) {
+        console.error("Error fetching frequent meals:", e);
+      }
+    };
+    fetchTemplates();
+  }, [user, mealType]);
+
+  // Handle Autocomplete Filtering
+  useEffect(() => {
+    if (!mealName.trim()) {
+      setFilteredSuggestions([]);
+      return;
+    }
+    const filtered = frequentMeals.filter(m => 
+      m.name.toLowerCase().includes(mealName.toLowerCase())
+    );
+    setFilteredSuggestions(filtered);
+  }, [mealName, frequentMeals]);
+
+  // Logic to show/hide "Save as Frequent" option
+  const isMatchWithTemplate = lastSelectedTemplate && 
+    mealName === lastSelectedTemplate.name && 
+    ingredients === lastSelectedTemplate.ingredients && 
+    portionSize === lastSelectedTemplate.portionSize;
+
+  const showSaveOption = !isMatchWithTemplate && mealName.trim().length > 0;
+
+  const handleSelectSuggestion = (template) => {
+    setMealName(template.name);
+    setIngredients(template.ingredients || "");
+    setPortionSize(template.portionSize || "");
+    if (template.nutrition) {
+      setPreviewNutrition(template.nutrition);
+    }
+    setLastSelectedTemplate(template);
+    setShowSuggestions(false);
+  };
 
   const handlePhoto = (e) => {
     const file = e.target.files[0];
@@ -96,7 +171,30 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
       utcOffsetMinutesAtLog,
       ingredients: ingredients.trim(),
       portionSize: portionSize.trim(),
+      nutrition: previewNutrition || null,
     });
+
+    // Save as Frequent if toggled
+    if (saveAsFrequent) {
+      try {
+        const templateData = {
+          uid: user.uid,
+          mealType: mealType,
+          name: mealName.trim(),
+          ingredients: ingredients.trim(),
+          portionSize: portionSize.trim(),
+          nutrition: previewNutrition || null,
+          lastUsed: new Date(),
+        };
+        const docRef = await addDoc(collection(db, "frequentMeals"), templateData);
+        console.log("Frequent meal saved successfully with ID:", docRef.id);
+        
+        // Update local state so it appears immediately next time
+        setFrequentMeals(prev => [{ id: docRef.id, ...templateData }, ...prev]);
+      } catch (e) {
+        console.error("Error saving frequent meal:", e);
+      }
+    }
 
     // Also update user's current timezone/offset to ensure reminders are accurate
     try {
@@ -183,16 +281,38 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
       </div>
 
       {/* Meal Details Card */}
-      <div style={styles.detailsCard}>
-        <div style={styles.inputRow}>
-          <span style={styles.inputIcon}>🍽️</span>
-          <input
-            type="text"
-            placeholder="Name your meal..."
-            value={mealName}
-            onChange={(e) => setMealName(e.target.value)}
-            style={styles.nakedInput}
-          />
+      <div style={styles.detailsCard} className="details-card">
+        <div style={{ position: "relative" }}>
+          <div style={styles.inputRow}>
+            <span style={styles.inputIcon}>🍽️</span>
+            <input
+              type="text"
+              placeholder="Name your meal..."
+              value={mealName}
+              onChange={(e) => {
+                setMealName(e.target.value);
+                setShowSuggestions(true);
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              style={styles.nakedInput}
+            />
+          </div>
+          {showSuggestions && filteredSuggestions.length > 0 && (
+            <div style={styles.suggestionsDropdown}>
+              {filteredSuggestions.map((item) => (
+                <div 
+                  key={item.id} 
+                  style={styles.suggestionItem}
+                  onClick={() => handleSelectSuggestion(item)}
+                >
+                  <div style={styles.suggestionName}>{item.name}</div>
+                  <div style={styles.suggestionMeta}>
+                    {item.ingredients ? `${item.ingredients.slice(0, 30)}...` : "No ingredients listed"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div style={styles.inputDivider} />
         <div style={styles.inputRow}>
@@ -216,6 +336,37 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
             style={styles.nakedInput}
           />
         </div>
+
+        {showSaveOption && (
+          <>
+            <div style={styles.inputDivider} />
+            <div 
+              style={styles.saveFrequentRow}
+              onClick={() => setSaveAsFrequent(!saveAsFrequent)}
+            >
+              <div style={{ display: "flex", alignItems: "center" }}>
+                <span style={{ 
+                  ...styles.heartIcon, 
+                  color: saveAsFrequent ? "#ff6b6b" : "#ccc" 
+                }}>
+                  {saveAsFrequent ? "❤️" : "🤍"}
+                </span>
+                <span style={styles.saveFrequentLabel}>
+                  {saveAsFrequent ? "Saved to favorites" : "Save as frequent meal"}
+                </span>
+              </div>
+              <div style={{ 
+                ...styles.miniToggle,
+                backgroundColor: saveAsFrequent ? "#ff6b6b" : "#eee"
+              }}>
+                <div style={{ 
+                  ...styles.miniToggleThumb,
+                  transform: saveAsFrequent ? "translateX(10px)" : "translateX(0px)"
+                }} />
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Nutrition Section */}
@@ -674,6 +825,71 @@ const styles = {
     color: "#333",
     backgroundColor: "#fafafa",
     outline: "none",
+  },
+  suggestionsDropdown: {
+    position: "absolute",
+    top: "100%",
+    left: 0,
+    right: 0,
+    backgroundColor: "white",
+    borderRadius: "16px",
+    boxShadow: "0 10px 25px rgba(0,0,0,0.1)",
+    zIndex: 100,
+    marginTop: "4px",
+    maxHeight: "200px",
+    overflowY: "auto",
+    padding: "0.5rem",
+    border: "1px solid #f0f0f0",
+  },
+  suggestionItem: {
+    padding: "0.8rem 1rem",
+    borderRadius: "12px",
+    cursor: "pointer",
+    transition: "background 0.2s ease",
+  },
+  suggestionName: {
+    fontSize: "0.95rem",
+    fontWeight: "600",
+    color: "#333",
+  },
+  suggestionMeta: {
+    fontSize: "0.75rem",
+    color: "#aaa",
+    marginTop: "2px",
+  },
+  saveFrequentRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "1rem 1.2rem",
+    backgroundColor: "#fffafa",
+    cursor: "pointer",
+    borderBottomLeftRadius: "24px",
+    borderBottomRightRadius: "24px",
+  },
+  saveFrequentLabel: {
+    fontSize: "0.85rem",
+    color: "#555",
+    fontWeight: "600",
+    marginLeft: "8px",
+  },
+  heartIcon: {
+    fontSize: "1.1rem",
+    transition: "all 0.2s ease",
+  },
+  miniToggle: {
+    width: "24px",
+    height: "14px",
+    borderRadius: "10px",
+    padding: "2px",
+    transition: "background 0.3s ease",
+  },
+  miniToggleThumb: {
+    width: "10px",
+    height: "10px",
+    backgroundColor: "white",
+    borderRadius: "50%",
+    transition: "transform 0.3s ease",
   },
 };
 
