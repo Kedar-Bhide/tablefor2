@@ -172,29 +172,19 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
       ingredients: ingredients.trim(),
       portionSize: portionSize.trim(),
       nutrition: previewNutrition || null,
+      saveToFrequent: saveAsFrequent,
     });
 
-    // Save as Frequent if toggled
+    // Update local state so it appears immediately next time
     if (saveAsFrequent) {
-      try {
-        const templateData = {
-          uid: user.uid,
-          mealType: mealType,
-          name: mealName.trim(),
-          ingredients: ingredients.trim(),
-          portionSize: portionSize.trim(),
-          nutrition: previewNutrition || null,
-          lastUsed: new Date(),
-        };
-        const docRef = await addDoc(collection(db, "frequentMeals"), templateData);
-        console.log("Frequent meal saved successfully with ID:", docRef.id);
-        
-        // Update local state so it appears immediately next time
-        setFrequentMeals(prev => [{ id: docRef.id, ...templateData }, ...prev]);
-      } catch (e) {
-        console.error("Error saving frequent meal:", e);
-        alert("Failed to save favorite: " + e.message + ". Check if your Firestore rules allow access to 'frequentMeals' collection.");
-      }
+      setFrequentMeals(prev => [{ 
+        id: "temp-" + Date.now(), 
+        name: mealName.trim(), 
+        ingredients: ingredients.trim(), 
+        portionSize: portionSize.trim(),
+        nutrition: previewNutrition || null,
+        mealType: mealType 
+      }, ...prev]);
     }
 
     // Also update user's current timezone/offset to ensure reminders are accurate

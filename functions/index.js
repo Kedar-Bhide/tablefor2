@@ -427,6 +427,23 @@ exports.onMealCreated = onDocumentCreated(
         );
         if (nutrition && nutrition.calories > 0) {
           await db.collection("meals").doc(mealId).update({ nutrition });
+          
+          // Save to Favorites if flagged
+          if (meal.saveToFrequent) {
+            try {
+              await db.collection("frequentMeals").add({
+                uid: meal.uid,
+                mealType: meal.type,
+                name: meal.name.trim(),
+                ingredients: (meal.ingredients || "").trim(),
+                portionSize: (meal.portionSize || "").trim(),
+                nutrition: nutrition,
+                lastUsed: new Date(),
+              });
+            } catch (favError) {
+              console.error("Failed to save favorite for task meal:", favError);
+            }
+          }
         }
       } catch (e) {
         console.error("Nutrition analysis failed for task meal:", e);
@@ -461,6 +478,24 @@ exports.onMealCreated = onDocumentCreated(
           );
           await db.collection("meals").doc(mealId).update({ nutrition });
           console.log(`Nutrition saved for meal ${mealId}:`, nutrition);
+
+          // Save to Favorites if flagged
+          if (meal.saveToFrequent) {
+            try {
+              await db.collection("frequentMeals").add({
+                uid: meal.uid,
+                mealType: meal.type,
+                name: meal.name.trim(),
+                ingredients: (meal.ingredients || "").trim(),
+                portionSize: (meal.portionSize || "").trim(),
+                nutrition: nutrition,
+                lastUsed: new Date(),
+              });
+              console.log(`Favorite saved for meal ${mealId}`);
+            } catch (favError) {
+              console.error("Failed to save favorite from backend:", favError);
+            }
+          }
         } catch (e) {
           console.error("Nutrition analysis failed:", e);
         }
