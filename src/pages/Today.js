@@ -36,6 +36,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [nutrition, setNutrition] = useState({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 });
   const [editIngredients, setEditIngredients] = useState("");
   const [editPortionSize, setEditPortionSize] = useState("");
+  const [editCookType, setEditCookType] = useState("Homemade"); // Homemade, Restaurant, Packaged
   const [reanalyzing, setReanalyzing] = useState(false);
 
   const [myPhoto, setMyPhoto] = useState(user.photoURL);
@@ -281,6 +282,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       const ingredientsChanged = editIngredients.trim() !== (selectedMeal.ingredients || selectedMeal.quantity || "");
       const portionSizeChanged = editPortionSize.trim() !== (selectedMeal.portionSize || "");
       const nameChanged = editName.trim() !== selectedMeal.name;
+      const currentCookType = selectedMeal.isRestaurant ? "Restaurant" : (selectedMeal.isPackaged ? "Packaged" : "Homemade");
+      const cookTypeChanged = editCookType !== currentCookType;
 
       const updateData = {
         name: editName.trim() || selectedMeal.name,
@@ -289,13 +292,15 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         photos: finalPhotos,
         ingredients: editIngredients.trim(),
         portionSize: editPortionSize.trim(),
+        isRestaurant: editCookType === "Restaurant",
+        isPackaged: editCookType === "Packaged",
         quantity: "", // Clear old quantity field
       };
 
       await updateDoc(mealRef, updateData);
 
-      // Only reanalyze if name, ingredients or portion size changed
-      if (nameChanged || ingredientsChanged || portionSizeChanged) {
+      // Only reanalyze if name, ingredients, portion size or cook type changed
+      if (nameChanged || ingredientsChanged || portionSizeChanged || cookTypeChanged) {
         setSaving(false);
         setReanalyzing(true);
         try {
@@ -538,6 +543,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
               setEditName(meal.name);
               setEditIngredients(meal.ingredients || meal.quantity || "");
               setEditPortionSize(meal.portionSize || "");
+              setEditCookType(meal.isRestaurant ? "Restaurant" : (meal.isPackaged ? "Packaged" : "Homemade"));
               setEditMode(false);
               const existingPhotos = meal.photos?.length > 0
                 ? meal.photos
@@ -762,6 +768,22 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                         color: editType === type ? "white" : "#aaa",
                       }}
                       onClick={() => setEditType(type)}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
+
+                <div style={styles.typeRow}>
+                  {["Homemade", "Restaurant", "Packaged"].map((type) => (
+                    <button
+                      key={type}
+                      style={{
+                        ...styles.typeButton,
+                        backgroundColor: editCookType === type ? "#ff6b6b" : "white",
+                        color: editCookType === type ? "white" : "#aaa",
+                      }}
+                      onClick={() => setEditCookType(type)}
                     >
                       {type}
                     </button>
