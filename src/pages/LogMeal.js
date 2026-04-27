@@ -86,13 +86,18 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
 
   // Handle Autocomplete Filtering
   useEffect(() => {
+    let filtered = [];
     if (!mealName.trim()) {
-      setFilteredSuggestions([]);
-      return;
+      // If empty, show all saved meals
+      filtered = [...frequentMeals];
+    } else {
+      // Otherwise filter by what's typed
+      filtered = frequentMeals.filter(m => 
+        m.name.toLowerCase().includes(mealName.toLowerCase())
+      );
     }
-    const filtered = frequentMeals.filter(m => 
-      m.name.toLowerCase().includes(mealName.toLowerCase())
-    );
+    // Always sort alphabetically by name
+    filtered.sort((a, b) => a.name.localeCompare(b.name));
     setFilteredSuggestions(filtered);
   }, [mealName, frequentMeals]);
 
@@ -831,30 +836,30 @@ const styles = {
     left: 0,
     right: 0,
     backgroundColor: "white",
-    borderRadius: "16px",
-    boxShadow: "0 10px 25px rgba(0,0,0,0.1)",
+    borderRadius: "14px",
+    boxShadow: "0 10px 30px rgba(0,0,0,0.12)",
     zIndex: 100,
-    marginTop: "4px",
-    maxHeight: "200px",
+    marginTop: "6px",
+    maxHeight: "240px",
     overflowY: "auto",
-    padding: "0.5rem",
+    padding: "0",
     border: "1px solid #f0f0f0",
   },
   suggestionItem: {
-    padding: "0.8rem 1rem",
-    borderRadius: "12px",
+    padding: "0.7rem 1.1rem",
     cursor: "pointer",
     transition: "background 0.2s ease",
+    borderBottom: "1px solid #f8f8f8",
   },
   suggestionName: {
-    fontSize: "0.95rem",
+    fontSize: "0.88rem",
     fontWeight: "600",
-    color: "#333",
+    color: "#444",
   },
   suggestionMeta: {
-    fontSize: "0.75rem",
-    color: "#aaa",
-    marginTop: "2px",
+    fontSize: "0.7rem",
+    color: "#bbb",
+    marginTop: "1px",
   },
   saveFrequentRow: {
     display: "flex",
