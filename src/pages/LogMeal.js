@@ -35,7 +35,7 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [portionSize, setPortionSize] = useState("");
   const [cookType, setCookType] = useState("Homemade"); // Homemade, Restaurant, Packaged
   const [previewNutrition, setPreviewNutrition] = useState(null);
-  
+
   // Frequent Meals States
   const [frequentMeals, setFrequentMeals] = useState([]);
   const [filteredSuggestions, setFilteredSuggestions] = useState([]);
@@ -62,10 +62,10 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
   useEffect(() => {
     if (!user) return;
     const fetchTemplates = async () => {
-      const types = (mealType === "Lunch" || mealType === "Dinner") 
-        ? ["Lunch", "Dinner"] 
+      const types = (mealType === "Lunch" || mealType === "Dinner")
+        ? ["Lunch", "Dinner"]
         : [mealType];
-      
+
       try {
         const q = query(
           collection(db, "frequentMeals"),
@@ -92,7 +92,7 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
       filtered = [...frequentMeals];
     } else {
       // Otherwise filter by what's typed
-      filtered = frequentMeals.filter(m => 
+      filtered = frequentMeals.filter(m =>
         m.name.toLowerCase().includes(mealName.toLowerCase())
       );
     }
@@ -102,10 +102,20 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
   }, [mealName, frequentMeals]);
 
   // Logic to show/hide "Save as Frequent" option
-  const isMatchWithTemplate = lastSelectedTemplate && 
-    mealName === lastSelectedTemplate.name && 
-    ingredients === lastSelectedTemplate.ingredients && 
+  const isMatchWithTemplate = lastSelectedTemplate &&
+    mealName === lastSelectedTemplate.name &&
+    ingredients === lastSelectedTemplate.ingredients &&
     portionSize === lastSelectedTemplate.portionSize;
+
+  // If user clears the meal name box entirely, reset all related fields
+  useEffect(() => {
+    if (!mealName.trim()) {
+      setIngredients("");
+      setPortionSize("");
+      setPreviewNutrition(null);
+      setLastSelectedTemplate(null);
+    }
+  }, [mealName]);
 
   // If user edits a pre-filled meal, clear the saved nutrition so it gets re-analyzed
   useEffect(() => {
@@ -190,13 +200,13 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
 
     // Update local state so it appears immediately next time
     if (saveAsFrequent) {
-      setFrequentMeals(prev => [{ 
-        id: "temp-" + Date.now(), 
-        name: mealName.trim(), 
-        ingredients: ingredients.trim(), 
+      setFrequentMeals(prev => [{
+        id: "temp-" + Date.now(),
+        name: mealName.trim(),
+        ingredients: ingredients.trim(),
         portionSize: portionSize.trim(),
         nutrition: previewNutrition || null,
-        mealType: mealType 
+        mealType: mealType
       }, ...prev]);
     }
 
@@ -304,8 +314,8 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
           {showSuggestions && filteredSuggestions.length > 0 && (
             <div style={styles.suggestionsDropdown}>
               {filteredSuggestions.map((item) => (
-                <div 
-                  key={item.id} 
+                <div
+                  key={item.id}
                   style={styles.suggestionItem}
                   onClick={() => handleSelectSuggestion(item)}
                 >
@@ -344,14 +354,14 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
         {showSaveOption && (
           <>
             <div style={styles.inputDivider} />
-            <div 
+            <div
               style={styles.saveFrequentRow}
               onClick={() => setSaveAsFrequent(!saveAsFrequent)}
             >
               <div style={{ display: "flex", alignItems: "center" }}>
-                <span style={{ 
-                  ...styles.heartIcon, 
-                  color: saveAsFrequent ? "#ff6b6b" : "#ccc" 
+                <span style={{
+                  ...styles.heartIcon,
+                  color: saveAsFrequent ? "#ff6b6b" : "#ccc"
                 }}>
                   {saveAsFrequent ? "❤️" : "🤍"}
                 </span>
@@ -359,11 +369,11 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
                   {saveAsFrequent ? "Saved to favorites" : "Save as frequent meal"}
                 </span>
               </div>
-              <div style={{ 
+              <div style={{
                 ...styles.miniToggle,
                 backgroundColor: saveAsFrequent ? "#ff6b6b" : "#eee"
               }}>
-                <div style={{ 
+                <div style={{
                   ...styles.miniToggleThumb,
                   transform: saveAsFrequent ? "translateX(10px)" : "translateX(0px)"
                 }} />
