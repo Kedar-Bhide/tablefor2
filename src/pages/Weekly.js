@@ -664,10 +664,28 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                 {/* Calorie headline */}
                 {getDayNutritionTotals(calendarDayMeals).calories > 0 && (
                   <div style={styles.dayCalorieCard}>
-                    <p style={styles.dayCalorieNumber}>
-                      {getDayNutritionTotals(calendarDayMeals).calories}
-                    </p>
-                    <p style={styles.dayCalorieLabel}>kcal total</p>
+                    <div style={{ textAlign: "center" }}>
+                      <p style={styles.dayCalorieNumber}>
+                        {getDayNutritionTotals(calendarDayMeals).calories}
+                        {globalUserData?.nutrientGoals && (
+                          <span style={styles.dayPopupCalorieTarget}> / {globalUserData.nutrientGoals.calories}</span>
+                        )}
+                      </p>
+                      <p style={styles.dayCalorieLabel}>kcal consumed</p>
+                    </div>
+                    {globalUserData?.nutrientGoals && (
+                      <div style={{ textAlign: "right" }}>
+                        <p style={{
+                          ...styles.dayPopupCalorieRemaining,
+                          color: (globalUserData.nutrientGoals.calories - getDayNutritionTotals(calendarDayMeals).calories) >= 0 ? "#7ec8a4" : "#ff6b6b"
+                        }}>
+                          {Math.abs(globalUserData.nutrientGoals.calories - getDayNutritionTotals(calendarDayMeals).calories)}
+                        </p>
+                        <p style={styles.dayCalorieLabel}>
+                          {(globalUserData.nutrientGoals.calories - getDayNutritionTotals(calendarDayMeals).calories) >= 0 ? "remaining" : "over"}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -682,13 +700,26 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                         { key: "fiber_g", label: "Fiber", color: "#a78bfa" },
                       ].map((macro) => {
                         const totals = getDayNutritionTotals(calendarDayMeals);
-                        const value = totals[macro.key] || 0;
+                        const eaten = totals[macro.key] || 0;
+                        const goal = globalUserData?.nutrientGoals?.[macro.key];
+                        
                         return (
                           <div key={macro.key} style={styles.macroGridItem}>
-                            <p style={styles.macroGridLabel}>{macro.label}</p>
-                            <p style={{ ...styles.macroGridValue, color: macro.color }}>
-                              {value}g
-                            </p>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                              <p style={styles.macroGridLabel}>{macro.label}</p>
+                              <p style={{ ...styles.macroGridValue, color: macro.color }}>
+                                {eaten}{goal ? `/${goal}` : ""}g
+                              </p>
+                            </div>
+                            {goal && (
+                              <div style={styles.dayPopupMacroBarTrack}>
+                                <div style={{
+                                  ...styles.dayPopupMacroBarFill,
+                                  backgroundColor: macro.color,
+                                  width: `${goal > 0 ? Math.min((eaten / goal) * 100, 100) : 0}%`
+                                }} />
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -1518,6 +1549,28 @@ const styles = {
     color: "#666",
     textAlign: "center",
     margin: "0 0 1rem 0",
+  },
+  dayPopupCalorieTarget: {
+    fontSize: "0.9rem",
+    color: "#ccc",
+    fontWeight: "400",
+  },
+  dayPopupCalorieRemaining: {
+    fontSize: "1.2rem",
+    fontWeight: "700",
+    margin: 0,
+  },
+  dayPopupMacroBarTrack: {
+    height: "4px",
+    backgroundColor: "#f0f0f0",
+    borderRadius: "999px",
+    overflow: "hidden",
+    marginTop: "2px",
+  },
+  dayPopupMacroBarFill: {
+    height: "100%",
+    borderRadius: "999px",
+    transition: "width 0.4s ease",
   },
 };
 
