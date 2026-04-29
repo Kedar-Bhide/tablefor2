@@ -16,6 +16,12 @@ input::placeholder {
   font-size: 0.8rem;
 }
 
+.goal-input::placeholder {
+  color: #e0e0e0;
+  font-weight: 400;
+  font-size: 0.9rem;
+}
+
 @keyframes slideUp {
   from { transform: translateY(100%); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
