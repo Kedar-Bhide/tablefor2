@@ -124,6 +124,8 @@ Monthly averages for ${monthName}:
 - Fiber: ${nutrition.avgFiber}g/day
 - Days tracked: ${nutrition.daysTracked}
 - Total meals logged: ${nutrition.totalMeals}
+${nutrition.nutrientGoals ? `- Daily Targets: ${nutrition.nutrientGoals.calories}kcal, ${nutrition.nutrientGoals.protein_g}g Protein, ${nutrition.nutrientGoals.carbs_g}g Carbs, ${nutrition.nutrientGoals.fat_g}g Fat` : ""}
+${nutrition.goalsReached ? `- Goal Achievement: Hit Calorie goal ${nutrition.goalsReached.calories}/${nutrition.daysTracked} days, Protein ${nutrition.goalsReached.protein_g}/${nutrition.daysTracked} days, Carbs ${nutrition.goalsReached.carbs_g}/${nutrition.daysTracked} days, Fat ${nutrition.goalsReached.fat_g}/${nutrition.daysTracked} days` : ""}
 - Most frequent meal types: ${JSON.stringify(nutrition.typeBreakdown)}
 - Common meal descriptors: ${nutrition.topDescriptors.join(", ")}
   `.trim();
@@ -206,12 +208,17 @@ async function aggregateMonthlyNutrition(uid, year, month) {
   const end = new Date(year, month, 0, 23, 59, 59);
 
   // Fetch own meals
-  const snap = await db.collection("meals")
-    .where("uid", "==", uid)
-    .where("createdAt", ">=", start)
-    .where("createdAt", "<=", end)
-    .get();
+  const [snap, userSnap] = await Promise.all([
+    db.collection("meals")
+      .where("uid", "==", uid)
+      .where("createdAt", ">=", start)
+      .where("createdAt", "<=", end)
+      .get(),
+    db.collection("users").doc(uid).get(),
+  ]);
   const ownMeals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const user = userSnap.exists ? userSnap.data() : null;
+  const goals = user?.nutrientGoals || null;
 
   const meals = [...ownMeals];
   const mealsWithNutrition = meals.filter((m) => m.nutrition);
@@ -244,6 +251,29 @@ async function aggregateMonthlyNutrition(uid, year, month) {
   const avgFat = Math.round(days.reduce((s, d) => s + d.fat_g, 0) / daysTracked);
   const avgFiber = Math.round(days.reduce((s, d) => s + d.fiber_g, 0) / daysTracked);
 
+  // Goal hit counts
+  const goalsReached = {
+    calories: 0,
+    protein_g: 0,
+    carbs_g: 0,
+    fat_g: 0,
+    fiber_g: 0,
+  };
+
+  if (goals) {
+    days.forEach((day) => {
+      // For calories, we define 'hit' as staying within +/- 150 kcal or under if weight loss
+      // But let's keep it simple: hit if within 10% of target
+      const calDiff = Math.abs(day.calories - goals.calories);
+      if (calDiff <= 200) goalsReached.calories++;
+      
+      if (day.protein_g >= (goals.protein_g * 0.9)) goalsReached.protein_g++;
+      if (day.carbs_g >= (goals.carbs_g * 0.8) && day.carbs_g <= (goals.carbs_g * 1.2)) goalsReached.carbs_g++;
+      if (day.fat_g >= (goals.fat_g * 0.8) && day.fat_g <= (goals.fat_g * 1.2)) goalsReached.fat_g++;
+      if (day.fiber_g >= (goals.fiber_g * 0.9)) goalsReached.fiber_g++;
+    });
+  }
+
   // Most frequent meal descriptors
   const descriptors = mealsWithNutrition
     .map((m) => m.nutrition.descriptor)
@@ -270,9 +300,11 @@ async function aggregateMonthlyNutrition(uid, year, month) {
     avgFat,
     avgFiber,
     daysTracked,
-    totalMeals: meals.length,
-    topDescriptors,
+    totalMeals: mealsWithNutrition.length,
     typeBreakdown: typeMap,
+    topDescriptors: sortedDescriptors.slice(0, 8),
+    goalsReached: goals ? goalsReached : null,
+    nutrientGoals: goals,
   };
 }
 async function analyzeMealNutrition(mealName, photoURL, userProfile, ingredients, portionSize, cookType = "Homemade") {

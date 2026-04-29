@@ -53,6 +53,13 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [isNewUser, setIsNewUser] = useState(false);
   const [showUnlinkPopup, setShowUnlinkPopup] = useState(false);
 
+  // Nutrient Goals
+  const [nutrientGoals, setNutrientGoals] = useState(null); // { calories, protein_g, carbs_g, fat_g, fiber_g }
+  const [goalSetupStep, setGoalSetupStep] = useState(null); // null | "choose" | "manual" | "profile" | "ai_generating"
+  const [manualGoals, setManualGoals] = useState({ calories: "", protein_g: "", carbs_g: "", fat_g: "", fiber_g: "" });
+  const [profileDraft, setProfileDraft] = useState({ age: "", gender: "", height_cm: "", weight_kg: "", target_weight_kg: "" });
+  const [goalSaving, setGoalSaving] = useState(false);
+
   useEffect(() => {
     if (globalUserData?.photoURL) {
       setMyPhoto(globalUserData.photoURL);
@@ -470,6 +477,121 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
     setTaskPortionSize("");
   };
 
+  // --- Nutrient Goals Logic ---
+
+  // Load nutrient goals from globalUserData
+  useEffect(() => {
+    if (globalUserData?.nutrientGoals) {
+      setNutrientGoals(globalUserData.nutrientGoals);
+    }
+  }, [globalUserData?.nutrientGoals]);
+
+  // Calculate AI goals using Mifflin-St Jeor equation
+  const calculateAIGoals = (profile) => {
+    const weight = parseFloat(profile.weight_kg);
+    const height = parseFloat(profile.height_cm);
+    const age = parseInt(profile.age);
+    const gender = (profile.gender || "").toLowerCase();
+    const targetWeight = parseFloat(profile.target_weight_kg) || weight;
+
+    if (!weight || !height || !age) return null;
+
+    let bmr;
+    if (gender === "female" || gender === "f") {
+      bmr = 10 * weight + 6.25 * height - 5 * age - 161;
+    } else {
+      bmr = 10 * weight + 6.25 * height - 5 * age + 5;
+    }
+
+    let tdee = Math.round(bmr * 1.3); // More conservative (Lightly Active)
+
+    const weightDiff = targetWeight - weight;
+    if (weightDiff < -1) {
+      tdee = Math.round(tdee - 500); // More aggressive deficit
+    } else if (weightDiff > 1) {
+      tdee = Math.round(tdee + 250); // Moderate surplus
+    }
+
+    tdee = Math.max(tdee, 1200);
+
+    const protein_g = Math.round((tdee * 0.30) / 4);
+    const carbs_g = Math.round((tdee * 0.40) / 4);
+    const fat_g = Math.round((tdee * 0.25) / 9);
+    const fiber_g = (gender === "female" || gender === "f") ? 25 : 30;
+
+    return { calories: tdee, protein_g, carbs_g, fat_g, fiber_g };
+  };
+
+  const handleSaveGoals = async (goals) => {
+    setGoalSaving(true);
+    try {
+      await updateDoc(doc(db, "users", user.uid), { nutrientGoals: goals });
+      setNutrientGoals(goals);
+      setGoalSetupStep(null);
+    } catch (e) {
+      console.error("Failed to save nutrient goals:", e);
+    }
+    setGoalSaving(false);
+  };
+
+  const handleManualGoalSubmit = () => {
+    const goals = {
+      calories: parseInt(manualGoals.calories) || 2000,
+      protein_g: parseInt(manualGoals.protein_g) || 50,
+      carbs_g: parseInt(manualGoals.carbs_g) || 250,
+      fat_g: parseInt(manualGoals.fat_g) || 65,
+      fiber_g: parseInt(manualGoals.fiber_g) || 25,
+    };
+    handleSaveGoals(goals);
+  };
+
+  const handleAIGoalGenerate = async () => {
+    const profile = {
+      age: globalUserData?.age || "",
+      gender: globalUserData?.gender || "",
+      height_cm: globalUserData?.height_cm || "",
+      weight_kg: globalUserData?.weight_kg || "",
+      target_weight_kg: globalUserData?.target_weight_kg || "",
+    };
+
+    const isComplete = profile.age && profile.gender && profile.height_cm && profile.weight_kg && profile.target_weight_kg;
+
+    if (!isComplete) {
+      setProfileDraft(profile);
+      setGoalSetupStep("profile");
+      return;
+    }
+
+    setGoalSetupStep("ai_generating");
+    await new Promise(r => setTimeout(r, 800));
+    const goals = calculateAIGoals(profile);
+    if (goals) {
+      handleSaveGoals(goals);
+    } else {
+      setGoalSetupStep("manual");
+    }
+  };
+
+  const handleProfileDraftSubmit = async () => {
+    const { age, gender, height_cm, weight_kg, target_weight_kg } = profileDraft;
+    if (!age || !gender || !height_cm || !weight_kg) return;
+
+    setGoalSaving(true);
+    try {
+      await updateDoc(doc(db, "users", user.uid), {
+        age, gender, height_cm, weight_kg, target_weight_kg,
+      });
+      setGoalSetupStep("ai_generating");
+      await new Promise(r => setTimeout(r, 800));
+      const goals = calculateAIGoals(profileDraft);
+      if (goals) {
+        await handleSaveGoals(goals);
+      }
+    } catch (e) {
+      console.error("Failed to save profile + goals:", e);
+    }
+    setGoalSaving(false);
+  };
 
   return (
     <div style={styles.container}>
@@ -512,6 +634,256 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                 </p>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Nutrient Goals Card */}
+      {nutrientGoals ? (
+        <div style={styles.goalsCard}>
+          <div style={styles.goalsHeader}>
+            <p style={styles.goalsTitle}>🎯 Daily Goals</p>
+            <button
+              style={styles.goalsEditButton}
+              onClick={() => {
+                setManualGoals({
+                  calories: String(nutrientGoals.calories || ""),
+                  protein_g: String(nutrientGoals.protein_g || ""),
+                  carbs_g: String(nutrientGoals.carbs_g || ""),
+                  fat_g: String(nutrientGoals.fat_g || ""),
+                  fiber_g: String(nutrientGoals.fiber_g || ""),
+                });
+                setGoalSetupStep("manual");
+              }}
+            >Edit</button>
+          </div>
+          {/* Calorie progress */}
+          <div style={styles.goalCalorieRow}>
+            <div>
+              <p style={styles.goalCalorieEaten}>{nutrition.calories || 0}</p>
+              <p style={styles.goalCalorieLabel}>eaten</p>
+            </div>
+            <div style={styles.goalCalorieDivider}>
+              <p style={styles.goalCalorieDividerText}>/</p>
+            </div>
+            <div>
+              <p style={styles.goalCalorieTarget}>{nutrientGoals.calories}</p>
+              <p style={styles.goalCalorieLabel}>kcal goal</p>
+            </div>
+            <div style={{ flex: 1 }} />
+            <div>
+              <p style={{
+                ...styles.goalCalorieRemaining,
+                color: (nutrientGoals.calories - (nutrition.calories || 0)) >= 0 ? "#7ec8a4" : "#ff6b6b",
+              }}>
+                {Math.abs(nutrientGoals.calories - (nutrition.calories || 0))}
+              </p>
+              <p style={styles.goalCalorieLabel}>
+                {(nutrientGoals.calories - (nutrition.calories || 0)) >= 0 ? "remaining" : "over"}
+              </p>
+            </div>
+          </div>
+          {/* Macro progress bars */}
+          <div style={styles.goalMacroList}>
+            {[
+              { key: "protein_g", label: "Protein", unit: "g", color: "#ff6b6b" },
+              { key: "carbs_g", label: "Carbs", unit: "g", color: "#ffb347" },
+              { key: "fat_g", label: "Fat", unit: "g", color: "#7ec8a4" },
+              { key: "fiber_g", label: "Fiber", unit: "g", color: "#a78bfa" },
+            ].map((macro) => {
+              const eaten = nutrition[macro.key] || 0;
+              const goal = nutrientGoals[macro.key] || 1;
+              const pct = Math.min((eaten / goal) * 100, 100);
+              return (
+                <div key={macro.key} style={styles.goalMacroRow}>
+                  <p style={styles.goalMacroLabel}>{macro.label}</p>
+                  <div style={styles.goalMacroBarTrack}>
+                    <div style={{
+                      ...styles.goalMacroBarFill,
+                      backgroundColor: macro.color,
+                      width: `${pct}%`,
+                    }} />
+                  </div>
+                  <p style={styles.goalMacroValues}>
+                    {eaten}/{goal}{macro.unit}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div style={styles.goalSetupCard} onClick={() => setGoalSetupStep("choose")}>
+          <div style={styles.goalSetupInner}>
+            <p style={styles.goalSetupEmoji}>🎯</p>
+            <div>
+              <p style={styles.goalSetupTitle}>Set Your Daily Goals</p>
+              <p style={styles.goalSetupSub}>Track calories & macros against personalized targets</p>
+            </div>
+          </div>
+          <div style={styles.goalSetupArrow}>→</div>
+        </div>
+      )}
+
+      {/* Goal Setup Popup */}
+      {goalSetupStep && (
+        <div style={styles.overlay} onClick={() => setGoalSetupStep(null)}>
+          <div style={styles.sheet} onClick={(e) => e.stopPropagation()}>
+            {/* Step 1: Choose method */}
+            {goalSetupStep === "choose" && (
+              <>
+                <p style={styles.sheetTitle}>Set Daily Goals</p>
+                <p style={styles.sheetMeta}>How would you like to set your nutrient goals?</p>
+                <button
+                  style={styles.goalOptionButton}
+                  onClick={() => {
+                    setManualGoals({ calories: "", protein_g: "", carbs_g: "", fat_g: "", fiber_g: "" });
+                    setGoalSetupStep("manual");
+                  }}
+                >
+                  <span style={styles.goalOptionEmoji}>✏️</span>
+                  <span>
+                    <strong>Fill in manually</strong>
+                    <br />
+                    <span style={styles.goalOptionSub}>I know my targets</span>
+                  </span>
+                </button>
+                <button
+                  style={styles.goalOptionButton}
+                  onClick={handleAIGoalGenerate}
+                >
+                  <span style={styles.goalOptionEmoji}>🤖</span>
+                  <span>
+                    <strong>Let AI decide</strong>
+                    <br />
+                    <span style={styles.goalOptionSub}>Based on your profile &amp; weight goals</span>
+                  </span>
+                </button>
+                <button style={styles.cancelButton} onClick={() => setGoalSetupStep(null)}>
+                  Cancel
+                </button>
+              </>
+            )}
+
+            {/* Step 2a: Manual entry */}
+            {goalSetupStep === "manual" && (
+              <>
+                <p style={styles.sheetTitle}>Enter Your Goals</p>
+                {[
+                  { key: "calories", label: "Calories", unit: "kcal", placeholder: "0" },
+                  { key: "protein_g", label: "Protein", unit: "g", placeholder: "0" },
+                  { key: "carbs_g", label: "Carbs", unit: "g", placeholder: "0" },
+                  { key: "fat_g", label: "Fat", unit: "g", placeholder: "0" },
+                  { key: "fiber_g", label: "Fiber", unit: "g", placeholder: "0" },
+                ].map((field) => (
+                  <div key={field.key} style={styles.goalInputRow}>
+                    <p style={styles.goalInputLabel}>{field.label}</p>
+                    <div style={styles.goalInputWrapper}>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder={field.placeholder}
+                        className="goal-input"
+                        value={manualGoals[field.key]}
+                        onChange={(e) => setManualGoals(prev => ({
+                          ...prev,
+                          [field.key]: e.target.value.replace(/[^0-9]/g, ""),
+                        }))}
+                        style={styles.goalInput}
+                      />
+                      <span style={styles.goalInputUnit}>{field.unit}</span>
+                    </div>
+                  </div>
+                ))}
+                <button
+                  style={styles.goalSaveButton}
+                  onClick={handleManualGoalSubmit}
+                  disabled={goalSaving}
+                >
+                  {goalSaving ? "Saving..." : "Save Goals"}
+                </button>
+                <button 
+                  style={styles.cancelButton} 
+                  onClick={() => setGoalSetupStep(nutrientGoals ? null : "choose")}
+                >
+                  {nutrientGoals ? "Cancel" : "← Back"}
+                </button>
+              </>
+            )}
+
+            {/* Step 2b: Profile completion (for AI) */}
+            {goalSetupStep === "profile" && (
+              <>
+                <p style={styles.sheetTitle}>Complete Your Profile</p>
+                <p style={styles.sheetMeta}>We need a few details to calculate your goals</p>
+                {[
+                  { key: "age", label: "Age", unit: "yrs", placeholder: "0", inputMode: "numeric" },
+                  { key: "height_cm", label: "Height", unit: "cm", placeholder: "0", inputMode: "numeric" },
+                  { key: "weight_kg", label: "Current Weight", unit: "kg", placeholder: "0", inputMode: "decimal" },
+                  { key: "target_weight_kg", label: "Target Weight", unit: "kg", placeholder: "0", inputMode: "decimal" },
+                ].map((field) => (
+                  <div key={field.key} style={styles.goalInputRow}>
+                    <p style={styles.goalInputLabel}>{field.label}</p>
+                    <div style={styles.goalInputWrapper}>
+                      <input
+                        type="text"
+                        inputMode={field.inputMode}
+                        placeholder={field.placeholder}
+                        className="goal-input"
+                        value={profileDraft[field.key]}
+                        onChange={(e) => setProfileDraft(prev => ({
+                          ...prev,
+                          [field.key]: e.target.value.replace(/[^0-9.]/g, ""),
+                        }))}
+                        style={styles.goalInput}
+                      />
+                      <span style={styles.goalInputUnit}>{field.unit}</span>
+                    </div>
+                  </div>
+                ))}
+                {/* Gender selector */}
+                <div style={styles.goalInputRow}>
+                  <p style={styles.goalInputLabel}>Gender</p>
+                  <div style={styles.goalGenderRow}>
+                    {["Male", "Female"].map((g) => (
+                      <button
+                        key={g}
+                        style={{
+                          ...styles.goalGenderButton,
+                          backgroundColor: profileDraft.gender === g ? "#ff6b6b" : "white",
+                          color: profileDraft.gender === g ? "white" : "#888",
+                        }}
+                        onClick={() => setProfileDraft(prev => ({ ...prev, gender: g }))}
+                      >
+                        {g}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  style={styles.goalSaveButton}
+                  onClick={handleProfileDraftSubmit}
+                  disabled={goalSaving || !profileDraft.age || !profileDraft.gender || !profileDraft.height_cm || !profileDraft.weight_kg || !profileDraft.target_weight_kg}
+                >
+                  {goalSaving ? "Saving..." : "Calculate My Goals"}
+                </button>
+                <button 
+                  style={styles.cancelButton} 
+                  onClick={() => setGoalSetupStep(nutrientGoals ? null : "choose")}
+                >
+                  {nutrientGoals ? "Cancel" : "← Back"}
+                </button>
+              </>
+            )}
+
+            {/* Step 2c: AI generating */}
+            {goalSetupStep === "ai_generating" && (
+              <div style={{ textAlign: "center", padding: "2rem 0" }}>
+                <p style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🤖</p>
+                <p style={styles.sheetTitle}>Calculating your goals...</p>
+                <p style={styles.sheetMeta}>Analyzing your profile data</p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2193,6 +2565,235 @@ const styles = {
     color: "#666",
     margin: 0,
     lineHeight: 1.5,
+  },
+  // --- Nutrient Goals Styles ---
+  goalsCard: {
+    backgroundColor: "white",
+    borderRadius: "16px",
+    padding: "1rem 1.2rem",
+    marginBottom: "1rem",
+    boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+    animation: "slideUpFade 0.4s ease both",
+  },
+  goalsHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "0.8rem",
+  },
+  goalsTitle: {
+    fontSize: "0.85rem",
+    fontWeight: "600",
+    color: "#333",
+    margin: 0,
+  },
+  goalsEditButton: {
+    backgroundColor: "transparent",
+    border: "1px solid #eee",
+    borderRadius: "8px",
+    padding: "4px 12px",
+    fontSize: "0.72rem",
+    color: "#888",
+    cursor: "pointer",
+  },
+  goalCalorieRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.6rem",
+    marginBottom: "1rem",
+    padding: "0.6rem 0",
+    borderBottom: "1px solid #f5f5f5",
+  },
+  goalCalorieEaten: {
+    fontSize: "1.4rem",
+    fontWeight: "700",
+    color: "#333",
+    margin: 0,
+  },
+  goalCalorieTarget: {
+    fontSize: "1.4rem",
+    fontWeight: "700",
+    color: "#ccc",
+    margin: 0,
+  },
+  goalCalorieRemaining: {
+    fontSize: "1.1rem",
+    fontWeight: "700",
+    margin: 0,
+    textAlign: "right",
+  },
+  goalCalorieLabel: {
+    fontSize: "0.65rem",
+    color: "#999",
+    margin: 0,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+  },
+  goalCalorieDivider: {
+    marginTop: "-2px",
+  },
+  goalCalorieDividerText: {
+    fontSize: "1.2rem",
+    color: "#ddd",
+    margin: 0,
+    fontWeight: "300",
+  },
+  goalMacroList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "0.5rem",
+  },
+  goalMacroRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.6rem",
+  },
+  goalMacroLabel: {
+    fontSize: "0.72rem",
+    color: "#777",
+    margin: 0,
+    width: "48px",
+    flexShrink: 0,
+  },
+  goalMacroBarTrack: {
+    flex: 1,
+    height: "6px",
+    backgroundColor: "#f0f0f0",
+    borderRadius: "999px",
+    overflow: "hidden",
+  },
+  goalMacroBarFill: {
+    height: "100%",
+    borderRadius: "999px",
+    transition: "width 0.5s ease",
+  },
+  goalMacroValues: {
+    fontSize: "0.72rem",
+    color: "#555",
+    margin: 0,
+    minWidth: "60px",
+    textAlign: "right",
+    fontWeight: "500",
+  },
+  goalSetupCard: {
+    backgroundColor: "white",
+    borderRadius: "16px",
+    padding: "1rem 1.2rem",
+    marginBottom: "1rem",
+    boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    cursor: "pointer",
+    border: "1px dashed #ffcccc",
+    animation: "slideUpFade 0.4s ease both",
+  },
+  goalSetupInner: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.8rem",
+  },
+  goalSetupEmoji: {
+    fontSize: "1.6rem",
+    margin: 0,
+  },
+  goalSetupTitle: {
+    fontSize: "0.92rem",
+    fontWeight: "600",
+    color: "#333",
+    margin: "0 0 2px 0",
+  },
+  goalSetupSub: {
+    fontSize: "0.75rem",
+    color: "#888",
+    margin: 0,
+  },
+  goalSetupArrow: {
+    fontSize: "1.2rem",
+    color: "#ff6b6b",
+    fontWeight: "600",
+  },
+  goalOptionButton: {
+    width: "100%",
+    padding: "1rem",
+    backgroundColor: "#fafafa",
+    border: "1px solid #eee",
+    borderRadius: "12px",
+    fontSize: "0.88rem",
+    cursor: "pointer",
+    marginBottom: "0.6rem",
+    textAlign: "left",
+    display: "flex",
+    alignItems: "center",
+    gap: "0.8rem",
+    color: "#333",
+  },
+  goalOptionEmoji: {
+    fontSize: "1.4rem",
+  },
+  goalOptionSub: {
+    fontSize: "0.75rem",
+    color: "#888",
+    fontWeight: "400",
+  },
+  goalInputRow: {
+    marginBottom: "0.8rem",
+  },
+  goalInputLabel: {
+    fontSize: "0.78rem",
+    color: "#555",
+    margin: "0 0 4px 0",
+    fontWeight: "500",
+  },
+  goalInputWrapper: {
+    display: "flex",
+    alignItems: "center",
+    backgroundColor: "#fafafa",
+    borderRadius: "10px",
+    border: "1px solid #eee",
+    padding: "0 0.8rem",
+  },
+  goalInput: {
+    flex: 1,
+    border: "none",
+    backgroundColor: "transparent",
+    padding: "0.7rem 0",
+    fontSize: "1rem",
+    color: "#333",
+    outline: "none",
+    fontWeight: "600",
+  },
+  goalInputUnit: {
+    fontSize: "0.8rem",
+    color: "#999",
+    fontWeight: "500",
+  },
+  goalGenderRow: {
+    display: "flex",
+    gap: "0.5rem",
+  },
+  goalGenderButton: {
+    flex: 1,
+    padding: "0.6rem 0",
+    border: "1px solid #eee",
+    borderRadius: "10px",
+    fontSize: "0.85rem",
+    cursor: "pointer",
+    fontWeight: "500",
+    transition: "all 0.2s ease",
+  },
+  goalSaveButton: {
+    width: "100%",
+    padding: "0.85rem",
+    backgroundColor: "#ff6b6b",
+    color: "white",
+    border: "none",
+    borderRadius: "12px",
+    fontSize: "0.95rem",
+    fontWeight: "600",
+    cursor: "pointer",
+    marginTop: "0.5rem",
+    marginBottom: "0.4rem",
   },
 };
 
