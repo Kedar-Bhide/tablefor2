@@ -10,7 +10,7 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import { deleteField } from "firebase/firestore";
 
 function Profile({ user, globalUserData, globalPartnerData }) {
-  const [photoURL, setPhotoURL] = useState(user?.photoURL);
+  const [photoURL, setPhotoURL] = useState(globalUserData?.photoURL || user?.photoURL);
 
   const handleProfilePhoto = async (e) => {
     const file = e.target.files[0];
@@ -80,6 +80,13 @@ function Profile({ user, globalUserData, globalPartnerData }) {
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
   }, [showMenu]);
+
+  // Sync photoURL with globalUserData
+  useEffect(() => {
+    if (globalUserData?.photoURL) {
+      setPhotoURL(globalUserData.photoURL);
+    }
+  }, [globalUserData?.photoURL]);
 
   const handleLinkPartner = async () => {
     if (!partnerEmail) return;
