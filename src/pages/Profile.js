@@ -3,11 +3,12 @@ import { auth, db, storage } from "../firebase";
 import { signOut } from "firebase/auth";
 import { doc, getDoc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { compressImage } from "../utils/compressImage";
 import { calculateBadges } from "../utils/calculateBadges";
 import { calculateWallet } from "../utils/calculateWallet";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { deleteField } from "firebase/firestore";
+import Cropper from "react-easy-crop";
+import { getCroppedImg } from "../utils/cropImage";
 
 function Profile({ user, globalUserData, globalPartnerData }) {
   const [photoURL, setPhotoURL] = useState(globalUserData?.photoURL || user?.photoURL);
@@ -15,12 +16,29 @@ function Profile({ user, globalUserData, globalPartnerData }) {
   const handleProfilePhoto = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const compressed = await compressImage(file);
-    const photoRef = ref(storage, `profiles/${user.uid}`);
-    await uploadBytes(photoRef, compressed);
-    const url = await getDownloadURL(photoRef);
-    await updateDoc(doc(db, "users", user.uid), { photoURL: url });
-    setPhotoURL(url);
+    
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      setImageToCrop(reader.result);
+    });
+    reader.readAsDataURL(file);
+  };
+
+  const handleCropSave = async () => {
+    if (!imageToCrop || !croppedAreaPixels) return;
+    setSaving(true);
+    try {
+      const croppedBlob = await getCroppedImg(imageToCrop, croppedAreaPixels);
+      const photoRef = ref(storage, `profiles/${user.uid}`);
+      await uploadBytes(photoRef, croppedBlob);
+      const url = await getDownloadURL(photoRef);
+      await updateDoc(doc(db, "users", user.uid), { photoURL: url });
+      setPhotoURL(url);
+      setImageToCrop(null);
+    } catch (e) {
+      console.error("Crop save failed:", e);
+    }
+    setSaving(false);
   };
 
   // State
@@ -38,6 +56,12 @@ function Profile({ user, globalUserData, globalPartnerData }) {
   const [linkCopied, setLinkCopied] = useState(false);
   const [currency, setCurrency] = useState("USD");
   const [showMenu, setShowMenu] = useState(false);
+
+  // Cropper states
+  const [imageToCrop, setImageToCrop] = useState(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
 
   // Derive from global props
   const partnerUid = globalUserData?.partnerUid || null;
@@ -381,6 +405,44 @@ function Profile({ user, globalUserData, globalPartnerData }) {
         <p style={styles.name}>{user.displayName}</p>
         <p style={styles.email}>{user.email}</p>
       </div>
+
+      {/* Cropper Modal */}
+      {imageToCrop && (
+        <div style={styles.overlay}>
+          <div style={styles.cropperContainer}>
+            <div style={styles.cropperWrapper}>
+              <Cropper
+                image={imageToCrop}
+                crop={crop}
+                zoom={zoom}
+                aspect={1}
+                cropShape="round"
+                onCropChange={setCrop}
+                onCropComplete={(_, pixels) => setCroppedAreaPixels(pixels)}
+                onZoomChange={setZoom}
+              />
+            </div>
+            <div style={styles.cropperControls}>
+              <p style={styles.cropperHint}>Pinch or drag to adjust</p>
+              <div style={styles.cropperButtons}>
+                <button 
+                  style={styles.cropperCancel} 
+                  onClick={() => setImageToCrop(null)}
+                >
+                  Cancel
+                </button>
+                <button 
+                  style={styles.cropperSave} 
+                  onClick={handleCropSave}
+                  disabled={saving}
+                >
+                  {saving ? "Saving..." : "Save Photo"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={styles.card}>
         {partnerName ? (
           <div style={{ textAlign: "center" }}>
@@ -902,6 +964,57 @@ const styles = {
     display: "flex",
     gap: "0.8rem",
   },
+  cropperContainer: {
+    backgroundColor: "white",
+    width: "100%",
+    maxWidth: "450px",
+    height: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    zIndex: 2500,
+  },
+  cropperWrapper: {
+    position: "relative",
+    flex: 1,
+    backgroundColor: "#111",
+  },
+  cropperControls: {
+    padding: "1.5rem",
+    backgroundColor: "white",
+    textAlign: "center",
+  },
+  cropperHint: {
+    fontSize: "0.85rem",
+    color: "#888",
+    marginBottom: "1.2rem",
+  },
+  cropperButtons: {
+    display: "flex",
+    gap: "1rem",
+  },
+  cropperCancel: {
+    flex: 1,
+    padding: "0.9rem",
+    backgroundColor: "#f5f5f5",
+    color: "#666",
+    border: "none",
+    borderRadius: "12px",
+    fontSize: "0.95rem",
+    fontWeight: "600",
+    cursor: "pointer",
+  },
+  cropperSave: {
+    flex: 2,
+    padding: "0.9rem",
+    backgroundColor: "#ff6b6b",
+    color: "white",
+    border: "none",
+    borderRadius: "12px",
+    fontSize: "0.95rem",
+    fontWeight: "600",
+    cursor: "pointer",
+    boxShadow: "0 4px 12px rgba(255,107,107,0.3)",
+  },
   card: {
     backgroundColor: "white",
     borderRadius: "12px",
@@ -917,6 +1030,7 @@ const styles = {
     height: "72px",
     borderRadius: "50%",
     marginBottom: "0.5rem",
+    objectFit: "cover",
   },
   name: {
     fontWeight: "bold",
