@@ -44,7 +44,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
   const incomingRequest = globalUserData?.partnerRequest || null;
   const pendingRequest = globalUserData?.pendingPartnerRequest || null;
   const requestSent = !!pendingRequest;
-  
+
 
   const profileFields = {
     age: globalUserData?.age || "",
@@ -157,7 +157,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
     }
     setSaving(false);
   };
-  
+
 
   const handleAcceptRequest = async () => {
     if (!incomingRequest) return;
@@ -234,17 +234,17 @@ function Profile({ user, globalUserData, globalPartnerData }) {
 
   const handleUnlink = async () => {
     if (!partnerUid) return;
-    
+
     setSaving(true);
     try {
       const prevPartnerUid = partnerUid;
-      
+
       // Update own document
       await updateDoc(doc(db, "users", user.uid), {
         partnerUid: deleteField(),
         partnerEmail: deleteField()
       });
-      
+
       // Update partner document
       await updateDoc(doc(db, "users", prevPartnerUid), {
         partnerUid: deleteField(),
@@ -252,7 +252,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
         pendingPartnerRequest: deleteField(),
         unlinkedNotification: true
       });
-      
+
       setMessage("Successfully unlinked.");
       setShowUnlinkConfirm(false);
     } catch (e) {
@@ -559,7 +559,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
       <div style={styles.card}>
         <p style={styles.badgeTitle}>📋 Personal Info</p>
         <p style={styles.personalInfoSubtitle}>
-          Used to personalize your nutrition insights. All optional.
+          Used to personalize your nutrition insights.
         </p>
         <div style={styles.personalInfoGrid}>
           {/* Row 1: Age & Height */}
@@ -732,8 +732,8 @@ function Profile({ user, globalUserData, globalPartnerData }) {
         </div>
       </div>
       {partnerUid && !showUnlinkConfirm && (
-        <button 
-          style={{ ...styles.signOutButton, marginBottom: "0.4rem" }} 
+        <button
+          style={{ ...styles.signOutButton, marginBottom: "0.4rem" }}
           onClick={() => setShowUnlinkConfirm(true)}
           disabled={saving}
         >
