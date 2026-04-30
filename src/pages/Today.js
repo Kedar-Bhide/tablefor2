@@ -1729,6 +1729,7 @@ const styles = {
     height: "48px",
     borderRadius: "50%",
     marginRight: "1rem",
+    objectFit: "cover",
   },
   cardInfo: {
     flex: 1,

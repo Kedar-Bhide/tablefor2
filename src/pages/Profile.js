@@ -3,24 +3,42 @@ import { auth, db, storage } from "../firebase";
 import { signOut } from "firebase/auth";
 import { doc, getDoc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { compressImage } from "../utils/compressImage";
 import { calculateBadges } from "../utils/calculateBadges";
 import { calculateWallet } from "../utils/calculateWallet";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { deleteField } from "firebase/firestore";
+import Cropper from "react-easy-crop";
+import { getCroppedImg } from "../utils/cropImage";
 
 function Profile({ user, globalUserData, globalPartnerData }) {
-  const [photoURL, setPhotoURL] = useState(user?.photoURL);
+  const [photoURL, setPhotoURL] = useState(globalUserData?.photoURL || user?.photoURL);
 
   const handleProfilePhoto = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const compressed = await compressImage(file);
-    const photoRef = ref(storage, `profiles/${user.uid}`);
-    await uploadBytes(photoRef, compressed);
-    const url = await getDownloadURL(photoRef);
-    await updateDoc(doc(db, "users", user.uid), { photoURL: url });
-    setPhotoURL(url);
+    
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      setImageToCrop(reader.result);
+    });
+    reader.readAsDataURL(file);
+  };
+
+  const handleCropSave = async () => {
+    if (!imageToCrop || !croppedAreaPixels) return;
+    setSaving(true);
+    try {
+      const croppedBlob = await getCroppedImg(imageToCrop, croppedAreaPixels);
+      const photoRef = ref(storage, `profiles/${user.uid}`);
+      await uploadBytes(photoRef, croppedBlob);
+      const url = await getDownloadURL(photoRef);
+      await updateDoc(doc(db, "users", user.uid), { photoURL: url });
+      setPhotoURL(url);
+      setImageToCrop(null);
+    } catch (e) {
+      console.error("Crop save failed:", e);
+    }
+    setSaving(false);
   };
 
   // State
@@ -37,6 +55,13 @@ function Profile({ user, globalUserData, globalPartnerData }) {
   const [showInviteLink, setShowInviteLink] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [currency, setCurrency] = useState("USD");
+  const [showMenu, setShowMenu] = useState(false);
+
+  // Cropper states
+  const [imageToCrop, setImageToCrop] = useState(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
 
   // Derive from global props
   const partnerUid = globalUserData?.partnerUid || null;
@@ -71,6 +96,21 @@ function Profile({ user, globalUserData, globalPartnerData }) {
     };
     fetchCalculations();
   }, [user.uid, partnerUid]);
+
+  // Click outside menu closer
+  useEffect(() => {
+    if (!showMenu) return;
+    const close = () => setShowMenu(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [showMenu]);
+
+  // Sync photoURL with globalUserData
+  useEffect(() => {
+    if (globalUserData?.photoURL) {
+      setPhotoURL(globalUserData.photoURL);
+    }
+  }, [globalUserData?.photoURL]);
 
   const handleLinkPartner = async () => {
     if (!partnerEmail) return;
@@ -302,7 +342,57 @@ function Profile({ user, globalUserData, globalPartnerData }) {
           </p>
         </div>
       )}
-      <h2 style={styles.title}>My Profile</h2>
+      <div style={styles.headerRow}>
+        <h2 style={styles.title}>My Profile</h2>
+        <div style={styles.menuContainer}>
+          <button 
+            style={styles.hamburgerButton} 
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowMenu(!showMenu);
+            }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+
+          {showMenu && (
+            <div style={styles.dropdownMenu}>
+              {partnerUid && (
+                <button 
+                  style={styles.dropdownItem} 
+                  onClick={() => setShowUnlinkConfirm(true)}
+                >
+                  💔 Unlink Partner
+                </button>
+              )}
+              <button 
+                style={{ ...styles.dropdownItem, borderBottom: "none" }} 
+                onClick={handleSignOut}
+              >
+                🚪 Sign Out
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Unlink Confirmation Popup (Global) */}
+      {showUnlinkConfirm && (
+        <div style={styles.overlay} onClick={() => setShowUnlinkConfirm(false)}>
+          <div style={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
+            <p style={styles.confirmModalTitle}>Unlink Partner?</p>
+            <p style={styles.confirmModalText}>This will remove your shared connection. You can link again later if you want.</p>
+            <div style={styles.confirmModalButtons}>
+              <button style={styles.confirmYes} onClick={handleUnlink}>Yes, Unlink</button>
+              <button style={styles.confirmNo} onClick={() => setShowUnlinkConfirm(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={styles.card}>
         <div style={styles.avatarWrapper}>
@@ -315,6 +405,44 @@ function Profile({ user, globalUserData, globalPartnerData }) {
         <p style={styles.name}>{user.displayName}</p>
         <p style={styles.email}>{user.email}</p>
       </div>
+
+      {/* Cropper Modal */}
+      {imageToCrop && (
+        <div style={styles.overlay}>
+          <div style={styles.cropperContainer}>
+            <div style={styles.cropperWrapper}>
+              <Cropper
+                image={imageToCrop}
+                crop={crop}
+                zoom={zoom}
+                aspect={1}
+                cropShape="round"
+                onCropChange={setCrop}
+                onCropComplete={(_, pixels) => setCroppedAreaPixels(pixels)}
+                onZoomChange={setZoom}
+              />
+            </div>
+            <div style={styles.cropperControls}>
+              <p style={styles.cropperHint}>Pinch or drag to adjust</p>
+              <div style={styles.cropperButtons}>
+                <button 
+                  style={styles.cropperCancel} 
+                  onClick={() => setImageToCrop(null)}
+                >
+                  Cancel
+                </button>
+                <button 
+                  style={styles.cropperSave} 
+                  onClick={handleCropSave}
+                  disabled={saving}
+                >
+                  {saving ? "Saving..." : "Save Photo"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={styles.card}>
         {partnerName ? (
           <div style={{ textAlign: "center" }}>
@@ -731,27 +859,6 @@ function Profile({ user, globalUserData, globalPartnerData }) {
           )}
         </div>
       </div>
-      {partnerUid && !showUnlinkConfirm && (
-        <button
-          style={{ ...styles.signOutButton, marginBottom: "0.4rem" }}
-          onClick={() => setShowUnlinkConfirm(true)}
-          disabled={saving}
-        >
-          {saving ? "Unlinking..." : "Unlink Partner"}
-        </button>
-      )}
-      {partnerUid && showUnlinkConfirm && (
-        <div style={{ ...styles.confirmRow, marginBottom: "0.4rem" }} onClick={(e) => e.stopPropagation()}>
-          <p style={styles.confirmText}>Are you sure? This will remove your partner connection.</p>
-          <div style={styles.confirmButtons}>
-            <button style={styles.confirmYes} onClick={handleUnlink}>Yes, Unlink</button>
-            <button style={styles.confirmNo} onClick={() => setShowUnlinkConfirm(false)}>Cancel</button>
-          </div>
-        </div>
-      )}
-      <button style={styles.signOutButton} onClick={handleSignOut}>
-        Sign Out
-      </button>
     </div>
   );
 }
@@ -767,7 +874,146 @@ const styles = {
   title: {
     fontSize: "1.8rem",
     color: "#333",
+    margin: 0,
+  },
+  headerRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: "1.5rem",
+    position: "relative",
+  },
+  menuContainer: {
+    position: "relative",
+  },
+  hamburgerButton: {
+    background: "none",
+    border: "none",
+    padding: "8px",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: "8px",
+    transition: "background-color 0.2s",
+  },
+  dropdownMenu: {
+    position: "absolute",
+    top: "100%",
+    right: 0,
+    backgroundColor: "white",
+    borderRadius: "12px",
+    boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
+    padding: "0.5rem",
+    minWidth: "160px",
+    zIndex: 1000,
+    marginTop: "8px",
+    animation: "bloomOpen 0.25s ease-out",
+  },
+  dropdownItem: {
+    width: "100%",
+    padding: "0.8rem 1rem",
+    textAlign: "left",
+    background: "none",
+    border: "none",
+    borderBottom: "1px solid #f5f5f5",
+    fontSize: "0.95rem",
+    color: "#444",
+    cursor: "pointer",
+    borderRadius: "6px",
+    transition: "background-color 0.2s",
+    display: "block",
+  },
+  overlay: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2000,
+    backdropFilter: "blur(4px)",
+    animation: "fadeInOverlay 0.3s ease",
+  },
+  confirmModal: {
+    backgroundColor: "white",
+    padding: "2rem",
+    borderRadius: "24px",
+    width: "90%",
+    maxWidth: "340px",
+    textAlign: "center",
+    boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
+    animation: "bloomOpen 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
+  },
+  confirmModalTitle: {
+    fontSize: "1.3rem",
+    fontWeight: "700",
+    color: "#333",
+    margin: "0 0 0.8rem 0",
+  },
+  confirmModalText: {
+    fontSize: "0.95rem",
+    color: "#666",
+    lineHeight: 1.5,
+    margin: "0 0 1.8rem 0",
+  },
+  confirmModalButtons: {
+    display: "flex",
+    gap: "0.8rem",
+  },
+  cropperContainer: {
+    backgroundColor: "white",
+    width: "100%",
+    maxWidth: "450px",
+    height: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    zIndex: 2500,
+  },
+  cropperWrapper: {
+    position: "relative",
+    flex: 1,
+    backgroundColor: "#111",
+  },
+  cropperControls: {
+    padding: "1.5rem",
+    backgroundColor: "white",
+    textAlign: "center",
+  },
+  cropperHint: {
+    fontSize: "0.85rem",
+    color: "#888",
+    marginBottom: "1.2rem",
+  },
+  cropperButtons: {
+    display: "flex",
+    gap: "1rem",
+  },
+  cropperCancel: {
+    flex: 1,
+    padding: "0.9rem",
+    backgroundColor: "#f5f5f5",
+    color: "#666",
+    border: "none",
+    borderRadius: "12px",
+    fontSize: "0.95rem",
+    fontWeight: "600",
+    cursor: "pointer",
+  },
+  cropperSave: {
+    flex: 2,
+    padding: "0.9rem",
+    backgroundColor: "#ff6b6b",
+    color: "white",
+    border: "none",
+    borderRadius: "12px",
+    fontSize: "0.95rem",
+    fontWeight: "600",
+    cursor: "pointer",
+    boxShadow: "0 4px 12px rgba(255,107,107,0.3)",
   },
   card: {
     backgroundColor: "white",
@@ -784,6 +1030,7 @@ const styles = {
     height: "72px",
     borderRadius: "50%",
     marginBottom: "0.5rem",
+    objectFit: "cover",
   },
   name: {
     fontWeight: "bold",
