@@ -595,7 +595,9 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
   return (
     <div style={styles.container}>
-      <h2 style={styles.title}>Today</h2>
+      <div style={styles.brandingHeader}>
+        <h1 style={styles.appName}>Table For 2</h1>
+      </div>
 
       {/* Progress Card */}
       <div style={styles.card}>
@@ -1703,9 +1705,24 @@ const styles = {
   container: {
     maxWidth: "400px",
     margin: "0 auto",
-    padding: "2rem 1.5rem",
+    padding: "1rem 1.5rem 5rem 1.5rem",
     backgroundColor: "#fffaf5",
     minHeight: "100vh",
+  },
+  brandingHeader: {
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: "0.5rem 0 1rem 0",
+    marginBottom: "0.5rem",
+  },
+  appName: {
+    fontFamily: "'Instrument Serif', serif",
+    fontSize: "2.4rem",
+    color: "#333",
+    margin: 0,
+    fontWeight: "400",
+    letterSpacing: "-0.02em",
   },
   title: {
     fontSize: "1.8rem",
