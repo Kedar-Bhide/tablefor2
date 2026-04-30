@@ -613,8 +613,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         <OnboardingPopup onDismiss={() => setIsNewUser(false)} />
       )}
 
-      {/* Daily Nutrition Card */}
-      {nutrition.calories > 0 && profileFields && (
+      {/* Daily Nutrition Card - Hide if goals are set since the goals card shows it better */}
+      {nutrition.calories > 0 && profileFields && !nutrientGoals && (
         <div style={styles.nutritionCard}>
           <div style={styles.nutritionHeader}>
             <p style={styles.nutritionTitle}>Today's Nutrition</p>

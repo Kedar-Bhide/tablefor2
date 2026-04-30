@@ -44,12 +44,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
   const incomingRequest = globalUserData?.partnerRequest || null;
   const pendingRequest = globalUserData?.pendingPartnerRequest || null;
   const requestSent = !!pendingRequest;
-  
-  const notifSettings = globalUserData?.notifSettings || {
-    partnerMeal: true,
-    badgeEarned: true,
-    mealReminder: true,
-  };
+
 
   const profileFields = {
     age: globalUserData?.age || "",
@@ -162,7 +157,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
     }
     setSaving(false);
   };
-  
+
 
   const handleAcceptRequest = async () => {
     if (!incomingRequest) return;
@@ -239,17 +234,17 @@ function Profile({ user, globalUserData, globalPartnerData }) {
 
   const handleUnlink = async () => {
     if (!partnerUid) return;
-    
+
     setSaving(true);
     try {
       const prevPartnerUid = partnerUid;
-      
+
       // Update own document
       await updateDoc(doc(db, "users", user.uid), {
         partnerUid: deleteField(),
         partnerEmail: deleteField()
       });
-      
+
       // Update partner document
       await updateDoc(doc(db, "users", prevPartnerUid), {
         partnerUid: deleteField(),
@@ -257,7 +252,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
         pendingPartnerRequest: deleteField(),
         unlinkedNotification: true
       });
-      
+
       setMessage("Successfully unlinked.");
       setShowUnlinkConfirm(false);
     } catch (e) {
@@ -276,12 +271,6 @@ function Profile({ user, globalUserData, globalPartnerData }) {
     setShowResetConfirm(false);
   };
 
-  const handleNotifToggle = async (key) => {
-    const updated = { ...notifSettings, [key]: !notifSettings[key] };
-    await updateDoc(doc(db, "users", user.uid), {
-      notifSettings: updated,
-    });
-  };
 
   const handleFieldSave = async (key) => {
     if (editingField !== key) return;
@@ -570,7 +559,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
       <div style={styles.card}>
         <p style={styles.badgeTitle}>📋 Personal Info</p>
         <p style={styles.personalInfoSubtitle}>
-          Used to personalize your nutrition insights. All optional.
+          Used to personalize your nutrition insights.
         </p>
         <div style={styles.personalInfoGrid}>
           {/* Row 1: Age & Height */}
@@ -742,41 +731,9 @@ function Profile({ user, globalUserData, globalPartnerData }) {
           )}
         </div>
       </div>
-      {/* Notification Settings */}
-      <div style={styles.card}>
-        <p style={styles.badgeTitle}>🔔 Notifications</p>
-        {[
-          ...(partnerUid ? [{ key: "partnerMeal", label: "Partner logged a meal", emoji: "🍽️" }] : []),
-          { key: "badgeEarned", label: "Badge earned", emoji: "🏆" },
-          { key: "mealReminder", label: "Meal reminders", emoji: "⏰" },
-        ].map((item) => (
-          <div key={item.key} style={styles.notifRow}>
-            <div style={styles.notifLeft}>
-              <span style={styles.notifEmoji}>{item.emoji}</span>
-              <p style={styles.notifLabel}>{item.label}</p>
-            </div>
-            <div
-              style={{
-                ...styles.toggleTrack,
-                backgroundColor: notifSettings[item.key] ? "#ff6b6b" : "#e0e0e0",
-              }}
-              onClick={() => handleNotifToggle(item.key)}
-            >
-              <div
-                style={{
-                  ...styles.toggleThumb,
-                  transform: notifSettings[item.key]
-                    ? "translateX(22px)"
-                    : "translateX(2px)",
-                }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
       {partnerUid && !showUnlinkConfirm && (
-        <button 
-          style={{ ...styles.signOutButton, marginBottom: "0.4rem" }} 
+        <button
+          style={{ ...styles.signOutButton, marginBottom: "0.4rem" }}
           onClick={() => setShowUnlinkConfirm(true)}
           disabled={saving}
         >
