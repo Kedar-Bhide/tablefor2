@@ -432,6 +432,71 @@ async function analyzeMealNutrition(mealName, photoURL, userProfile, ingredients
   });
 }
 
+exports.parseVoiceMeal = onCall(
+  { secrets: [ANTHROPIC_API_KEY] },
+  async (request) => {
+    const { transcript } = request.data;
+    if (!transcript) return { error: "No transcript provided" };
+
+    const systemInstruction = `
+      You are an AI assistant that extracts meal logging information from spoken text.
+      The user is dictating their meal. You must extract:
+      1. 'name': A concise meal name.
+      2. 'ingredients': A comma-separated list of mentioned ingredients or details.
+      3. 'portion': The portion size (e.g., '1 medium bowl', '2 slices', 'Large').
+      4. 'cookType': "Homemade", "Restaurant", or "Packaged" based on context. Default to "Homemade".
+      5. 'type': The meal type: "Breakfast", "Lunch", "Dinner", or "Snack". Infer from keywords or use a best guess based on the food mentioned.
+      
+      Return ONLY a valid JSON object matching this structure. No preamble or markdown.
+      Example Output: {"name": "Pesto Pasta", "ingredients": "Rigatoni, pesto sauce, bell peppers, broccoli", "portion": "1 medium bowl", "cookType": "Homemade", "type": "Lunch"}
+    `;
+
+    return new Promise((resolve, reject) => {
+      const body = JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 150,
+        system: systemInstruction,
+        messages: [{ role: "user", content: `Parse this dictation: "${transcript}"` }],
+      });
+
+      const options = {
+        hostname: "api.anthropic.com",
+        path: "/v1/messages",
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": process.env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+        },
+      };
+
+      const req = https.request(options, (res) => {
+        let data = "";
+        res.on("data", (chunk) => { data += chunk; });
+        res.on("end", () => {
+          try {
+            const parsed = JSON.parse(data);
+            const text = parsed.content?.[0]?.text || "";
+            const clean = text.replace(/```json|```/g, "").trim();
+            resolve(JSON.parse(clean));
+          } catch (e) {
+            console.error("Failed to parse voice transcript:", e, data);
+            resolve({ name: transcript, ingredients: "", portion: "", cookType: "Homemade" });
+          }
+        });
+      });
+
+      req.on("error", (e) => {
+        console.error("Anthropic API error:", e);
+        resolve({ name: transcript, ingredients: "", portion: "", cookType: "Homemade" });
+      });
+
+      req.write(body);
+      req.end();
+    });
+  }
+);
+
 // Triggered when a new meal is created
 exports.onMealCreated = onDocumentCreated(
   { document: "meals/{mealId}", secrets: [ANTHROPIC_API_KEY] },
