@@ -28,6 +28,7 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
   const localTimeNow = formatLocalTimeHHMM(today);
   const [mealTime, setMealTime] = useState(localTimeNow);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showPhotoOptions, setShowPhotoOptions] = useState(false);
   const minDate = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
   const localMinDate = formatLocalDateKey(minDate);
   const [isShared, setIsShared] = useState(false);
@@ -256,7 +257,7 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
               </div>
             ))}
             {photos.length < 5 && (
-              <div style={styles.addMorePhoto} onClick={() => document.getElementById("galleryInput").click()}>
+              <div style={styles.addMorePhoto} onClick={() => setShowPhotoOptions(true)}>
                 <p style={styles.addMorePhotoPlus}>+</p>
                 <p style={styles.addMorePhotoLabel}>Add</p>
               </div>
@@ -268,6 +269,35 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
       {photos.length > 0 && <p style={styles.photoHint}>{photos.length}/5 photos</p>}
       <input id="photoInput" type="file" accept="image/*" capture style={{ display: "none" }} onChange={handlePhoto} />
       <input id="galleryInput" type="file" accept="image/*" style={{ display: "none" }} onChange={handlePhoto} />
+
+      {showPhotoOptions && (
+        <div style={styles.overlay} onClick={() => setShowPhotoOptions(false)}>
+          <div style={styles.sheet} onClick={(e) => e.stopPropagation()}>
+            <p style={styles.sheetTitle}>Add Photo</p>
+            <button style={styles.optionButton} onClick={async () => {
+              try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                stream.getTracks().forEach(t => t.stop());
+                setShowPhotoOptions(false);
+                document.getElementById("photoInput").click();
+              } catch (e) {
+                alert("Camera access is blocked. Please go to your browser Settings → Site Settings → Camera and allow access for this site, then reload the app.");
+              }
+            }}>
+              📷 Take Photo
+            </button>
+            <button style={styles.optionButton} onClick={() => {
+              setShowPhotoOptions(false);
+              document.getElementById("galleryInput").click();
+            }}>
+              🖼️ Choose from Gallery
+            </button>
+            <button style={styles.cancelButton} onClick={() => setShowPhotoOptions(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Meal Type */}
       <p style={styles.sectionHeader}>MEAL TYPE</p>
@@ -611,6 +641,62 @@ const styles = {
     fontSize: "1rem",
     color: "#333",
     padding: 0,
+  },
+  suggestionDivider: {
+    height: "1px",
+    backgroundColor: "#eee",
+    margin: "0.2rem 0",
+  },
+  overlay: {
+    position: "fixed",
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    zIndex: 150,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "1.5rem",
+    animation: "fadeInOverlay 0.25s ease",
+  },
+  sheet: {
+    backgroundColor: "white",
+    borderRadius: "20px",
+    padding: "1.5rem",
+    width: "100%",
+    maxWidth: "380px",
+    maxHeight: "85vh",
+    overflowY: "auto",
+    animation: "bloomOpen 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
+    boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
+  },
+  sheetTitle: {
+    fontWeight: "bold",
+    fontSize: "1.1rem",
+    color: "#333",
+    margin: "0 0 1rem 0",
+  },
+  optionButton: {
+    width: "100%",
+    padding: "0.8rem",
+    backgroundColor: "transparent",
+    color: "#444",
+    border: "1px solid #eee",
+    borderRadius: "8px",
+    fontSize: "0.95rem",
+    cursor: "pointer",
+    marginBottom: "0.5rem",
+    textAlign: "left",
+  },
+  cancelButton: {
+    width: "100%",
+    padding: "0.8rem",
+    backgroundColor: "transparent",
+    color: "#888",
+    border: "none",
+    borderRadius: "8px",
+    fontSize: "0.9rem",
+    cursor: "pointer",
+    marginTop: "0.5rem",
   },
   inputDivider: {
     height: "1px",
