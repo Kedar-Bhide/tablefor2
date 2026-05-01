@@ -266,7 +266,7 @@ async function aggregateMonthlyNutrition(uid, year, month) {
       // But let's keep it simple: hit if within 10% of target
       const calDiff = Math.abs(day.calories - goals.calories);
       if (calDiff <= 200) goalsReached.calories++;
-      
+
       if (day.protein_g >= (goals.protein_g * 0.9)) goalsReached.protein_g++;
       if (day.carbs_g >= (goals.carbs_g * 0.8) && day.carbs_g <= (goals.carbs_g * 1.2)) goalsReached.carbs_g++;
       if (day.fat_g >= (goals.fat_g * 0.8) && day.fat_g <= (goals.fat_g * 1.2)) goalsReached.fat_g++;
@@ -323,19 +323,25 @@ async function analyzeMealNutrition(mealName, photoURL, userProfile, ingredients
   const detailsStr = details.length > 0 ? details.join(". ") : "No specific quantity provided.";
 
   const systemInstruction = `
-    Analyze the meal details and estimate nutritional content.
-    Meal Source: ${cookType} (Homemade, Restaurant, or Packaged).
+    Analyze the provided meal details (name, photo, ingredients, portions) and perform a comprehensive nutritional estimation.
     
-    Guidelines:
-    1. Prioritize provided ingredients and portion size as the primary evidence.
-    2. Cook Type Adjustments:
-       - HOMEMADE: Assume standard preparation.
-       - RESTAURANT: Assume professional preparation (often higher in fats/oils and sodium). Add a realistic 15-25% caloric buffer compared to a lean home version, but do not over-penalize if the dish is inherently healthy.
-       - PACKAGED: Assume commercial nutritional standards for the described item.
-    3. Portions: Treat "Standard" as one serving, "Large" as 1.5x, and "Small" as 0.7x.
-    4. Objectivity: Provide an unbiased, realistic estimate. Never return 0 for calories.
-    
-    Return ONLY a JSON object: {"calories": number, "protein_g": number, "carbs_g": number, "fat_g": number, "fiber_g": number, "descriptor": "2-4 word description", "analyzed_by": "ai"}.
+    STEP 1: FIRST-PASS IDENTIFICATION
+    - Identify the Cuisine: Determine if this is Indian, Mexican, Thai, Italian, etc. (e.g., "Palak Paneer" -> Indian).
+    - Identify the Source: Is this from a specific restaurant/brand (e.g., "Trader Joe's", "Chipotle")? If so, retrieve exact nutritional data from your training set.
+    - Identify Niche Ingredients: Recognize niche or regional ingredients (e.g., paneer, ghee, tahini, cotija) and accurately factor in their specific caloric and macronutrient densities.
+
+    STEP 2: PREPARATION & CONTEXT ADJUSTMENTS
+    - Cook Type: ${cookType}
+       - HOMEMADE: Assume standard preparation but accurately account for traditional fats (e.g., Indian homemade still uses ghee/oil, olive oil for Italian meals, and similar for other preparatations).
+       - RESTAURANT: Assume heavy restaurant preparation. Add a realistic 15-30% caloric buffer for hidden butter, oils, and sugar.
+       - PACKAGED: Rely strictly on commercial nutritional standards for the identified brand.
+
+    STEP 3: PORTION SCALING
+    - Stated Portion: ${portionSize || "Standard"}
+    - Scale the final values appropriately. "Standard" = 1 serving. "Large" = 1.5x to 2x. "Small" = 0.5x to 0.7x.
+
+    Return ONLY a JSON object with your final, highly accurate estimates:
+    {"calories": number, "protein_g": number, "carbs_g": number, "fat_g": number, "fiber_g": number, "descriptor": "2-4 word description", "analyzed_by": "ai"}
   `;
 
   const messages = [];
@@ -368,7 +374,7 @@ async function analyzeMealNutrition(mealName, photoURL, userProfile, ingredients
     const body = JSON.stringify({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 256,
-      system: "You are a highly accurate nutrition estimation engine. Your goal is to produce realistic, data-driven nutritional estimates based on incomplete real-world inputs (meal names, photos, ingredients, and portion size). CORE PRINCIPLES: Always return a best-guess estimate—never return zero or null values. Prioritize ingredients and portion size over generic assumptions. If data is vague, infer the most likely real-world equivalent. Be conservative but realistic—avoid extreme underestimation or overestimation. PORTION LOGIC: Standard = 1x serving. Large = 1.5x serving. Small = 0.7x serving. COOKING CONTEXT: Homemade = moderate oil and standard prep. Restaurant = increase calories by ~15–25% (hidden fats/oils) while staying realistic. Packaged = assume typical commercial nutrition values. OUTPUT RULES: Return ONLY valid JSON (no markdown, no explanation). All numeric values must be positive integers. Use realistic macro distributions. \"descriptor\" must be a concise 2–4 word food description. Always include all fields. OUTPUT FORMAT: {\"calories\": number, \"protein_g\": number, \"carbs_g\": number, \"fat_g\": number, \"fiber_g\": number, \"descriptor\": string, \"analyzed_by\": \"ai\"}",
+      system: "You are a state-of-the-art, highly accurate nutritional estimation engine. Your objective is to produce the most realistic, data-driven nutritional estimates possible based on real-world inputs. CORE DIRECTIVES: 1. COMPREHENSIVE KNOWLEDGE RETRIEVAL: You possess vast knowledge of commercial brands (Trader Joe's, Costco, etc.), restaurant chains, and global cuisines. Always attempt to recall exact nutritional labels or verified restaurant data before guessing. 2. CUISINE & INGREDIENT MASTERY: For regional foods (e.g., Indian, Middle Eastern), accurately model traditional cooking methods. Do not underestimate hidden fats (ghee, heavy oils, coconut milk) or carb-dense bases. Recognize niche ingredients and their exact macro profiles. 3. NO FAILURES: Always return a best-guess estimate. Never return zero. 4. OUTPUT FORMAT: Return ONLY valid JSON. No markdown, no preambles. Ensure realistic macro math (protein*4 + carbs*4 + fat*9 ≈ calories). The \"descriptor\" must be a concise 2-4 word food description. Include all fields: {\"calories\": number, \"protein_g\": number, \"carbs_g\": number, \"fat_g\": number, \"fiber_g\": number, \"descriptor\": string, \"analyzed_by\": \"ai\"}",
       messages,
     });
 
