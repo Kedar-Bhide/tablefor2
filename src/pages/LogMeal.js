@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { auth, db, storage } from "../firebase";
 import { collection, addDoc, updateDoc, doc, query, where, getDocs, limit } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { compressImage } from "../utils/compressImage";
 import { formatLocalDateKey, formatLocalTimeHHMM, getCurrentTimezone } from "../utils/dateTime";
 import MealNutritionCard from "../components/MealNutritionCard";
@@ -22,6 +23,12 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [photos, setPhotos] = useState([]);
   const [photoPreviews, setPhotoPreviews] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isParsingVoice, setIsParsingVoice] = useState(false);
+  const [recognition, setRecognition] = useState(null);
+  const isIntentionalStop = React.useRef(false);
+  const finalTranscriptRef = React.useRef("");
+  const isRecordingRef = React.useRef(false);
   const today = new Date();
   const localToday = formatLocalDateKey(today);
   const [mealDate, setMealDate] = useState(localToday);
@@ -128,6 +135,95 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
 
   const showSaveOption = !isMatchWithTemplate && mealName.trim().length > 0;
 
+  // Initialize Speech Recognition
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const rec = new SpeechRecognition();
+      rec.continuous = true;
+      rec.interimResults = false;
+      rec.lang = "en-US";
+
+      rec.onstart = () => {
+        setIsRecording(true);
+        isRecordingRef.current = true;
+        localStorage.setItem("hasAskedMicPermission", "true");
+      };
+      rec.onend = () => {
+        // Use ref here to avoid stale closures and dependency warnings
+        if (!isIntentionalStop.current && isRecordingRef.current) {
+          try { rec.start(); } catch (e) {}
+          return;
+        }
+        setIsRecording(false);
+        isRecordingRef.current = false;
+        if (finalTranscriptRef.current.trim()) {
+          handleVoiceLog(finalTranscriptRef.current);
+          finalTranscriptRef.current = ""; 
+        }
+      };
+      rec.onresult = (event) => {
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscriptRef.current += event.results[i][0].transcript + " ";
+          }
+        }
+      };
+      rec.onerror = (e) => {
+        if (e.error === "no-speech") return; 
+        console.error("Speech recognition error:", e.error);
+        setIsRecording(false);
+        isRecordingRef.current = false;
+      };
+      setRecognition(rec);
+    }
+  }, []);
+
+  const handleVoiceLog = async (transcript) => {
+    setIsParsingVoice(true);
+    try {
+      const functions = getFunctions();
+      const parseVoiceMeal = httpsCallable(functions, "parseVoiceMeal");
+      const result = await parseVoiceMeal({ transcript });
+      if (result.data && !result.data.error) {
+        if (result.data.name) setMealName(result.data.name);
+        if (result.data.ingredients) setIngredients(result.data.ingredients);
+        if (result.data.portion) setPortionSize(result.data.portion);
+        if (result.data.cookType) setCookType(result.data.cookType);
+        if (result.data.type) setMealType(result.data.type);
+      }
+    } catch (e) {
+      console.error("Error parsing voice meal:", e);
+      alert("Failed to parse voice input. Please try again.");
+    } finally {
+      setIsParsingVoice(false);
+    }
+  };
+
+  const toggleRecording = () => {
+    if (!recognition) {
+      alert("Voice recognition is not supported in this browser.");
+      return;
+    }
+    if (isRecording) {
+      isIntentionalStop.current = true;
+      recognition.stop();
+    } else {
+      const hasAsked = localStorage.getItem("hasAskedMicPermission");
+      if (!hasAsked) {
+        alert("Table For 2 uses your microphone only to convert your speech into meal details. Please allow microphone access when the system prompt appears.");
+      }
+      isIntentionalStop.current = false;
+      finalTranscriptRef.current = "";
+      try {
+        recognition.start();
+      } catch (e) {
+        console.error("Start error:", e);
+      }
+    }
+  };
+
+
   const handleSelectSuggestion = (template) => {
     setMealName(template.name);
     setIngredients(template.ingredients || "");
@@ -231,9 +327,41 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
       <button style={styles.back} onClick={() => setCurrentPage("today")}>
         <span style={{ transform: "translateX(-1px)" }}>←</span>
       </button>
-      <h2 style={styles.title}>
-        Log a <span style={{ color: "#ff6b6b" }}>Meal</span>
-      </h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+        <h2 style={{ ...styles.title, marginBottom: 0 }}>
+          Log a <span style={{ color: "#ff6b6b" }}>Meal</span>
+        </h2>
+        <button
+          style={{
+            ...styles.voiceButton,
+            backgroundColor: isRecording ? "#ff6b6b" : "#F0F0F0",
+            color: isRecording ? "white" : "#666",
+            border: "none",
+            width: "40px",
+            height: "40px",
+            borderRadius: "50%",
+            padding: 0,
+            justifyContent: "center",
+            boxShadow: isRecording ? "0 4px 15px rgba(255,107,107,0.3)" : "none",
+            animation: isRecording ? "pulseRecording 1.5s infinite" : "none"
+          }}
+          onClick={toggleRecording}
+          disabled={isParsingVoice}
+        >
+          {isParsingVoice ? (
+            "⏳"
+          ) : isRecording ? (
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M6 6h12v12H6z" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
+              <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+            </svg>
+          )}
+        </button>
+      </div>
       {/* Photo Upload Area */}
       <div style={styles.photoUploadContainer}>
         {photoPreviews.length === 0 ? (
@@ -549,8 +677,20 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
     marginBottom: "1rem",
-    boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
+  },
+  voiceButton: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "8px 16px",
+    borderRadius: "20px",
+    border: "1px solid #F0F0F0",
+    fontSize: "0.85rem",
+    fontWeight: "600",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
   },
   title: {
     fontSize: "2.2rem",
