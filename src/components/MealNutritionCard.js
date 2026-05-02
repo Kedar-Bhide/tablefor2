@@ -1,7 +1,7 @@
 import React from "react";
 
 export default function MealNutritionCard({ nutrition, editable = false, onNutritionChange = null }) {
-  if (!nutrition || !nutrition.calories || nutrition.calories <= 0) return null;
+  if (!editable && (!nutrition || !nutrition.calories || nutrition.calories <= 0)) return null;
 
   return (
     <>
