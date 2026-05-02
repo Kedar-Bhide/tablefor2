@@ -64,7 +64,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [taskCarbs, setTaskCarbs] = useState("");
   const [taskFat, setTaskFat] = useState("");
   const [taskFiber, setTaskFiber] = useState("");
-  const [taskNutrition, setTaskNutrition] = useState(null);
+  const [taskSaveToFrequent, setTaskSaveToFrequent] = useState(false);
+  const [taskMacrosModified, setTaskMacrosModified] = useState(false);
   
   const [editCalories, setEditCalories] = useState("");
   const [editProtein, setEditProtein] = useState("");
@@ -254,7 +255,6 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
           if (docSnap.exists()) {
             const sourceData = docSnap.data();
             if (sourceData.nutrition) {
-              setTaskNutrition(sourceData.nutrition);
               setTaskCalories(String(sourceData.nutrition.calories || ""));
               setTaskProtein(String(sourceData.nutrition.protein_g || ""));
               setTaskCarbs(String(sourceData.nutrition.carbs_g || ""));
@@ -270,12 +270,12 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       setTaskIngredients(activeTask.fromIngredients || "");
       setTaskPortionSize(activeTask.fromPortionSize || "");
     } else {
-      setTaskNutrition(null);
       setTaskCalories("");
       setTaskProtein("");
       setTaskCarbs("");
       setTaskFat("");
       setTaskFiber("");
+      setTaskMacrosModified(false);
     }
   }, [activeTask]);
 
@@ -383,6 +383,25 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       };
 
       await updateDoc(mealRef, updateData);
+      
+      // Sync to frequent meals if it was originally saved from this log
+      try {
+        const q = query(collection(db, "frequentMeals"), where("originalMealId", "==", selectedMeal.id));
+        const qSnap = await getDocs(q);
+        if (!qSnap.empty) {
+          const syncUpdates = {
+            name: updateData.name,
+            ingredients: updateData.ingredients,
+            portionSize: updateData.portionSize,
+            nutrition: updateData.nutrition,
+            mealType: updateData.type,
+          };
+          const promises = qSnap.docs.map(d => updateDoc(d.ref, syncUpdates));
+          await Promise.all(promises);
+        }
+      } catch (syncError) {
+        console.error("Failed to sync to frequent meals:", syncError);
+      }
 
       // Only reanalyze if name/ingredients/portion changed AND user didn't manually touch macros
       const structureChanged = nameChanged || ingredientsChanged || portionSizeChanged || cookTypeChanged;
@@ -524,15 +543,19 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         isShared: true,
         isRestaurant: activeTask.isRestaurant || false,
         sourceMealId: activeTask.sourceMealId,
-        nutrition: {
-          calories: parseInt(taskCalories) || taskNutrition?.calories || 0,
-          protein_g: parseInt(taskProtein) || taskNutrition?.protein_g || 0,
-          carbs_g: parseInt(taskCarbs) || taskNutrition?.carbs_g || 0,
-          fat_g: parseInt(taskFat) || taskNutrition?.fat_g || 0,
-          fiber_g: parseInt(taskFiber) || taskNutrition?.fiber_g || 0,
-        },
+        // Only provide nutrition if manually modified, otherwise let AI analyze based on NEW ingredients/portion
+        ...(taskMacrosModified ? {
+          nutrition: {
+            calories: parseInt(taskCalories) || 0,
+            protein_g: parseInt(taskProtein) || 0,
+            carbs_g: parseInt(taskCarbs) || 0,
+            fat_g: parseInt(taskFat) || 0,
+            fiber_g: parseInt(taskFiber) || 0,
+          }
+        } : {}),
         localDate: activeTask.localDate || now.toLocaleDateString("en-CA"),
         localTime: activeTask.localTime || "",
+        saveToFrequent: taskSaveToFrequent,
         createdAt: now,
       });
 
@@ -545,6 +568,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       setActiveTask(null);
       setTaskIngredients("");
       setTaskPortionSize("");
+      setTaskSaveToFrequent(false);
+      setTaskMacrosModified(false);
     } catch (e) {
       console.error("Task completion failed:", e);
     } finally {
@@ -1772,6 +1797,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                 }} 
                 editable={true}
                 onNutritionChange={(key, value) => {
+                  setTaskMacrosModified(true);
                   if (key === 'calories') setTaskCalories(String(value));
                   if (key === 'protein_g') setTaskProtein(String(value));
                   if (key === 'carbs_g') setTaskCarbs(String(value));
@@ -1779,6 +1805,36 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                   if (key === 'fiber_g') setTaskFiber(String(value));
                 }}
               />
+            </div>
+
+            {/* Save to Frequent Option */}
+            <div 
+              style={{ 
+                display: "flex", 
+                alignItems: "center", 
+                gap: "10px", 
+                marginBottom: "1.2rem",
+                marginTop: "0.5rem",
+                cursor: "pointer"
+              }}
+              onClick={() => setTaskSaveToFrequent(!taskSaveToFrequent)}
+            >
+              <div style={{
+                width: "20px",
+                height: "20px",
+                borderRadius: "6px",
+                border: "2px solid #ff6b6b",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: taskSaveToFrequent ? "#ff6b6b" : "transparent",
+                transition: "all 0.2s ease"
+              }}>
+                {taskSaveToFrequent && <span style={{ color: "white", fontSize: "14px" }}>✓</span>}
+              </div>
+              <p style={{ fontSize: "0.88rem", color: "#444", margin: 0, fontWeight: "500" }}>
+                Save to my frequent meals
+              </p>
             </div>
 
             {/* Complete button */}
