@@ -1,15 +1,13 @@
 # Table For 2 🍽️
 
-> **Share your meals, conquer your goals.**
-
-Table For 2 is a low-friction meal tracking experience designed for connection and consistency. Whether you're tracking solo or syncing with a partner, its AI-first approach removes the tedium of manual data entry, letting you focus on your health and your relationship.
+Table For 2 is a low-friction meal tracking experience designed for connection and consistency. Whether you're tracking solo or syncing with a partner, its AI-first approach removes the tedium of manual data entry, letting you focus on your health and nutrition goals.
 
 ---
 
 ## ✨ Key Highlights
 
 ### 🎙️ Effortless Logging
-No more searching through endless databases. Just **speak your meal** or **snap a photo**. Its integrated Voice-to-Text and Image Recognition handles the rest, populating your log in seconds with precise macro details.
+No more searching through endless databases. Just **speak your meal** and **snap a photo**. Its integrated Voice-to-Text and/or Image Recognition handles the rest, populating your log in seconds with precise macro details.
 
 ### 🍛 Cuisine-Aware AI
 Its engine is built to understand the real world. From grocery hauls to authentic regional dishes and niche ingredients, Table For 2 provides accurate nutrient estimation.
@@ -27,10 +25,12 @@ Celebrate consistency with simple badges and personal milestones that feel like 
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: React, Redux Toolkit
+- **Frontend**: React, Redux Toolkit (State Management)
+- **Styling**: Vanilla CSS (Custom Design System)
 - **Backend**: Firebase (Auth, Firestore, Hosting)
 - **AI Engine**: Claude (via Firebase Cloud Functions)
-- **Voice**: Web Speech API (Browser-native, Zero latency)
+- **Voice**: Web Speech API (Native Browser Integration)
+- **Functions**: Node.js (Firebase v2 Cloud Functions)
 
 ---
 
