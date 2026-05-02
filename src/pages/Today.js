@@ -383,6 +383,25 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       };
 
       await updateDoc(mealRef, updateData);
+      
+      // Sync to frequent meals if it was originally saved from this log
+      try {
+        const q = query(collection(db, "frequentMeals"), where("originalMealId", "==", selectedMeal.id));
+        const qSnap = await getDocs(q);
+        if (!qSnap.empty) {
+          const syncUpdates = {
+            name: updateData.name,
+            ingredients: updateData.ingredients,
+            portionSize: updateData.portionSize,
+            nutrition: updateData.nutrition,
+            mealType: updateData.type,
+          };
+          const promises = qSnap.docs.map(d => updateDoc(d.ref, syncUpdates));
+          await Promise.all(promises);
+        }
+      } catch (syncError) {
+        console.error("Failed to sync to frequent meals:", syncError);
+      }
 
       // Only reanalyze if name/ingredients/portion changed AND user didn't manually touch macros
       const structureChanged = nameChanged || ingredientsChanged || portionSizeChanged || cookTypeChanged;
