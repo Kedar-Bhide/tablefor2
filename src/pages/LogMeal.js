@@ -170,8 +170,16 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
         }
       };
       rec.onerror = (e) => {
+        // 'no-speech' happens if the user stays silent; we can ignore it
         if (e.error === "no-speech") return; 
-        console.error("Speech recognition error:", e.error);
+
+        if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+          // This triggers if the user has blocked access at the browser level
+          alert("Oops! It looks like microphone access is blocked. For the best experience, please go to your browser's Site Settings (look for the lock/settings icon in the address bar) and set Microphone to 'Allow' for this site. We're sorry for the inconvenience!");
+        } else {
+          console.error("Speech recognition error:", e.error);
+        }
+
         setIsRecording(false);
         isRecordingRef.current = false;
       };
@@ -205,20 +213,28 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
       alert("Voice recognition is not supported in this browser.");
       return;
     }
+
     if (isRecording) {
       isIntentionalStop.current = true;
       recognition.stop();
     } else {
+      // Rule-based flow:
+      // 1. Show pre-permission explanation if it's the first time
       const hasAsked = localStorage.getItem("hasAskedMicPermission");
       if (!hasAsked) {
         alert("Table For 2 uses your microphone only to convert your speech into meal details. Please allow microphone access when the system prompt appears.");
       }
+
+      // 2. Clear state and attempt to start
       isIntentionalStop.current = false;
       finalTranscriptRef.current = "";
+      
       try {
         recognition.start();
       } catch (e) {
-        console.error("Start error:", e);
+        // This catch handles cases where the browser prevents immediate start
+        console.error("Mic start failed:", e);
+        alert("We couldn't start the microphone. Please check your browser's site settings to ensure microphone access is allowed for Table For 2.");
       }
     }
   };
