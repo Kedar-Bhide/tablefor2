@@ -59,6 +59,19 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [manualGoals, setManualGoals] = useState({ calories: "", protein_g: "", carbs_g: "", fat_g: "", fiber_g: "" });
   const [profileDraft, setProfileDraft] = useState({ age: "", gender: "", height_cm: "", weight_kg: "", target_weight_kg: "" });
   const [goalSaving, setGoalSaving] = useState(false);
+  const [taskCalories, setTaskCalories] = useState("");
+  const [taskProtein, setTaskProtein] = useState("");
+  const [taskCarbs, setTaskCarbs] = useState("");
+  const [taskFat, setTaskFat] = useState("");
+  const [taskFiber, setTaskFiber] = useState("");
+  const [taskNutrition, setTaskNutrition] = useState(null);
+  
+  const [editCalories, setEditCalories] = useState("");
+  const [editProtein, setEditProtein] = useState("");
+  const [editCarbs, setEditCarbs] = useState("");
+  const [editFat, setEditFat] = useState("");
+  const [editFiber, setEditFiber] = useState("");
+  const [manualMacrosModified, setManualMacrosModified] = useState(false);
 
   useEffect(() => {
     if (globalUserData?.photoURL) {
@@ -232,6 +245,64 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
     };
   }, [user.uid, partnerUid]);
 
+  // Pre-populate task macros when a task is opened
+  useEffect(() => {
+    if (activeTask) {
+      const fetchSourceMeal = async () => {
+        try {
+          const docSnap = await getDoc(doc(db, "meals", activeTask.sourceMealId));
+          if (docSnap.exists()) {
+            const sourceData = docSnap.data();
+            if (sourceData.nutrition) {
+              setTaskNutrition(sourceData.nutrition);
+              setTaskCalories(String(sourceData.nutrition.calories || ""));
+              setTaskProtein(String(sourceData.nutrition.protein_g || ""));
+              setTaskCarbs(String(sourceData.nutrition.carbs_g || ""));
+              setTaskFat(String(sourceData.nutrition.fat_g || ""));
+              setTaskFiber(String(sourceData.nutrition.fiber_g || ""));
+            }
+          }
+        } catch (e) {
+          console.error("Failed to fetch source meal nutrition:", e);
+        }
+      };
+      fetchSourceMeal();
+      setTaskIngredients(activeTask.fromIngredients || "");
+      setTaskPortionSize(activeTask.fromPortionSize || "");
+    } else {
+      setTaskNutrition(null);
+      setTaskCalories("");
+      setTaskProtein("");
+      setTaskCarbs("");
+      setTaskFat("");
+      setTaskFiber("");
+    }
+  }, [activeTask]);
+
+  // Pre-populate edit state
+  useEffect(() => {
+    if (selectedMeal && editMode) {
+      setEditName(selectedMeal.name || "");
+      setEditType(selectedMeal.type || "");
+      setEditIngredients(selectedMeal.ingredients || selectedMeal.quantity || "");
+      setEditPortionSize(selectedMeal.portionSize || "");
+      setEditCookType(selectedMeal.isRestaurant ? "Restaurant" : (selectedMeal.isPackaged ? "Packaged" : "Homemade"));
+      
+      const photos = getPhotos(selectedMeal);
+      setEditPhotos([]);
+      setEditPhotoPreviews(photos);
+      
+      if (selectedMeal.nutrition) {
+        setEditCalories(String(selectedMeal.nutrition.calories || ""));
+        setEditProtein(String(selectedMeal.nutrition.protein_g || ""));
+        setEditCarbs(String(selectedMeal.nutrition.carbs_g || ""));
+        setEditFat(String(selectedMeal.nutrition.fat_g || ""));
+        setEditFiber(String(selectedMeal.nutrition.fiber_g || ""));
+      }
+      setManualMacrosModified(false);
+    }
+  }, [selectedMeal, editMode]);
+
   const mealCount = meals.length;
 
   const handleDelete = async (mealId) => {
@@ -302,12 +373,20 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         isRestaurant: editCookType === "Restaurant",
         isPackaged: editCookType === "Packaged",
         quantity: "", // Clear old quantity field
+        nutrition: {
+          calories: parseInt(editCalories) || 0,
+          protein_g: parseInt(editProtein) || 0,
+          carbs_g: parseInt(editCarbs) || 0,
+          fat_g: parseInt(editFat) || 0,
+          fiber_g: parseInt(editFiber) || 0,
+        }
       };
 
       await updateDoc(mealRef, updateData);
 
-      // Only reanalyze if name, ingredients, portion size or cook type changed
-      if (nameChanged || ingredientsChanged || portionSizeChanged || cookTypeChanged) {
+      // Only reanalyze if name/ingredients/portion changed AND user didn't manually touch macros
+      const structureChanged = nameChanged || ingredientsChanged || portionSizeChanged || cookTypeChanged;
+      if (structureChanged && !manualMacrosModified) {
         setSaving(false);
         setReanalyzing(true);
         try {
@@ -445,7 +524,13 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         isShared: true,
         isRestaurant: activeTask.isRestaurant || false,
         sourceMealId: activeTask.sourceMealId,
-        // Both date AND time from original meal — task completion time is irrelevant
+        nutrition: {
+          calories: parseInt(taskCalories) || taskNutrition?.calories || 0,
+          protein_g: parseInt(taskProtein) || taskNutrition?.protein_g || 0,
+          carbs_g: parseInt(taskCarbs) || taskNutrition?.carbs_g || 0,
+          fat_g: parseInt(taskFat) || taskNutrition?.fat_g || 0,
+          fiber_g: parseInt(taskFiber) || taskNutrition?.fiber_g || 0,
+        },
         localDate: activeTask.localDate || now.toLocaleDateString("en-CA"),
         localTime: activeTask.localTime || "",
         createdAt: now,
@@ -1102,6 +1187,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                     ← Back
                   </button>
                 </div>
+
               </>
             ) : (
               <>
@@ -1163,6 +1249,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                     </button>
                   ))}
                 </div>
+
 
                 {/* Photo */}
                 <p style={styles.editLabel}>Photo</p>
@@ -1673,6 +1760,26 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
             <p style={styles.taskQuantityHint}>
               Leave blank to use the same details as {partnerName ? partnerName.split(" ")[0] : "your partner"}
             </p>
+
+            <div style={{ marginTop: "1rem" }}>
+              <MealNutritionCard 
+                nutrition={{
+                  calories: parseInt(taskCalories) || 0,
+                  protein_g: parseInt(taskProtein) || 0,
+                  carbs_g: parseInt(taskCarbs) || 0,
+                  fat_g: parseInt(taskFat) || 0,
+                  fiber_g: parseInt(taskFiber) || 0,
+                }} 
+                editable={true}
+                onNutritionChange={(key, value) => {
+                  if (key === 'calories') setTaskCalories(String(value));
+                  if (key === 'protein_g') setTaskProtein(String(value));
+                  if (key === 'carbs_g') setTaskCarbs(String(value));
+                  if (key === 'fat_g') setTaskFat(String(value));
+                  if (key === 'fiber_g') setTaskFiber(String(value));
+                }}
+              />
+            </div>
 
             {/* Complete button */}
             <button
@@ -2563,6 +2670,37 @@ const styles = {
     color: "#888",
     margin: "-0.6rem 0 1rem 0",
     textAlign: "center",
+  },
+  macroGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, 1fr)",
+    gap: "0.8rem",
+    marginBottom: "1.2rem",
+  },
+  macroInputGroup: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+  },
+  macroLabel: {
+    fontSize: "0.68rem",
+    color: "#999",
+    textTransform: "uppercase",
+    fontWeight: "600",
+    letterSpacing: "0.02em",
+  },
+  macroInput: {
+    width: "100%",
+    padding: "0.6rem",
+    fontSize: "0.95rem",
+    borderRadius: "8px",
+    border: "1px solid #eee",
+    outline: "none",
+    color: "#333",
+    backgroundColor: "#fff",
+    textAlign: "center",
+    fontWeight: "600",
+    boxSizing: "border-box",
   },
   welcomeCard: {
     backgroundColor: "#fff5f5",
