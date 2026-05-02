@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { auth, db } from "./firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, setDoc, getDoc, onSnapshot } from "firebase/firestore";
-import Login from "./pages/Login";
+import LandingPage from "./pages/LandingPage";
 import Profile from "./pages/Profile";
 import NavBar from "./components/NavBar";
 import Today from "./pages/Today";
@@ -143,7 +143,7 @@ function App() {
 
   if (loading) return <p style={{ textAlign: "center", marginTop: "2rem" }}>Loading...</p>;
 
-  if (!user) return <Login />;
+  if (!user) return <LandingPage />;
 
   return (
     <div style={{ paddingBottom: "70px" }}>
