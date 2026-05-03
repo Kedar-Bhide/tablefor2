@@ -45,6 +45,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [weightCheckInSaving, setWeightCheckInSaving] = useState(false);
   const [insightBanner, setInsightBanner] = useState(null); // null | "generating" | "ready"
   const [weightInsight, setWeightInsight] = useState(null);
+  const [monthlyInsight, setMonthlyInsight] = useState(null);
   const [pendingTasks, setPendingTasks] = useState([]);
   const [activeTask, setActiveTask] = useState(null);
   const [taskIngredients, setTaskIngredients] = useState("");
@@ -66,7 +67,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [taskFiber, setTaskFiber] = useState("");
   const [taskSaveToFrequent, setTaskSaveToFrequent] = useState(false);
   const [taskMacrosModified, setTaskMacrosModified] = useState(false);
-  
+
   const [editCalories, setEditCalories] = useState("");
   const [editProtein, setEditProtein] = useState("");
   const [editCarbs, setEditCarbs] = useState("");
@@ -95,18 +96,32 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         setNewWeight(globalUserData.weight_kg || "");
       }
 
-      // Check for any ready weight insight to show banner
-      const insightsSnap = await getDocs(
-        collection(db, "users", user.uid, "weightInsights")
-      );
-      if (!insightsSnap.empty) {
-        const latest = insightsSnap.docs
-          .sort((a, b) => b.id.localeCompare(a.id))[0];
-        const insightData = latest.data();
-        if (!insightData.dismissed) {
-          setWeightInsight({ ...insightData, id: latest.id });
-          setInsightBanner("ready");
-        }
+      // Check for any ready weight insight
+      const wSnap = await getDocs(collection(db, "users", user.uid, "weightInsights"));
+      let activeWeightInsight = null;
+      if (!wSnap.empty) {
+        const latest = wSnap.docs.sort((a, b) => b.id.localeCompare(a.id))[0];
+        const data = latest.data();
+        if (!data.dismissed) activeWeightInsight = { ...data, id: latest.id };
+      }
+
+      // Check for any ready monthly insight
+      const mSnap = await getDocs(collection(db, "users", user.uid, "insights"));
+      let activeMonthlyInsight = null;
+      if (!mSnap.empty) {
+        const latest = mSnap.docs.sort((a, b) => b.id.localeCompare(a.id))[0];
+        const data = latest.data();
+        if (!data.dismissed) activeMonthlyInsight = { ...data, id: latest.id };
+      }
+
+      if (activeWeightInsight) {
+        setWeightInsight(activeWeightInsight);
+        setMonthlyInsight(null);
+        setInsightBanner("ready");
+      } else if (activeMonthlyInsight) {
+        setMonthlyInsight(activeMonthlyInsight);
+        setWeightInsight(null);
+        setInsightBanner("ready");
       }
 
       // Check if new user — no meals logged ever
@@ -287,11 +302,11 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       setEditIngredients(selectedMeal.ingredients || selectedMeal.quantity || "");
       setEditPortionSize(selectedMeal.portionSize || "");
       setEditCookType(selectedMeal.isRestaurant ? "Restaurant" : (selectedMeal.isPackaged ? "Packaged" : "Homemade"));
-      
+
       const photos = getPhotos(selectedMeal);
       setEditPhotos([]);
       setEditPhotoPreviews(photos);
-      
+
       if (selectedMeal.nutrition) {
         setEditCalories(String(selectedMeal.nutrition.calories || ""));
         setEditProtein(String(selectedMeal.nutrition.protein_g || ""));
@@ -383,7 +398,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       };
 
       await updateDoc(mealRef, updateData);
-      
+
       // Sync to frequent meals if it was originally saved from this log
       try {
         const q = query(collection(db, "frequentMeals"), where("originalMealId", "==", selectedMeal.id));
@@ -914,8 +929,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                 >
                   {goalSaving ? "Saving..." : "Save Goals"}
                 </button>
-                <button 
-                  style={styles.cancelButton} 
+                <button
+                  style={styles.cancelButton}
                   onClick={() => setGoalSetupStep(nutrientGoals ? null : "choose")}
                 >
                   {nutrientGoals ? "Cancel" : "← Back"}
@@ -979,8 +994,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                 >
                   {goalSaving ? "Saving..." : "Calculate My Goals"}
                 </button>
-                <button 
-                  style={styles.cancelButton} 
+                <button
+                  style={styles.cancelButton}
                   onClick={() => setGoalSetupStep(nutrientGoals ? null : "choose")}
                 >
                   {nutrientGoals ? "Cancel" : "← Back"}
@@ -1173,25 +1188,9 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                 </div>
 
                 {/* Nutrition breakdown */}
-                <MealNutritionCard 
-                  nutrition={selectedMeal.nutrition} 
-                  editable={selectedMeal.uid === user.uid}
-                  onNutritionChange={async (key, value) => {
-                    try {
-                      setSelectedMeal((prev) => ({
-                        ...prev,
-                        nutrition: {
-                          ...prev.nutrition,
-                          [key]: value
-                        }
-                      }));
-                      await updateDoc(doc(db, "meals", selectedMeal.id), {
-                        [`nutrition.${key}`]: value
-                      });
-                    } catch (e) {
-                      console.error("Failed to update nutrition inline", e);
-                    }
-                  }}
+                <MealNutritionCard
+                  nutrition={selectedMeal.nutrition}
+                  editable={false}
                 />
 
                 {/* Partner's comment */}
@@ -1242,6 +1241,19 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                   style={styles.editInput}
                   placeholder="Standard, Large, etc."
                 />
+
+                <p style={styles.editLabel}>Current Macros</p>
+                <MealNutritionCard
+                  nutrition={{
+                    calories: parseInt(editCalories) || 0,
+                    protein_g: parseInt(editProtein) || 0,
+                    carbs_g: parseInt(editCarbs) || 0,
+                    fat_g: parseInt(editFat) || 0,
+                    fiber_g: parseInt(editFiber) || 0,
+                  }}
+                  editable={false}
+                />
+
                 <p style={styles.editLabel}>Meal Type</p>
                 <div style={styles.typeRow}>
                   {["Breakfast", "Lunch", "Dinner", "Snack"].map((type) => (
@@ -1577,7 +1589,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
             cursor: insightBanner === "ready" ? "pointer" : "default",
           }}
           onClick={() => {
-            if (insightBanner === "ready" && weightInsight) {
+            if (insightBanner === "ready" && (weightInsight || monthlyInsight)) {
               setInsightBanner("open");
             }
           }}
@@ -1599,7 +1611,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       )}
 
       {/* Insight Popup */}
-      {insightBanner === "open" && weightInsight && (
+      {insightBanner === "open" && (weightInsight || monthlyInsight) && (
         <div
           style={styles.overlay}
           onClick={() => setInsightBanner("ready")}
@@ -1610,51 +1622,76 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
           >
             <p style={styles.insightPopupEyebrow}>Your Insights ✨</p>
             <p style={styles.insightPopupPeriod}>
-              {weightInsight.periodStart} → {weightInsight.periodEnd}
+              {weightInsight ? `${weightInsight.periodStart} → ${weightInsight.periodEnd}` : `${monthlyInsight.month} ${monthlyInsight.year}`}
             </p>
 
-            {/* Weight summary */}
-            <div style={styles.insightWeightRow}>
-              <div style={styles.insightWeightItem}>
-                <p style={styles.insightWeightLabel}>Previous</p>
-                <p style={styles.insightWeightValue}>{weightInsight.previousWeight}kg</p>
-              </div>
-              <div style={styles.insightWeightArrow}>→</div>
-              <div style={styles.insightWeightItem}>
-                <p style={styles.insightWeightLabel}>Current</p>
-                <p style={styles.insightWeightValue}>{weightInsight.newWeight}kg</p>
-              </div>
-              {weightInsight.targetWeight && (
-                <>
-                  <div style={styles.insightWeightArrow}>·</div>
+            {/* Weight summary - only for weight insight */}
+            {weightInsight && (
+              <>
+                <div style={styles.insightWeightRow}>
                   <div style={styles.insightWeightItem}>
-                    <p style={styles.insightWeightLabel}>Target</p>
-                    <p style={styles.insightWeightValue}>{weightInsight.targetWeight}kg</p>
+                    <p style={styles.insightWeightLabel}>Previous</p>
+                    <p style={styles.insightWeightValue}>{weightInsight.previousWeight}kg</p>
                   </div>
-                </>
-              )}
-            </div>
+                  <div style={styles.insightWeightArrow}>→</div>
+                  <div style={styles.insightWeightItem}>
+                    <p style={styles.insightWeightLabel}>Current</p>
+                    <p style={styles.insightWeightValue}>{weightInsight.newWeight}kg</p>
+                  </div>
+                  {weightInsight.targetWeight && (
+                    <>
+                      <div style={styles.insightWeightArrow}>·</div>
+                      <div style={styles.insightWeightItem}>
+                        <p style={styles.insightWeightLabel}>Target</p>
+                        <p style={styles.insightWeightValue}>{weightInsight.targetWeight}kg</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+                {/* Weight delta */}
+                {weightInsight.newWeight && weightInsight.previousWeight && (
+                  <p style={{
+                    ...styles.insightWeightDelta,
+                    color: weightInsight.newWeight <= weightInsight.previousWeight
+                      ? "#7ec8a4"
+                      : "#ffb347",
+                  }}>
+                    {weightInsight.newWeight === weightInsight.previousWeight
+                      ? "No change this period"
+                      : weightInsight.newWeight < weightInsight.previousWeight
+                        ? `↓ ${(weightInsight.previousWeight - weightInsight.newWeight).toFixed(1)}kg this period`
+                        : `↑ ${(weightInsight.newWeight - weightInsight.previousWeight).toFixed(1)}kg this period`}
+                  </p>
+                )}
+              </>
+            )}
 
-            {/* Weight delta */}
-            {weightInsight.newWeight && weightInsight.previousWeight && (
-              <p style={{
-                ...styles.insightWeightDelta,
-                color: weightInsight.newWeight <= weightInsight.previousWeight
-                  ? "#7ec8a4"
-                  : "#ffb347",
-              }}>
-                {weightInsight.newWeight === weightInsight.previousWeight
-                  ? "No change this period"
-                  : weightInsight.newWeight < weightInsight.previousWeight
-                    ? `↓ ${(weightInsight.previousWeight - weightInsight.newWeight).toFixed(1)}kg this period`
-                    : `↑ ${(weightInsight.newWeight - weightInsight.previousWeight).toFixed(1)}kg this period`}
-              </p>
+            {/* Monthly Nutrition Summary - only for monthly insight */}
+            {monthlyInsight && (
+              <div style={styles.insightWeightRow}>
+                <div style={styles.insightWeightItem}>
+                  <p style={styles.insightWeightLabel}>Avg Cal</p>
+                  <p style={styles.insightWeightValue}>{monthlyInsight.nutrition.avgCalories}</p>
+                </div>
+                <div style={styles.insightWeightItem}>
+                  <p style={styles.insightWeightLabel}>P</p>
+                  <p style={styles.insightWeightValue}>{monthlyInsight.nutrition.avgProtein}g</p>
+                </div>
+                <div style={styles.insightWeightItem}>
+                  <p style={styles.insightWeightLabel}>C</p>
+                  <p style={styles.insightWeightValue}>{monthlyInsight.nutrition.avgCarbs}g</p>
+                </div>
+                <div style={styles.insightWeightItem}>
+                  <p style={styles.insightWeightLabel}>F</p>
+                  <p style={styles.insightWeightValue}>{monthlyInsight.nutrition.avgFat}g</p>
+                </div>
+              </div>
             )}
 
             <div style={styles.insightDivider} />
 
             {/* Insight text */}
-            <p style={styles.insightPopupText}>{weightInsight.insight}</p>
+            <p style={styles.insightPopupText}>{weightInsight ? weightInsight.insight : monthlyInsight.insight}</p>
 
             <p style={styles.insightDisclaimer}>
               AI-generated · Not medical advice
@@ -1663,9 +1700,13 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
             <button
               style={styles.insightPopupButton}
               onClick={async () => {
+                const type = weightInsight ? "weightInsights" : "insights";
+                const id = weightInsight ? weightInsight.id : monthlyInsight.id;
                 setInsightBanner(null);
+                setWeightInsight(null);
+                setMonthlyInsight(null);
                 await updateDoc(
-                  doc(db, "users", user.uid, "weightInsights", weightInsight.id),
+                  doc(db, "users", user.uid, type, id),
                   { dismissed: true }
                 );
               }}
@@ -1771,7 +1812,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
               style={styles.taskQuantityInput}
               className="comment-input"
             />
-            
+
             <p style={{ ...styles.taskYourQuantityLabel, marginTop: "1rem" }}>Your portion size</p>
             <input
               type="text"
@@ -1781,20 +1822,20 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
               style={styles.taskQuantityInput}
               className="comment-input"
             />
-            
+
             <p style={styles.taskQuantityHint}>
               Leave blank to use the same details as {partnerName ? partnerName.split(" ")[0] : "your partner"}
             </p>
 
             <div style={{ marginTop: "1rem" }}>
-              <MealNutritionCard 
+              <MealNutritionCard
                 nutrition={{
                   calories: parseInt(taskCalories) || 0,
                   protein_g: parseInt(taskProtein) || 0,
                   carbs_g: parseInt(taskCarbs) || 0,
                   fat_g: parseInt(taskFat) || 0,
                   fiber_g: parseInt(taskFiber) || 0,
-                }} 
+                }}
                 editable={true}
                 onNutritionChange={(key, value) => {
                   setTaskMacrosModified(true);
@@ -1808,11 +1849,11 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
             </div>
 
             {/* Save to Frequent Option */}
-            <div 
-              style={{ 
-                display: "flex", 
-                alignItems: "center", 
-                gap: "10px", 
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
                 marginBottom: "1.2rem",
                 marginTop: "0.5rem",
                 cursor: "pointer"
