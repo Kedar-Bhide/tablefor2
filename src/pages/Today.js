@@ -66,7 +66,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [taskFiber, setTaskFiber] = useState("");
   const [taskSaveToFrequent, setTaskSaveToFrequent] = useState(false);
   const [taskMacrosModified, setTaskMacrosModified] = useState(false);
-  
+
   const [editCalories, setEditCalories] = useState("");
   const [editProtein, setEditProtein] = useState("");
   const [editCarbs, setEditCarbs] = useState("");
@@ -287,11 +287,11 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       setEditIngredients(selectedMeal.ingredients || selectedMeal.quantity || "");
       setEditPortionSize(selectedMeal.portionSize || "");
       setEditCookType(selectedMeal.isRestaurant ? "Restaurant" : (selectedMeal.isPackaged ? "Packaged" : "Homemade"));
-      
+
       const photos = getPhotos(selectedMeal);
       setEditPhotos([]);
       setEditPhotoPreviews(photos);
-      
+
       if (selectedMeal.nutrition) {
         setEditCalories(String(selectedMeal.nutrition.calories || ""));
         setEditProtein(String(selectedMeal.nutrition.protein_g || ""));
@@ -383,7 +383,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       };
 
       await updateDoc(mealRef, updateData);
-      
+
       // Sync to frequent meals if it was originally saved from this log
       try {
         const q = query(collection(db, "frequentMeals"), where("originalMealId", "==", selectedMeal.id));
@@ -914,8 +914,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                 >
                   {goalSaving ? "Saving..." : "Save Goals"}
                 </button>
-                <button 
-                  style={styles.cancelButton} 
+                <button
+                  style={styles.cancelButton}
                   onClick={() => setGoalSetupStep(nutrientGoals ? null : "choose")}
                 >
                   {nutrientGoals ? "Cancel" : "← Back"}
@@ -979,8 +979,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                 >
                   {goalSaving ? "Saving..." : "Calculate My Goals"}
                 </button>
-                <button 
-                  style={styles.cancelButton} 
+                <button
+                  style={styles.cancelButton}
                   onClick={() => setGoalSetupStep(nutrientGoals ? null : "choose")}
                 >
                   {nutrientGoals ? "Cancel" : "← Back"}
@@ -1173,25 +1173,9 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                 </div>
 
                 {/* Nutrition breakdown */}
-                <MealNutritionCard 
-                  nutrition={selectedMeal.nutrition} 
-                  editable={selectedMeal.uid === user.uid}
-                  onNutritionChange={async (key, value) => {
-                    try {
-                      setSelectedMeal((prev) => ({
-                        ...prev,
-                        nutrition: {
-                          ...prev.nutrition,
-                          [key]: value
-                        }
-                      }));
-                      await updateDoc(doc(db, "meals", selectedMeal.id), {
-                        [`nutrition.${key}`]: value
-                      });
-                    } catch (e) {
-                      console.error("Failed to update nutrition inline", e);
-                    }
-                  }}
+                <MealNutritionCard
+                  nutrition={selectedMeal.nutrition}
+                  editable={false}
                 />
 
                 {/* Partner's comment */}
@@ -1242,6 +1226,19 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                   style={styles.editInput}
                   placeholder="Standard, Large, etc."
                 />
+
+                <p style={styles.editLabel}>Current Macros</p>
+                <MealNutritionCard
+                  nutrition={{
+                    calories: parseInt(editCalories) || 0,
+                    protein_g: parseInt(editProtein) || 0,
+                    carbs_g: parseInt(editCarbs) || 0,
+                    fat_g: parseInt(editFat) || 0,
+                    fiber_g: parseInt(editFiber) || 0,
+                  }}
+                  editable={false}
+                />
+
                 <p style={styles.editLabel}>Meal Type</p>
                 <div style={styles.typeRow}>
                   {["Breakfast", "Lunch", "Dinner", "Snack"].map((type) => (
@@ -1771,7 +1768,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
               style={styles.taskQuantityInput}
               className="comment-input"
             />
-            
+
             <p style={{ ...styles.taskYourQuantityLabel, marginTop: "1rem" }}>Your portion size</p>
             <input
               type="text"
@@ -1781,20 +1778,20 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
               style={styles.taskQuantityInput}
               className="comment-input"
             />
-            
+
             <p style={styles.taskQuantityHint}>
               Leave blank to use the same details as {partnerName ? partnerName.split(" ")[0] : "your partner"}
             </p>
 
             <div style={{ marginTop: "1rem" }}>
-              <MealNutritionCard 
+              <MealNutritionCard
                 nutrition={{
                   calories: parseInt(taskCalories) || 0,
                   protein_g: parseInt(taskProtein) || 0,
                   carbs_g: parseInt(taskCarbs) || 0,
                   fat_g: parseInt(taskFat) || 0,
                   fiber_g: parseInt(taskFiber) || 0,
-                }} 
+                }}
                 editable={true}
                 onNutritionChange={(key, value) => {
                   setTaskMacrosModified(true);
@@ -1808,11 +1805,11 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
             </div>
 
             {/* Save to Frequent Option */}
-            <div 
-              style={{ 
-                display: "flex", 
-                alignItems: "center", 
-                gap: "10px", 
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
                 marginBottom: "1.2rem",
                 marginTop: "0.5rem",
                 cursor: "pointer"
