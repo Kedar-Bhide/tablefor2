@@ -182,6 +182,16 @@ Keep it under 60 words total.`;
               });
 
             console.log(`Insight saved for ${uid} - ${insightKey}`);
+
+            // Send notification
+            if (user.fcmToken) {
+              await sendNotification(
+                user.fcmToken,
+                "New Monthly Insight ✨",
+                `Your nutritional summary for ${monthName} is ready!`
+              );
+            }
+
             resolve();
           } catch (e) {
             console.error("Failed to parse insight:", e);
