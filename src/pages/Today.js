@@ -560,9 +560,20 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         };
       } else if (!ingredientsChanged && !portionChanged) {
         // Quantities are the same, inherit source nutrition immediately
-        finalNutrition = activeTask.fromNutrition || null;
+        if (activeTask.fromNutrition) {
+          finalNutrition = activeTask.fromNutrition;
+        } else {
+          // Fallback: fetch from source meal if missing on task (for older tasks)
+          try {
+            const srcSnap = await getDoc(doc(db, "meals", activeTask.sourceMealId));
+            if (srcSnap.exists()) {
+              finalNutrition = srcSnap.data().nutrition || null;
+            }
+          } catch (err) {
+            console.error("Failed to fetch fallback nutrition:", err);
+          }
+        }
       }
-      // If changed but not manually modified, finalNutrition remains null, triggering AI analysis on backend
 
       await addDoc(collection(db, "meals"), {
         uid: user.uid,
@@ -1204,14 +1215,14 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
                 {/* Nutrition breakdown */}
                 <MealNutritionCard
-                  nutrition={selectedMeal.nutrition}
+                  nutrition={selectedMeal.nutrition || {}}
                   editable={true}
                   onNutritionChange={async (key, value) => {
                     try {
                       setSelectedMeal((prev) => ({
                         ...prev,
                         nutrition: {
-                          ...prev.nutrition,
+                          ...(prev.nutrition || {}),
                           [key]: value
                         }
                       }));
@@ -1281,8 +1292,16 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                     carbs_g: parseInt(editCarbs) || 0,
                     fat_g: parseInt(editFat) || 0,
                     fiber_g: parseInt(editFiber) || 0,
+                  } || {}}
+                  editable={true}
+                  onNutritionChange={(key, value) => {
+                    if (key === 'calories') setEditCalories(String(value));
+                    if (key === 'protein_g') setEditProtein(String(value));
+                    if (key === 'carbs_g') setEditCarbs(String(value));
+                    if (key === 'fat_g') setEditFat(String(value));
+                    if (key === 'fiber_g') setEditFiber(String(value));
+                    setManualMacrosModified(true);
                   }}
-                  editable={false}
                 />
 
                 <p style={styles.editLabel}>Meal Type</p>
