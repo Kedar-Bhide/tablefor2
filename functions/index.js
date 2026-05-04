@@ -647,6 +647,7 @@ exports.onMealCreated = onDocumentCreated(
                 photos: meal.photos?.length > 0 ? meal.photos : meal.photoURL ? [meal.photoURL] : [],
                 fromIngredients: meal.ingredients || meal.quantity || "",
                 fromPortionSize: meal.portionSize || "",
+                fromNutrition: finalNutrition || null,
                 fromQuantity: "", // Legacy cleanup
                 localDate: meal.localDate || "",
                 localTime: meal.localTime || "",
