@@ -546,6 +546,23 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
     setTaskSaving(true);
     try {
       const now = new Date();
+      const ingredientsChanged = taskIngredients.trim() !== "" && taskIngredients.trim() !== activeTask.fromIngredients;
+      const portionChanged = taskPortionSize.trim() !== "" && taskPortionSize.trim() !== activeTask.fromPortionSize;
+
+      let finalNutrition = null;
+      if (taskMacrosModified) {
+        finalNutrition = {
+          calories: parseInt(taskCalories) || 0,
+          protein_g: parseInt(taskProtein) || 0,
+          carbs_g: parseInt(taskCarbs) || 0,
+          fat_g: parseInt(taskFat) || 0,
+          fiber_g: parseInt(taskFiber) || 0,
+        };
+      } else if (!ingredientsChanged && !portionChanged) {
+        // Quantities are the same, inherit source nutrition immediately
+        finalNutrition = activeTask.fromNutrition || null;
+      }
+      // If changed but not manually modified, finalNutrition remains null, triggering AI analysis on backend
 
       await addDoc(collection(db, "meals"), {
         uid: user.uid,
@@ -553,21 +570,12 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         type: activeTask.mealType,
         photoURL: activeTask.photos?.[0] || null,
         photos: activeTask.photos || [],
-        ingredients: taskIngredients.trim() || activeTask.fromIngredients || activeTask.fromQuantity || "",
+        ingredients: taskIngredients.trim() || activeTask.fromIngredients || "",
         portionSize: taskPortionSize.trim() || activeTask.fromPortionSize || "",
         isShared: true,
         isRestaurant: activeTask.isRestaurant || false,
         sourceMealId: activeTask.sourceMealId,
-        // Only provide nutrition if manually modified, otherwise let AI analyze based on NEW ingredients/portion
-        ...(taskMacrosModified ? {
-          nutrition: {
-            calories: parseInt(taskCalories) || 0,
-            protein_g: parseInt(taskProtein) || 0,
-            carbs_g: parseInt(taskCarbs) || 0,
-            fat_g: parseInt(taskFat) || 0,
-            fiber_g: parseInt(taskFiber) || 0,
-          }
-        } : {}),
+        nutrition: finalNutrition,
         localDate: activeTask.localDate || now.toLocaleDateString("en-CA"),
         localTime: activeTask.localTime || "",
         saveToFrequent: taskSaveToFrequent,
@@ -1021,13 +1029,19 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         <p style={styles.empty}>No meals logged yet today. Add your first one!</p>
       )}
       {meals.map((meal) => {
-        const ismine = meal.uid === user.uid;
+        // For shared meals, we might want to show the current user's specific version (portion/macros)
+        // while still treating it as the "main" card for that shared event.
+        const myVersion = meal.isShared ? meals.find(m => m.sourceMealId === meal.id && m.uid === user.uid) : null;
+        const displayMeal = myVersion || meal;
+
+        const ismine = displayMeal.uid === user.uid;
         const avatarSrc = ismine ? myPhoto : partnerPhoto;
         const personName = ismine ? user.displayName.split(" ")[0] : (partnerName ? partnerName.split(" ")[0] : "Partner");
         const isPartnerMeal = meal.uid !== user.uid;
+
         return (
           <div key={meal.id} style={styles.mealCard} onClick={() => {
-            if (isPartnerMeal) {
+            if (isPartnerMeal && !myVersion) {
               const pendingTask = getPendingTaskForMeal(meal);
               if (pendingTask) {
                 setActiveTask(pendingTask);
@@ -1037,28 +1051,27 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                 setComment(meal.comments?.[user.uid] || "");
               }
             } else {
-              setSelectedMeal(meal);
-              setEditType(meal.type);
-              setEditName(meal.name);
-              setEditIngredients(meal.ingredients || meal.quantity || "");
-              setEditPortionSize(meal.portionSize || "");
-              setEditCookType(meal.isRestaurant ? "Restaurant" : (meal.isPackaged ? "Packaged" : "Homemade"));
+              // It's my own meal OR I've already accepted this shared meal
+              setSelectedMeal(displayMeal);
+              setEditType(displayMeal.type);
+              setEditName(displayMeal.name);
+              setEditIngredients(displayMeal.ingredients || displayMeal.quantity || "");
+              setEditPortionSize(displayMeal.portionSize || "");
+              setEditCookType(displayMeal.isRestaurant ? "Restaurant" : (displayMeal.isPackaged ? "Packaged" : "Homemade"));
               setEditMode(false);
-              const existingPhotos = meal.photos?.length > 0
-                ? meal.photos
-                : meal.photoURL ? [meal.photoURL] : [];
+              const existingPhotos = displayMeal.photos?.length > 0
+                ? displayMeal.photos
+                : displayMeal.photoURL ? [displayMeal.photoURL] : [];
               setEditPhotos([]);
               setEditPhotoPreviews(existingPhotos);
             }
           }}>
             {(() => {
-              const mealPhotos = getPhotos(meal);
+              const mealPhotos = getPhotos(displayMeal);
               if (mealPhotos.length === 0) return null;
               if (mealPhotos.length === 1) return (
                 <img src={mealPhotos[0]} alt="meal" style={styles.mealPhoto} />
               );
-              // Stacked deck for multiple photos
-              // Stacked deck for multiple photos
               const visiblePhotos = mealPhotos.slice(0, 3);
               const rotations = [-3, 1.5, 0];
               const offsets = [{ x: -6, y: 3 }, { x: 4, y: -2 }, { x: 0, y: 0 }];
@@ -1089,12 +1102,14 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
             })()}
             <div style={styles.mealInfo}>
               <div style={styles.mealHeader}>
-                <p style={styles.mealName}>{meal.name}</p>
+                <p style={styles.mealName}>{displayMeal.name}</p>
               </div>
-              <p style={styles.mealMeta}>{meal.type}</p>
-              {meal.reactions && Object.keys(meal.reactions).length > 0 && (
+              <p style={styles.mealMeta}>
+                {displayMeal.type}
+              </p>
+              {displayMeal.reactions && Object.keys(displayMeal.reactions).length > 0 && (
                 <div style={styles.reactionsRow}>
-                  {Object.entries(meal.reactions).map(([uid, emoji]) => (
+                  {Object.entries(displayMeal.reactions).map(([uid, emoji]) => (
                     <span key={uid} style={styles.reactionBadge}>
                       {emoji}
                     </span>
@@ -1102,7 +1117,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                 </div>
               )}
               {/* Task hint */}
-              {isPartnerMeal && getPendingTaskForMeal(meal) && (
+              {isPartnerMeal && !myVersion && getPendingTaskForMeal(meal) && (
                 <div style={styles.taskHint}>
                   ✨ Add your quantities →
                 </div>
@@ -1112,7 +1127,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
               {meal.isShared ? (
                 <div style={styles.sharedAvatarStack}>
                   <img
-                    src={ismine ? myPhoto : partnerPhoto}
+                    src={avatarSrc}
                     alt="owner"
                     style={styles.ownerAvatar}
                     referrerPolicy="no-referrer"
@@ -1190,7 +1205,23 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                 {/* Nutrition breakdown */}
                 <MealNutritionCard
                   nutrition={selectedMeal.nutrition}
-                  editable={false}
+                  editable={true}
+                  onNutritionChange={async (key, value) => {
+                    try {
+                      setSelectedMeal((prev) => ({
+                        ...prev,
+                        nutrition: {
+                          ...prev.nutrition,
+                          [key]: value
+                        }
+                      }));
+                      await updateDoc(doc(db, "meals", selectedMeal.id), {
+                        [`nutrition.${key}`]: value
+                      });
+                    } catch (e) {
+                      console.error("Failed to update nutrition inline", e);
+                    }
+                  }}
                 />
 
                 {/* Partner's comment */}
