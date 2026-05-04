@@ -230,7 +230,41 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
             </div>
 
             {/* Nutrition breakdown */}
-            <MealNutritionCard nutrition={viewMeal.nutrition} />
+            <MealNutritionCard
+              nutrition={viewMeal.nutrition || {}}
+              editable={true}
+              onNutritionChange={async (key, value) => {
+                try {
+                  const updatedMeal = {
+                    ...viewMeal,
+                    nutrition: {
+                      ...(viewMeal.nutrition || {}),
+                      [key]: value
+                    }
+                  };
+                  setViewMeal(updatedMeal);
+                  
+                  // Update Firestore
+                  const mealRef = doc(db, "meals", viewMeal.id);
+                  await updateDoc(mealRef, {
+                    [`nutrition.${key}`]: value
+                  });
+
+                  // Also update groupedMeals so the change persists in the list
+                  setGroupedMeals(prev => {
+                    const newGrouped = { ...prev };
+                    for (const dateKey in newGrouped) {
+                      newGrouped[dateKey].meals = newGrouped[dateKey].meals.map(m => 
+                        m.id === viewMeal.id ? { ...m, nutrition: updatedMeal.nutrition } : m
+                      );
+                    }
+                    return newGrouped;
+                  });
+                } catch (e) {
+                  console.error("Failed to update nutrition from gallery", e);
+                }
+              }}
+            />
 
             {/* Comment card */}
             {(() => {
