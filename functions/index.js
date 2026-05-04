@@ -515,6 +515,7 @@ exports.onMealCreated = onDocumentCreated(
     const meal = event.data.data();
     const uid = meal.uid;
     const mealId = event.params.mealId;
+    const user = await getUser(uid);
 
     // Skip task creation for meals completed from a task
     // (they have sourceMealId set)
@@ -565,7 +566,6 @@ exports.onMealCreated = onDocumentCreated(
       return;
     }
 
-    const user = await getUser(uid);
 
     // Run nutrition analysis and partner notification in parallel
     await Promise.all([
