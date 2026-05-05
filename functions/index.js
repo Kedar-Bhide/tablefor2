@@ -935,7 +935,7 @@ exports.reanalyzeMeal = onCall(
       // Only update if we got valid nutrition back
       if (nutrition && nutrition.calories > 0) {
         await db.collection("meals").doc(mealId).update({ nutrition });
-        
+
         // Sync to frequent meals if it was originally saved from this log
         try {
           const freqSnap = await db.collection("frequentMeals")
@@ -944,7 +944,7 @@ exports.reanalyzeMeal = onCall(
           if (!freqSnap.empty) {
             const batch = db.batch();
             freqSnap.docs.forEach(doc => {
-              batch.update(doc.ref, { 
+              batch.update(doc.ref, {
                 nutrition,
                 name: meal.name,
                 ingredients: meal.ingredients || "",
