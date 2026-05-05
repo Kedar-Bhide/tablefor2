@@ -38,6 +38,21 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [editPortionSize, setEditPortionSize] = useState("");
   const [editCookType, setEditCookType] = useState("Homemade"); // Homemade, Restaurant, Packaged
   const [reanalyzing, setReanalyzing] = useState(false);
+  const [retryingMealId, setRetryingMealId] = useState(null);
+
+  const handleRetryAnalysis = async (mealId) => {
+    setRetryingMealId(mealId);
+    try {
+      const functions = getFunctions();
+      const retryFn = httpsCallable(functions, "retryAnalysis");
+      await retryFn({ mealId });
+      // The onSnapshot will update the local state when the document changes
+    } catch (e) {
+      console.error("Retry failed:", e);
+    } finally {
+      setRetryingMealId(null);
+    }
+  };
 
   const [myPhoto, setMyPhoto] = useState(user.photoURL);
   const [weightCheckIn, setWeightCheckIn] = useState(null);
@@ -174,9 +189,9 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       const data = snapshot.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((m) => {
-          // Never show task-completed meals on Today feed
-          // They're represented by the original shared meal card
-          if (m.sourceMealId) return false;
+          // We will filter these out during rendering instead
+          // to ensure we can find "myVersion" for shared meals
+          // if (m.sourceMealId) return false;
 
           const isOwn = m.uid === user.uid;
           const mealLocalDate = getMealLocalDateKey(m);
@@ -211,6 +226,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         return bTime - aTime;
       });
       setMeals(sorted);
+      console.log("Today's meals in state:", sorted.length);
+
       // Calculate today's nutrition from my meals only
       // Include partner's shared meals in your nutrition
       // ALL user meals including task-completed for accurate nutrition
@@ -227,6 +244,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
           const mealDate = getMealLocalDateKey(m);
           return mealDate === todayDateStr;
         });
+
+      console.log("My meals for nutrition calculation:", allMyMeals.map(m => ({ name: m.name, kcal: m.nutrition?.calories })));
 
       if (allMyMeals.length > 0) {
         const totals = allMyMeals.reduce((acc, m) => ({
@@ -593,6 +612,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         isRestaurant: activeTask.isRestaurant || false,
         sourceMealId: activeTask.sourceMealId,
         nutrition: finalNutrition,
+        analysisStatus: finalNutrition ? "completed" : "analyzing",
         localDate: activeTask.localDate || now.toLocaleDateString("en-CA"),
         localTime: activeTask.localTime || "",
         saveToFrequent: taskSaveToFrequent,
@@ -1045,8 +1065,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       {meals.length === 0 && (
         <p style={styles.empty}>No meals logged yet today. Add your first one!</p>
       )}
-      {meals.map((meal) => {
-        // For shared meals, we might want to show the current user's specific version (portion/macros)
+      {meals.filter(m => !m.sourceMealId).map((meal) => {
+        // For shared meals, we want to show the current user's specific version (portion/macros)
         // while still treating it as the "main" card for that shared event.
         const myVersion = meal.isShared ? meals.find(m => m.sourceMealId === meal.id && m.uid === user.uid) : null;
         const displayMeal = myVersion || meal;
@@ -1124,6 +1144,16 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
               <p style={styles.mealMeta}>
                 {displayMeal.type}
               </p>
+              {displayMeal.analysisStatus === "analyzing" && (!displayMeal.nutrition || !displayMeal.nutrition.calories) && (
+                <p style={{ color: "#888", fontSize: "0.7rem", fontStyle: "italic", margin: "4px 0 0 0" }}>
+                  Calculating...
+                </p>
+              )}
+              {displayMeal.analysisStatus === "failed" && (
+                <p style={{ color: "#d93025", fontSize: "0.7rem", fontWeight: "600", margin: "4px 0 0 0" }}>
+                  ⚠️ Analysis Failed
+                </p>
+              )}
               {displayMeal.reactions && Object.keys(displayMeal.reactions).length > 0 && (
                 <div style={styles.reactionsRow}>
                   {Object.entries(displayMeal.reactions).map(([uid, emoji]) => (
@@ -1222,6 +1252,9 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                 {/* Nutrition breakdown */}
                 <MealNutritionCard
                   nutrition={selectedMeal.nutrition || {}}
+                  analysisStatus={selectedMeal.analysisStatus}
+                  isRetrying={retryingMealId === selectedMeal.id}
+                  onRetry={() => handleRetryAnalysis(selectedMeal.id)}
                   editable={true}
                   onNutritionChange={async (key, value) => {
                     try {
