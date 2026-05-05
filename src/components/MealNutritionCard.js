@@ -1,6 +1,51 @@
 import React from "react";
 
-export default function MealNutritionCard({ nutrition, editable = false, onNutritionChange = null }) {
+export default function MealNutritionCard({ 
+  nutrition, 
+  editable = false, 
+  onNutritionChange = null,
+  analysisStatus = "completed",
+  onRetry = null,
+  isRetrying = false
+}) {
+  if ((analysisStatus === "analyzing" || isRetrying) && (!nutrition || !nutrition.calories)) {
+    return (
+      <div style={styles.mealNutritionCard}>
+        <div style={{ ...styles.mealNutritionRow, justifyContent: "center", alignItems: "center", padding: "10px 0" }}>
+          <div className="spinner-small" style={{ marginRight: "10px" }} />
+          <p style={{ margin: 0, color: "#666", fontSize: "0.9rem" }}>Calculating nutrition...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (analysisStatus === "failed") {
+    return (
+      <div style={styles.mealNutritionCard}>
+        <div style={{ ...styles.mealNutritionRow, flexDirection: "column", alignItems: "center", gap: "10px" }}>
+          <p style={{ margin: 0, color: "#d93025", fontSize: "0.9rem", fontWeight: "600" }}>
+            Failed to calculate nutrition
+          </p>
+          <button 
+            onClick={(e) => { e.stopPropagation(); onRetry && onRetry(); }}
+            style={{
+              padding: "6px 16px",
+              backgroundColor: "#ff6b6b",
+              color: "white",
+              border: "none",
+              borderRadius: "20px",
+              fontSize: "0.8rem",
+              fontWeight: "600",
+              cursor: "pointer"
+            }}
+          >
+            Retry Analysis
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!editable && (!nutrition || !nutrition.calories || nutrition.calories <= 0)) return null;
 
   return (
@@ -16,6 +61,18 @@ export default function MealNutritionCard({ nutrition, editable = false, onNutri
             outline: 1px dashed #aaa !important;
             background-color: #fff;
             padding: 0 4px;
+          }
+          .spinner-small {
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #ff6b6b;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+          }
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
           }
         `}
       </style>
