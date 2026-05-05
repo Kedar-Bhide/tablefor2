@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { auth, db } from "../firebase";
 import { collection, query, where, getDocs, updateDoc, doc } from "firebase/firestore";
 import { getPhotos } from "../utils/getPhotos";
@@ -18,6 +18,29 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
   const [viewMeal, setViewMeal] = useState(null);
   const [comment, setComment] = useState("");
   const [savingComment, setSavingComment] = useState(false);
+  const [retryingMealId, setRetryingMealId] = useState(null);
+
+  const handleRetryAnalysis = async (mealId) => {
+    setRetryingMealId(mealId);
+    try {
+      const { getFunctions, httpsCallable } = await import("firebase/functions");
+      const functions = getFunctions();
+      const retryFn = httpsCallable(functions, "retryAnalysis");
+      await retryFn({ mealId });
+      
+      // Update local state if the meal is currently being viewed
+      if (viewMeal && viewMeal.id === mealId) {
+        // We'll rely on the user closing and reopening or a refresh for now, 
+        // but we can also update viewMeal if we want.
+        // Actually, let's just refresh the list.
+        fetchMeals();
+      }
+    } catch (e) {
+      console.error("Retry failed:", e);
+    } finally {
+      setRetryingMealId(null);
+    }
+  };
 
   // fetchPartner removed 
 
@@ -34,73 +57,73 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
     }
   }, [galleryDate, groupedMeals, setGalleryDate]);
 
-  useEffect(() => {
-    const fetchMeals = async () => {
-      let meals = [];
+  const fetchMeals = useCallback(async () => {
+    let meals = [];
 
-      if (filter === "mine") {
-        const q = query(
-          collection(db, "meals"),
-          where("uid", "==", user.uid)
-        );
-        const snap = await getDocs(q);
-        meals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    if (filter === "mine") {
+      const q = query(
+        collection(db, "meals"),
+        where("uid", "==", user.uid)
+      );
+      const snap = await getDocs(q);
+      meals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-      } else if (filter === "hers" && partnerUid) {
-        const q = query(
-          collection(db, "meals"),
-          where("uid", "==", partnerUid)
-        );
-        const snap = await getDocs(q);
-        meals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    } else if (filter === "hers" && partnerUid) {
+      const q = query(
+        collection(db, "meals"),
+        where("uid", "==", partnerUid)
+      );
+      const snap = await getDocs(q);
+      meals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    }
+
+    meals = meals.filter((m) => getPhotos(m).length > 0);
+
+    const grouped = {};
+    meals.forEach((meal) => {
+      const dateKey = getMealLocalDateKey(meal);
+      const [year, month, day] = dateKey.split("-").map(Number);
+      const labelDate = new Date(year, month - 1, day);
+      const dateLabel = labelDate.toLocaleDateString("en-CA", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+      if (!grouped[dateKey]) {
+        grouped[dateKey] = { label: dateLabel, meals: [] };
       }
 
-      meals = meals.filter((m) => getPhotos(m).length > 0);
-
-      const grouped = {};
-      meals.forEach((meal) => {
-        const dateKey = getMealLocalDateKey(meal);
-        const [year, month, day] = dateKey.split("-").map(Number);
-        const labelDate = new Date(year, month - 1, day);
-        const dateLabel = labelDate.toLocaleDateString("en-CA", {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        });
-        if (!grouped[dateKey]) {
-          grouped[dateKey] = { label: dateLabel, meals: [] };
-        }
-
-        // Expand multi-photo meals into individual tiles
-        const photos = getPhotos(meal);
-        if (photos.length <= 1) {
-          grouped[dateKey].meals.push({ ...meal, _galleryPhoto: photos[0] || null, _photoIndex: 0 });
-        } else {
-          // First photo gets the group badge
-          photos.forEach((photoURL, index) => {
-            grouped[dateKey].meals.push({
-              ...meal,
-              _galleryPhoto: photoURL,
-              _photoIndex: index,
-              _totalPhotos: photos.length,
-              _isFirstInGroup: index === 0,
-            });
+      // Expand multi-photo meals into individual tiles
+      const photos = getPhotos(meal);
+      if (photos.length <= 1) {
+        grouped[dateKey].meals.push({ ...meal, _galleryPhoto: photos[0] || null, _photoIndex: 0 });
+      } else {
+        // First photo gets the group badge
+        photos.forEach((photoURL, index) => {
+          grouped[dateKey].meals.push({
+            ...meal,
+            _galleryPhoto: photoURL,
+            _photoIndex: index,
+            _totalPhotos: photos.length,
+            _isFirstInGroup: index === 0,
           });
-        }
-      });
+        });
+      }
+    });
 
-      const sorted = Object.fromEntries(
-        Object.entries(grouped).sort(
-          (a, b) => b[0].localeCompare(a[0])
-        )
-      );
+    const sorted = Object.fromEntries(
+      Object.entries(grouped).sort(
+        (a, b) => b[0].localeCompare(a[0])
+      )
+    );
 
-      setGroupedMeals(sorted);
-    };
-
-    fetchMeals();
+    setGroupedMeals(sorted);
   }, [filter, partnerUid, user.uid]);
+
+  useEffect(() => {
+    fetchMeals();
+  }, [fetchMeals]);
 
   const handleReaction = async (meal, emoji) => {
     const mealRef = doc(db, "meals", meal.id);
@@ -232,6 +255,9 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
             {/* Nutrition breakdown */}
             <MealNutritionCard
               nutrition={viewMeal.nutrition || {}}
+              analysisStatus={viewMeal.analysisStatus}
+              isRetrying={retryingMealId === viewMeal.id}
+              onRetry={() => handleRetryAnalysis(viewMeal.id)}
               editable={true}
               onNutritionChange={async (key, value) => {
                 try {

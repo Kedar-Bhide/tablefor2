@@ -308,6 +308,7 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
       ingredients: ingredients.trim(),
       portionSize: portionSize.trim(),
       nutrition: previewNutrition || null,
+      analysisStatus: previewNutrition ? "completed" : "analyzing",
       saveToFrequent: saveAsFrequent,
     });
 
