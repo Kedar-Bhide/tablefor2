@@ -98,13 +98,21 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
           (getMealLocalDateKey(m) === dateStr) &&
           m.nutrition
         );
-        const totals = dayMeals.reduce((acc, m) => ({
+        const totalsRaw = dayMeals.reduce((acc, m) => ({
           calories: acc.calories + (m.nutrition.calories || 0),
           protein_g: acc.protein_g + (m.nutrition.protein_g || 0),
           carbs_g: acc.carbs_g + (m.nutrition.carbs_g || 0),
           fat_g: acc.fat_g + (m.nutrition.fat_g || 0),
           fiber_g: acc.fiber_g + (m.nutrition.fiber_g || 0),
         }), { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 });
+        
+        const totals = {
+          calories: Math.round(totalsRaw.calories),
+          protein_g: Math.round(totalsRaw.protein_g),
+          carbs_g: Math.round(totalsRaw.carbs_g),
+          fat_g: Math.round(totalsRaw.fat_g),
+          fiber_g: Math.round(totalsRaw.fiber_g),
+        };
         last7.push({
           date: dateStr,
           label: d.toLocaleDateString("en-US", { weekday: "short" }),
@@ -332,7 +340,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
 
   const getDayNutritionTotals = (meals) => {
     if (!meals || meals.length === 0) return { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 };
-    return meals
+    const totals = meals
       .filter((m) => m.nutrition)
       .reduce((acc, m) => ({
         calories: acc.calories + (m.nutrition.calories || 0),
@@ -341,6 +349,14 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
         fat_g: acc.fat_g + (m.nutrition.fat_g || 0),
         fiber_g: acc.fiber_g + (m.nutrition.fiber_g || 0),
       }), { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 });
+
+    return {
+      calories: Math.round(totals.calories),
+      protein_g: Math.round(totals.protein_g),
+      carbs_g: Math.round(totals.carbs_g),
+      fat_g: Math.round(totals.fat_g),
+      fiber_g: Math.round(totals.fiber_g),
+    };
   };
 
   const handleDismissInsight = async () => {

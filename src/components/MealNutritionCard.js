@@ -40,7 +40,7 @@ export default function MealNutritionCard({ nutrition, editable = false, onNutri
                     onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.target.blur())}
                     style={{ outline: "none", cursor: editable ? "text" : "default" }}
                   >
-                    {nutrition[m.key] || 0}
+                    {Math.round(nutrition[m.key] || 0)}
                   </span>
                   <span style={styles.mealNutritionUnit}>{m.unit}</span>
                 </p>
