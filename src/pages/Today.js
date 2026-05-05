@@ -236,7 +236,13 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
           fat_g: acc.fat_g + (m.nutrition.fat_g || 0),
           fiber_g: acc.fiber_g + (m.nutrition.fiber_g || 0),
         }), { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 });
-        setNutrition(totals);
+        setNutrition({
+          calories: Math.round(totals.calories),
+          protein_g: Math.round(totals.protein_g),
+          carbs_g: Math.round(totals.carbs_g),
+          fat_g: Math.round(totals.fat_g),
+          fiber_g: Math.round(totals.fiber_g),
+        });
       } else {
         setNutrition({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 });
       }
