@@ -520,13 +520,14 @@ exports.onMealCreated = onDocumentCreated(
     // Skip task creation for meals completed from a task
     // (they have sourceMealId set)
     if (meal.sourceMealId) {
-      // Still run nutrition analysis but skip task/notification
       try {
-        // Check if nutrition is already provided (e.g. from a frequent meal)
         if (meal.nutrition && meal.nutrition.calories > 0) {
           console.log(`Meal ${mealId} already has nutrition, skipping analysis.`);
+          await db.collection("meals").doc(mealId).update({ analysisStatus: "completed" });
           return;
         }
+
+        await db.collection("meals").doc(mealId).update({ analysisStatus: "analyzing" });
 
         const primaryPhoto = (meal.photos?.length > 0)
           ? meal.photos[0]
@@ -540,7 +541,12 @@ exports.onMealCreated = onDocumentCreated(
           meal.cookType || (meal.isRestaurant ? "Restaurant" : "Homemade")
         );
         if (nutrition && nutrition.calories > 0) {
-          await db.collection("meals").doc(mealId).update({ nutrition });
+          await db.collection("meals").doc(mealId).update({
+            nutrition,
+            analysisStatus: "completed"
+          });
+        } else {
+          await db.collection("meals").doc(mealId).update({ analysisStatus: "failed" });
         }
 
         // Save to Favorites if flagged
@@ -562,6 +568,7 @@ exports.onMealCreated = onDocumentCreated(
         }
       } catch (e) {
         console.error("Nutrition analysis failed for task meal:", e);
+        await db.collection("meals").doc(mealId).update({ analysisStatus: "failed" });
       }
       return;
     }
@@ -572,6 +579,8 @@ exports.onMealCreated = onDocumentCreated(
 
     try {
       if (!finalNutrition || !finalNutrition.calories) {
+        await db.collection("meals").doc(mealId).update({ analysisStatus: "analyzing" });
+
         const primaryPhoto = (meal.photos?.length > 0)
           ? meal.photos[0]
           : meal.photoURL || null;
@@ -587,10 +596,16 @@ exports.onMealCreated = onDocumentCreated(
 
         if (nutrition && nutrition.calories > 0) {
           finalNutrition = nutrition;
-          await db.collection("meals").doc(mealId).update({ nutrition: finalNutrition });
+          await db.collection("meals").doc(mealId).update({
+            nutrition: finalNutrition,
+            analysisStatus: "completed"
+          });
           console.log(`Nutrition saved for meal ${mealId}:`, finalNutrition);
+        } else {
+          await db.collection("meals").doc(mealId).update({ analysisStatus: "failed" });
         }
       } else {
+        await db.collection("meals").doc(mealId).update({ analysisStatus: "completed" });
         console.log(`Meal ${mealId} already has nutrition, skipping analysis.`);
       }
 
@@ -614,6 +629,7 @@ exports.onMealCreated = onDocumentCreated(
       }
     } catch (e) {
       console.error("Nutrition analysis failed:", e);
+      await db.collection("meals").doc(mealId).update({ analysisStatus: "failed" });
     }
 
     // Step 2: Partner notification + task creation
@@ -716,6 +732,68 @@ exports.onBadgeEarned = onDocumentUpdated("users/{uid}", async (event) => {
     ];
     const body = messages[Math.floor(Math.random() * messages.length)];
     await sendNotification(token, "TableFor2 🏆", body, partner.fcmTokens || []);
+  }
+});
+
+
+// Callable function to manually retry analysis
+exports.retryAnalysis = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new functions.https.HttpsError("unauthenticated", "User must be logged in");
+
+  const mealId = request.data.mealId;
+  if (!mealId) throw new functions.https.HttpsError("invalid-argument", "Missing mealId");
+
+  const mealDoc = await db.collection("meals").doc(mealId).get();
+  if (!mealDoc.exists) throw new functions.https.HttpsError("not-found", "Meal not found");
+
+  const meal = mealDoc.data();
+  if (meal.uid !== uid) {
+    const userDoc = await db.collection("users").doc(meal.uid).get();
+    if (!userDoc.exists || userDoc.data().partnerUid !== uid) {
+      throw new functions.https.HttpsError("permission-denied", "Not authorized");
+    }
+  }
+
+  await db.collection("meals").doc(mealId).update({ analysisStatus: "analyzing" });
+
+  try {
+    const user = await getUser(meal.uid);
+    const primaryPhoto = (meal.photos?.length > 0) ? meal.photos[0] : meal.photoURL || null;
+
+    let nutrition;
+    if (meal.sourceMealId) {
+      const srcDoc = await db.collection("meals").doc(meal.sourceMealId).get();
+      if (srcDoc.exists && srcDoc.data().nutrition && srcDoc.data().nutrition.calories > 0) {
+        nutrition = srcDoc.data().nutrition;
+      }
+    }
+
+    if (!nutrition || !nutrition.calories) {
+      nutrition = await analyzeMealNutrition(
+        meal.name,
+        primaryPhoto,
+        user || null,
+        meal.ingredients || meal.quantity || null,
+        meal.portionSize || null,
+        meal.cookType || (meal.isRestaurant ? "Restaurant" : "Homemade")
+      );
+    }
+
+    if (nutrition && nutrition.calories > 0) {
+      await db.collection("meals").doc(mealId).update({
+        nutrition,
+        analysisStatus: "completed"
+      });
+      return { success: true, nutrition };
+    } else {
+      await db.collection("meals").doc(mealId).update({ analysisStatus: "failed" });
+      return { success: false, error: "Analysis returned no macros" };
+    }
+  } catch (err) {
+    console.error("Retry analysis failed:", err);
+    await db.collection("meals").doc(mealId).update({ analysisStatus: "failed" });
+    throw new functions.https.HttpsError("internal", err.message);
   }
 });
 
@@ -907,6 +985,7 @@ exports.reanalyzeMeal = onCall(
       if (!mealSnap.exists) throw new Error("Meal not found");
 
       const meal = mealSnap.data();
+      await db.collection("meals").doc(mealId).update({ analysisStatus: "analyzing" });
 
       // Security check — only meal owner can reanalyze
       if (request.auth?.uid && request.auth.uid !== meal.uid) {
@@ -933,7 +1012,10 @@ exports.reanalyzeMeal = onCall(
 
       // Only update if we got valid nutrition back
       if (nutrition && nutrition.calories > 0) {
-        await db.collection("meals").doc(mealId).update({ nutrition });
+        await db.collection("meals").doc(mealId).update({
+          nutrition,
+          analysisStatus: "completed"
+        });
 
         // Sync to frequent meals if it was originally saved from this log
         try {
