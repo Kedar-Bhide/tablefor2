@@ -719,7 +719,6 @@ exports.onBadgeEarned = onDocumentUpdated("users/{uid}", async (event) => {
   }
 });
 
-// Triggered when a reaction or comment is added to a meal
 exports.onMealReacted = onDocumentUpdated("meals/{mealId}", async (event) => {
   const before = event.data.before.data();
   const after = event.data.after.data();
