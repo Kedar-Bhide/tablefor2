@@ -567,121 +567,119 @@ exports.onMealCreated = onDocumentCreated(
     }
 
 
-    // Run nutrition analysis and partner notification in parallel
-    await Promise.all([
-      // Nutrition analysis
-      (async () => {
+    // Step 1: Run nutrition analysis and update the meal
+    let finalNutrition = meal.nutrition || null;
+
+    try {
+      if (!finalNutrition || !finalNutrition.calories) {
+        const primaryPhoto = (meal.photos?.length > 0)
+          ? meal.photos[0]
+          : meal.photoURL || null;
+
+        const nutrition = await analyzeMealNutrition(
+          meal.name,
+          primaryPhoto,
+          user || null,
+          meal.ingredients || meal.quantity || null,
+          meal.portionSize || null,
+          meal.cookType || (meal.isRestaurant ? "Restaurant" : "Homemade")
+        );
+
+        if (nutrition && nutrition.calories > 0) {
+          finalNutrition = nutrition;
+          await db.collection("meals").doc(mealId).update({ nutrition: finalNutrition });
+          console.log(`Nutrition saved for meal ${mealId}:`, finalNutrition);
+        }
+      } else {
+        console.log(`Meal ${mealId} already has nutrition, skipping analysis.`);
+      }
+
+      // Save to Favorites if flagged
+      if (meal.saveToFrequent) {
         try {
-          let finalNutrition = meal.nutrition || null;
-
-          if (!finalNutrition || !finalNutrition.calories) {
-            const primaryPhoto = (meal.photos?.length > 0)
-              ? meal.photos[0]
-              : meal.photoURL || null;
-
-            const nutrition = await analyzeMealNutrition(
-              meal.name,
-              primaryPhoto,
-              user || null,
-              meal.ingredients || meal.quantity || null,
-              meal.portionSize || null,
-              meal.cookType || (meal.isRestaurant ? "Restaurant" : "Homemade")
-            );
-
-            if (nutrition && nutrition.calories > 0) {
-              finalNutrition = nutrition;
-              await db.collection("meals").doc(mealId).update({ nutrition: finalNutrition });
-              console.log(`Nutrition saved for meal ${mealId}:`, finalNutrition);
-            }
-          } else {
-            console.log(`Meal ${mealId} already has nutrition, skipping analysis.`);
-          }
-
-          // Save to Favorites if flagged
-          if (meal.saveToFrequent) {
-            try {
-              await db.collection("frequentMeals").add({
-                uid: meal.uid,
-                mealType: meal.type,
-                name: meal.name.trim(),
-                ingredients: (meal.ingredients || "").trim(),
-                portionSize: (meal.portionSize || "").trim(),
-                nutrition: finalNutrition,
-                originalMealId: mealId,
-                lastUsed: new Date(),
-              });
-              console.log(`Favorite saved for meal ${mealId}`);
-            } catch (favError) {
-              console.error("Failed to save favorite from backend:", favError);
-            }
-          }
-        } catch (e) {
-          console.error("Nutrition analysis failed:", e);
+          await db.collection("frequentMeals").add({
+            uid: meal.uid,
+            mealType: meal.type,
+            name: meal.name.trim(),
+            ingredients: (meal.ingredients || "").trim(),
+            portionSize: (meal.portionSize || "").trim(),
+            nutrition: finalNutrition,
+            originalMealId: mealId,
+            lastUsed: new Date(),
+          });
+          console.log(`Favorite saved for meal ${mealId}`);
+        } catch (favError) {
+          console.error("Failed to save favorite from backend:", favError);
         }
-      })(),
+      }
+    } catch (e) {
+      console.error("Nutrition analysis failed:", e);
+    }
 
-      // Partner notification + task creation
-      (async () => {
-        if (!user || !user.partnerUid) return;
+    // Step 2: Partner notification + task creation
+    try {
+      if (user && user.partnerUid) {
         const partner = await getUser(user.partnerUid);
-        if (!partner) return;
-
-        // Create task if meal is shared
-        if (meal.isShared) {
-          try {
-            // Check if task already exists for this meal
-            const existingTask = await db.collection("tasks")
-              .where("sourceMealId", "==", mealId)
-              .where("toUid", "==", user.partnerUid)
-              .get();
-
-            if (!existingTask.empty) {
-              console.log(`Task already exists for meal ${mealId}, skipping`);
-            } else {
-              await db.collection("tasks").add({
-                sourceMealId: mealId,
-                fromUid: uid,
-                toUid: user.partnerUid,
-                mealName: meal.name || "",
-                mealType: meal.type || "Meal",
-                photos: meal.photos?.length > 0 ? meal.photos : meal.photoURL ? [meal.photoURL] : [],
-                fromIngredients: meal.ingredients || meal.quantity || "",
-                fromPortionSize: meal.portionSize || "",
-                fromNutrition: finalNutrition || null,
-                fromQuantity: "", // Legacy cleanup
-                localDate: meal.localDate || "",
-                localTime: meal.localTime || "",
-                isRestaurant: meal.isRestaurant || false,
-                completed: false,
-                dismissed: false,
-                completedAt: null,
-                createdAt: new Date(),
-              });
-              console.log(`Task created for shared meal ${mealId}`);
-            }
-          } catch (e) {
-            console.error("Failed to create task:", e);
-          }
-        }
-
-        // Send notification
-        if (partner.fcmToken && partner.notifSettings?.partnerMeal !== false) {
-          const firstName = user.name ? user.name.split(" ")[0] : "Your partner";
-          let body;
+        if (partner) {
+          // Create task if meal is shared
           if (meal.isShared) {
-            body = `${firstName} logged a shared ${meal.type.toLowerCase()} 🍽️ — add your quantities!`;
-          } else {
-            const messages = [
-              `${firstName} just logged ${meal.type.toLowerCase()} 🍽️`,
-              `${firstName} is eating! Don't fall behind 😄`,
-              `${firstName} logged a meal — your turn! 🍴`,
-            ];
-            body = messages[Math.floor(Math.random() * messages.length)];
+            try {
+              // Check if task already exists for this meal
+              const existingTask = await db.collection("tasks")
+                .where("sourceMealId", "==", mealId)
+                .where("toUid", "==", user.partnerUid)
+                .get();
+
+              if (!existingTask.empty) {
+                console.log(`Task already exists for meal ${mealId}, skipping`);
+              } else {
+                await db.collection("tasks").add({
+                  sourceMealId: mealId,
+                  fromUid: uid,
+                  toUid: user.partnerUid,
+                  mealName: meal.name || "",
+                  mealType: meal.type || "Meal",
+                  photos: meal.photos?.length > 0 ? meal.photos : meal.photoURL ? [meal.photoURL] : [],
+                  fromIngredients: meal.ingredients || meal.quantity || "",
+                  fromPortionSize: meal.portionSize || "",
+                  fromNutrition: finalNutrition || null,
+                  fromQuantity: "", // Legacy cleanup
+                  localDate: meal.localDate || "",
+                  localTime: meal.localTime || "",
+                  isRestaurant: meal.isRestaurant || false,
+                  completed: false,
+                  dismissed: false,
+                  completedAt: null,
+                  createdAt: new Date(),
+                });
+                console.log(`Task created for shared meal ${mealId}`);
+              }
+            } catch (e) {
+              console.error("Failed to create task:", e);
+            }
           }
-          await sendNotification(partner.fcmToken, "TableFor2", body, partner.fcmTokens || []);
+
+          // Send notification
+          if (partner.fcmToken && partner.notifSettings?.partnerMeal !== false) {
+            const firstName = user.name ? user.name.split(" ")[0] : "Your partner";
+            let body;
+            if (meal.isShared) {
+              body = `${firstName} logged a shared ${meal.type.toLowerCase()} 🍽️ — add your quantities!`;
+            } else {
+              const messages = [
+                `${firstName} just logged ${meal.type.toLowerCase()} 🍽️`,
+                `${firstName} is eating! Don't fall behind 😄`,
+                `${firstName} logged a meal — your turn! 🍴`,
+              ];
+              body = messages[Math.floor(Math.random() * messages.length)];
+            }
+            await sendNotification(partner.fcmToken, "TableFor2", body, partner.fcmTokens || []);
+          }
         }
-      })(),
-    ]);
+      }
+    } catch (e) {
+      console.error("Partner task/notification failed:", e);
+    }
   });
 
 // Triggered when a user's earnedBadges array grows
