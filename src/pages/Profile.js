@@ -700,7 +700,6 @@ function Profile({ user, globalUserData, globalPartnerData }) {
                   type="text"
                   inputMode="numeric"
                   value={fieldDraft}
-                  // placeholder="26"
                   onChange={(e) => setFieldDraft(e.target.value.replace(/[^0-9]/g, ""))}
                   onBlur={() => handleFieldSave("age")}
                   onKeyDown={(e) => {
@@ -733,7 +732,6 @@ function Profile({ user, globalUserData, globalPartnerData }) {
                   type="text"
                   inputMode="numeric"
                   value={fieldDraft}
-                  // placeholder="178"
                   onChange={(e) => setFieldDraft(e.target.value.replace(/[^0-9]/g, ""))}
                   onBlur={() => handleFieldSave("height_cm")}
                   onKeyDown={(e) => {
@@ -767,7 +765,6 @@ function Profile({ user, globalUserData, globalPartnerData }) {
                   type="text"
                   inputMode="decimal"
                   value={fieldDraft}
-                  // placeholder="75"
                   onChange={(e) => setFieldDraft(e.target.value.replace(/[^0-9.]/g, ""))}
                   onBlur={() => handleFieldSave("weight_kg")}
                   onKeyDown={(e) => {

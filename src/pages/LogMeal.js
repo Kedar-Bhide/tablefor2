@@ -62,9 +62,6 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showSuggestions]);
 
-  useEffect(() => {
-    setMealType(getMealTypeByTime());
-  }, []);
 
   // Fetch Frequent Meals
   useEffect(() => {
@@ -86,7 +83,6 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
         setFrequentMeals(templates);
       } catch (e) {
         console.error("Error fetching frequent meals:", e);
-        // alert("Fetch error: " + e.message); // Uncomment for debugging if needed
       }
     };
     fetchTemplates();

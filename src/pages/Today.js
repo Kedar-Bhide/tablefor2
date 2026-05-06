@@ -19,7 +19,6 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const partnerUid = globalPartnerData?.uid || null;
   const partnerPhoto = globalPartnerData?.photoURL || null;
   const partnerName = globalPartnerData?.name || null;
-  const profileFields = globalUserData || null;
 
   const [selectedMeal, setSelectedMeal] = useState(null);
   const [editMode, setEditMode] = useState(false);
@@ -189,10 +188,6 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       const data = snapshot.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((m) => {
-          // We will filter these out during rendering instead
-          // to ensure we can find "myVersion" for shared meals
-          // if (m.sourceMealId) return false;
-
           const isOwn = m.uid === user.uid;
           const mealLocalDate = getMealLocalDateKey(m);
 
@@ -228,14 +223,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       setMeals(sorted);
       console.log("Today's meals in state:", sorted.length);
 
-      // Calculate today's nutrition from my meals only
-      // Include partner's shared meals in your nutrition
-      // ALL user meals including task-completed for accurate nutrition
-      // Get today's date fresh inside the callback
-      const todayNow = new Date();
-      const todayDateStr = formatLocalDateKey(todayNow);
-
       // Only count TODAY's meals for nutrition — filter by localDate
+      const todayDateStr = formatLocalDateKey(new Date());
       const allMyMeals = snapshot.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((m) => {
@@ -267,7 +256,6 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       }
 
     });
-    // fetchProfile removed, using globalUserData directly
     // Fetch pending tasks for this user
     const taskQ = query(
       collection(db, "tasks"),
@@ -515,8 +503,6 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       // Show generating banner
       setInsightBanner("generating");
 
-      // Call Cloud Function async
-      const { getFunctions, httpsCallable } = await import("firebase/functions");
       const functions = getFunctions();
       const generateFn = httpsCallable(functions, "generateWeightInsight");
       generateFn({
@@ -786,7 +772,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       )}
 
       {/* Daily Nutrition Card - Hide if goals are set since the goals card shows it better */}
-      {nutrition.calories > 0 && profileFields && !nutrientGoals && (
+      {nutrition.calories > 0 && globalUserData && !nutrientGoals && (
         <div style={styles.nutritionCard}>
           <div style={styles.nutritionHeader}>
             <p style={styles.nutritionTitle}>Today's Nutrition</p>
@@ -2050,39 +2036,10 @@ const styles = {
     color: "#333",
     margin: 0,
   },
-  calories: {
-    color: "#ff6b6b",
-    fontSize: "0.95rem",
-    margin: "2px 0",
-  },
   mealCount: {
     color: "#666",
     fontSize: "0.85rem",
     margin: 0,
-  },
-  circleContainer: {
-    position: "relative",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  circleLabel: {
-    position: "absolute",
-    fontSize: "0.7rem",
-    color: "#333",
-    margin: 0,
-  },
-  progressBar: {
-    height: "8px",
-    backgroundColor: "#f0f0f0",
-    borderRadius: "4px",
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: "#ff6b6b",
-    borderRadius: "4px",
-    transition: "width 0.4s ease",
   },
   sectionTitle: {
     fontSize: "1.1rem",
@@ -2147,9 +2104,6 @@ const styles = {
     display: "flex",
     alignItems: "center",
     gap: "0.4rem",
-  },
-  sharedBadge: {
-    fontSize: "0.8rem",
   },
   mealOwner: {
     display: "flex",
@@ -2337,27 +2291,6 @@ const styles = {
     height: "42px",
     borderRadius: "50%",
   },
-  viewReaction: {
-    fontSize: "0.85rem",
-    color: "#666",
-    margin: "0.5rem 0 0 0",
-  },
-  viewReactionRow: {
-    borderTop: "1px solid #f5f5f5",
-    paddingTop: "1rem",
-  },
-  viewReactionLabel: {
-    fontSize: "0.8rem",
-    color: "#666",
-    margin: "0 0 0.5rem 0",
-    textAlign: "center",
-  },
-  viewComment: {
-    fontSize: "0.95rem",
-    color: "#444",
-    margin: "0.3rem 0 0 0",
-    fontStyle: "italic",
-  },
   commentRow: {
     borderTop: "1px solid #f5f5f5",
     paddingTop: "1rem",
@@ -2432,42 +2365,6 @@ const styles = {
     margin: 0,
     animation: "countUp 0.5s ease both",
   },
-  macroRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: "0.5rem",
-    marginBottom: "0.5rem",
-  },
-  macroEmoji: {
-    fontSize: "0.9rem",
-    width: "20px",
-  },
-  macroBarWrapper: {
-    flex: 1,
-  },
-  macroBarTrack: {
-    backgroundColor: "#f5f5f5",
-    borderRadius: "999px",
-    height: "6px",
-    overflow: "hidden",
-  },
-  macroBarFill: {
-    height: "100%",
-    borderRadius: "999px",
-  },
-  macroValue: {
-    fontSize: "0.78rem",
-    color: "#555",
-    margin: 0,
-    minWidth: "32px",
-    textAlign: "right",
-  },
-  macroGoal: {
-    fontSize: "0.72rem",
-    color: "#888",
-    margin: 0,
-    minWidth: "40px",
-  },
   macroPillRow: {
     display: "flex",
     justifyContent: "space-between",
@@ -2492,18 +2389,6 @@ const styles = {
     fontSize: "1rem",
     fontWeight: "700",
     margin: 0,
-  },
-  quantityInput: {
-    width: "100%",
-    padding: "0.7rem 1rem",
-    fontSize: "0.88rem",
-    borderRadius: "10px",
-    border: "1px solid #eee",
-    outline: "none",
-    color: "#333",
-    backgroundColor: "#fafafa",
-    boxSizing: "border-box",
-    marginTop: "0.5rem",
   },
   editSaveButton: {
     width: "100%",
@@ -2856,57 +2741,6 @@ const styles = {
     color: "#888",
     margin: "-0.6rem 0 1rem 0",
     textAlign: "center",
-  },
-  macroGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(3, 1fr)",
-    gap: "0.8rem",
-    marginBottom: "1.2rem",
-  },
-  macroInputGroup: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "4px",
-  },
-  macroLabel: {
-    fontSize: "0.68rem",
-    color: "#999",
-    textTransform: "uppercase",
-    fontWeight: "600",
-    letterSpacing: "0.02em",
-  },
-  macroInput: {
-    width: "100%",
-    padding: "0.6rem",
-    fontSize: "0.95rem",
-    borderRadius: "8px",
-    border: "1px solid #eee",
-    outline: "none",
-    color: "#333",
-    backgroundColor: "#fff",
-    textAlign: "center",
-    fontWeight: "600",
-    boxSizing: "border-box",
-  },
-  welcomeCard: {
-    backgroundColor: "#fff5f5",
-    borderRadius: "16px",
-    padding: "1.2rem",
-    marginBottom: "1rem",
-    border: "1px solid #ffdddd",
-    animation: "slideUpFade 0.4s ease both",
-  },
-  welcomeTitle: {
-    fontSize: "1rem",
-    fontWeight: "700",
-    color: "#ff6b6b",
-    margin: "0 0 6px 0",
-  },
-  welcomeSub: {
-    fontSize: "0.82rem",
-    color: "#666",
-    margin: 0,
-    lineHeight: 1.5,
   },
   // --- Nutrient Goals Styles ---
   goalsCard: {
