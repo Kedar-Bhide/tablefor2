@@ -89,9 +89,12 @@ function Profile({ user, globalUserData, globalPartnerData }) {
   // Calculate badges and wallets since they rely on calculations
   useEffect(() => {
     const fetchCalculations = async () => {
-      const earnedBadges = await calculateBadges(user.uid, partnerUid);
+      // Run badge and wallet calculations in parallel — both fetch meals independently
+      const [earnedBadges, walletData] = await Promise.all([
+        calculateBadges(user.uid, partnerUid),
+        calculateWallet(user.uid),
+      ]);
       setBadges(earnedBadges);
-      const walletData = await calculateWallet(user.uid);
       setWallet(walletData);
     };
     fetchCalculations();

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { auth, db } from "../firebase";
 import { collection, query, where, getDocs, doc, getDoc, updateDoc } from "firebase/firestore";
 import { PieChart, Pie, Cell } from "recharts";
@@ -68,14 +68,20 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
 
   useEffect(() => {
     const fetchWeekMeals = async () => {
-      // Fetch ALL user meals for accurate streak calculation
+      // Fetch own meals AND partner meals in parallel for faster load
       const allMealsQ = query(
         collection(db, "meals"),
         where("uid", "==", user.uid)
       );
-      const allMealsSnap = await getDocs(allMealsQ);
-      const ownMeals = allMealsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
+      const [allMealsSnap, partnerSnap] = await Promise.all([
+        getDocs(allMealsQ),
+        partnerUid
+          ? getDocs(query(collection(db, "meals"), where("uid", "==", partnerUid)))
+          : Promise.resolve(null),
+      ]);
+
+      const ownMeals = allMealsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
       const allMeals = [...ownMeals];
 
       // Build dayMap from ALL meals for streak
@@ -122,13 +128,8 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
       }
       setWeeklyNutrition(last7);
 
-      // Couple streak from ALL partner meals + your shared meals
-      if (partnerUid) {
-        const partnerQ = query(
-          collection(db, "meals"),
-          where("uid", "==", partnerUid)
-        );
-        const partnerSnap = await getDocs(partnerQ);
+      // Couple streak from parallel partner fetch result
+      if (partnerUid && partnerSnap) {
         const partnerOwnMeals = partnerSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
         const partnerDayMap = {};
@@ -163,30 +164,33 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
     const start = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
     const end = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0, 23, 59, 59);
 
-    const q = query(
+    const ownQuery = query(
       collection(db, "meals"),
       where("uid", "==", user.uid),
       where("createdAt", ">=", start),
       where("createdAt", "<=", end)
     );
-    const snap = await getDocs(q);
+
+    // Fetch own and partner month meals in parallel
+    const [snap, pSnap] = await Promise.all([
+      getDocs(ownQuery),
+      partnerUid
+        ? getDocs(query(
+            collection(db, "meals"),
+            where("uid", "==", partnerUid),
+            where("createdAt", ">=", start),
+            where("createdAt", "<=", end)
+          ))
+        : Promise.resolve(null),
+    ]);
+
     const ownMonthMeals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const partnerMonthMealsData = pSnap
+      ? pSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      : [];
 
-    if (partnerUid) {
-      const pq = query(
-        collection(db, "meals"),
-        where("uid", "==", partnerUid),
-        where("createdAt", ">=", start),
-        where("createdAt", "<=", end)
-      );
-      const pSnap = await getDocs(pq);
-      const partnerMonthMealsData = pSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-
-      setMonthMeals(ownMonthMeals);
-      setPartnerMonthMeals(partnerMonthMealsData);
-    } else {
-      setMonthMeals(ownMonthMeals);
-    }
+    setMonthMeals(ownMonthMeals);
+    setPartnerMonthMeals(partnerMonthMealsData);
     
     // Calculate monthly nutrition totals from my meals only
     const mealsWithNutrition = ownMonthMeals.filter((m) => m.nutrition);
@@ -222,7 +226,8 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
     fetchMonthMeals();
   }, [fetchMonthMeals]);
 
-  const streakCount = () => {
+  // Memoized: only recomputes when fullDayMap changes, not on every render
+  const streakCount = useMemo(() => {
     let streak = 0;
     const todayStr = formatLocalDateKey(new Date());
     for (let i = 0; i < 365; i++) {
@@ -240,7 +245,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
       }
     }
     return streak;
-  };
+  }, [fullDayMap]);
 
   const getDayMealCount = (dateStr, meals) => {
     return meals.filter((m) => {
@@ -278,7 +283,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
       const isToday = dateStr === today;
 
       cells.push(
-        <div key={d} onClick={() => handleCalendarDayTap(dateStr)} style={{
+        <div key={d} className="clickable-card" onClick={() => handleCalendarDayTap(dateStr)} style={{
           ...styles.calCell,
           backgroundColor: bgColor,
           border: isToday ? "2px solid #ff6b6b" : "2px solid transparent",
@@ -376,14 +381,15 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
   };
 
   return (
-    <div style={styles.container}>
+    <>
+      <div style={styles.container}>
       <h2 style={styles.title}>Stats</h2>
 
       {/* Streak Banners */}
       <div style={styles.streakRow}>
         <div style={styles.streakCard}>
           <span style={styles.streakEmoji}>🔥</span>
-          <p style={styles.streakNumber}>{streakCount()}</p>
+          <p style={styles.streakNumber}>{streakCount}</p>
           <p style={styles.streakSub}>Days with 3+ meals{"\n"}in a row</p>
         </div>
         {/* Couple Streak */}
@@ -625,8 +631,9 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
           )}
         </div>
       </div>
-      {/* Day Nutrition Popup */}
-      {selectedCalendarDay && (
+    </div>
+    {/* Day Nutrition Popup - Moved outside container for perfect centering */}
+    {selectedCalendarDay && (
         <div
           style={styles.overlayCenter}
           onClick={() => setSelectedCalendarDay(null)}
@@ -661,7 +668,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                     <div key={meal.id} style={styles.dayMealRow}>
                       <div style={styles.dayMealLeft}>
                         {meal.photoURL && (
-                          <img src={meal.photoURL} alt={meal.name} style={styles.dayMealThumb} />
+                          <img src={meal.photoURL} alt={meal.name} style={styles.dayMealThumb} loading="lazy" />
                         )}
                         <div>
                           <p style={styles.dayMealName}>{meal.name}</p>
@@ -674,71 +681,78 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
               </>
             ) : (
               <>
-                {/* Calorie headline */}
-                {getDayNutritionTotals(calendarDayMeals).calories > 0 && (
-                  <div style={styles.dayCalorieCard}>
-                    <div style={{ textAlign: "center" }}>
-                      <p style={styles.dayCalorieNumber}>
-                        {getDayNutritionTotals(calendarDayMeals).calories}
-                        {globalUserData?.nutrientGoals && (
-                          <span style={styles.dayPopupCalorieTarget}> / {globalUserData.nutrientGoals.calories}</span>
-                        )}
-                      </p>
-                      <p style={styles.dayCalorieLabel}>kcal consumed</p>
-                    </div>
-                    {globalUserData?.nutrientGoals && (
-                      <div style={{ textAlign: "right" }}>
-                        <p style={{
-                          ...styles.dayPopupCalorieRemaining,
-                          color: (globalUserData.nutrientGoals.calories - getDayNutritionTotals(calendarDayMeals).calories) >= 0 ? "#7ec8a4" : "#ff6b6b"
-                        }}>
-                          {Math.abs(globalUserData.nutrientGoals.calories - getDayNutritionTotals(calendarDayMeals).calories)}
-                        </p>
-                        <p style={styles.dayCalorieLabel}>
-                          {(globalUserData.nutrientGoals.calories - getDayNutritionTotals(calendarDayMeals).calories) >= 0 ? "remaining" : "over"}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Macro bars */}
-                {getDayNutritionTotals(calendarDayMeals).calories > 0 && (
-                  <div style={styles.dayMacroSection}>
-                    <div style={styles.macroGrid}>
-                      {[
-                        { key: "protein_g", label: "Protein", color: "#ff6b6b" },
-                        { key: "carbs_g", label: "Carbs", color: "#ffb347" },
-                        { key: "fat_g", label: "Fat", color: "#7ec8a4" },
-                        { key: "fiber_g", label: "Fiber", color: "#a78bfa" },
-                      ].map((macro) => {
-                        const totals = getDayNutritionTotals(calendarDayMeals);
-                        const eaten = totals[macro.key] || 0;
-                        const goal = globalUserData?.nutrientGoals?.[macro.key];
-                        
-                        return (
-                          <div key={macro.key} style={styles.macroGridItem}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-                              <p style={styles.macroGridLabel}>{macro.label}</p>
-                              <p style={{ ...styles.macroGridValue, color: macro.color }}>
-                                {eaten}{goal ? `/${goal}` : ""}g
+                {/* Compute nutrition totals once for the whole popup */}
+                {(() => {
+                  const dayTotals = getDayNutritionTotals(calendarDayMeals);
+                  return (
+                    <>
+                      {/* Calorie headline */}
+                      {dayTotals.calories > 0 && (
+                        <div style={styles.dayCalorieCard}>
+                          <div style={{ textAlign: "center" }}>
+                            <p style={styles.dayCalorieNumber}>
+                              {dayTotals.calories}
+                              {globalUserData?.nutrientGoals && (
+                                <span style={styles.dayPopupCalorieTarget}> / {globalUserData.nutrientGoals.calories}</span>
+                              )}
+                            </p>
+                            <p style={styles.dayCalorieLabel}>kcal consumed</p>
+                          </div>
+                          {globalUserData?.nutrientGoals && (
+                            <div style={{ textAlign: "right" }}>
+                              <p style={{
+                                ...styles.dayPopupCalorieRemaining,
+                                color: (globalUserData.nutrientGoals.calories - dayTotals.calories) >= 0 ? "#7ec8a4" : "#ff6b6b"
+                              }}>
+                                {Math.abs(globalUserData.nutrientGoals.calories - dayTotals.calories)}
+                              </p>
+                              <p style={styles.dayCalorieLabel}>
+                                {(globalUserData.nutrientGoals.calories - dayTotals.calories) >= 0 ? "remaining" : "over"}
                               </p>
                             </div>
-                            {goal && (
-                              <div style={styles.dayPopupMacroBarTrack}>
-                                <div style={{
-                                  ...styles.dayPopupMacroBarFill,
-                                  backgroundColor: macro.color,
-                                  width: `${goal > 0 ? Math.min((eaten / goal) * 100, 100) : 0}%`
-                                }} />
-                              </div>
-                            )}
+                          )}
+                        </div>
+                      )}
+
+                      {/* Macro bars */}
+                      {dayTotals.calories > 0 && (
+                        <div style={styles.dayMacroSection}>
+                          <div style={styles.macroGrid}>
+                            {[
+                              { key: "protein_g", label: "Protein", color: "#ff6b6b" },
+                              { key: "carbs_g", label: "Carbs", color: "#ffb347" },
+                              { key: "fat_g", label: "Fat", color: "#7ec8a4" },
+                              { key: "fiber_g", label: "Fiber", color: "#a78bfa" },
+                            ].map((macro) => {
+                              const eaten = dayTotals[macro.key] || 0;
+                              const goal = globalUserData?.nutrientGoals?.[macro.key];
+                              
+                              return (
+                                <div key={macro.key} style={styles.macroGridItem}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                                    <p style={styles.macroGridLabel}>{macro.label}</p>
+                                    <p style={{ ...styles.macroGridValue, color: macro.color }}>
+                                      {eaten}{goal ? `/${goal}` : ""}g
+                                    </p>
+                                  </div>
+                                  {goal && (
+                                    <div style={styles.dayPopupMacroBarTrack}>
+                                      <div style={{
+                                        ...styles.dayPopupMacroBarFill,
+                                        backgroundColor: macro.color,
+                                        width: `${goal > 0 ? Math.min((eaten / goal) * 100, 100) : 0}%`
+                                      }} />
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
 
                 {/* Meal breakdown list */}
                 <div style={styles.dayMealList}>
@@ -751,6 +765,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                             src={meal.photoURL}
                             alt={meal.name}
                             style={styles.dayMealThumb}
+                            loading="lazy"
                           />
                         )}
                         <div>
@@ -952,7 +967,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -1156,24 +1171,25 @@ const styles = {
   overlayCenter: {
     position: "fixed",
     top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.4)",
     zIndex: 150,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     padding: "1.5rem",
-    animation: "fadeInOverlay 0.25s ease",
+    animation: "fadeInOverlay 0.3s ease both",
+    backdropFilter: "blur(4px)",
   },
   bloomSheet: {
     backgroundColor: "white",
-    borderRadius: "20px",
+    borderRadius: "24px",
     padding: "1.5rem",
     width: "100%",
     maxWidth: "380px",
     maxHeight: "85vh",
     overflowY: "auto",
-    animation: "bloomOpen 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
-    boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
+    animation: "bloomOpen 0.4s cubic-bezier(0.22, 1, 0.36, 1) both",
+    boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
   },
   dayPopupHeader: {
     marginBottom: "1rem",
@@ -1406,7 +1422,7 @@ const styles = {
     maxWidth: "380px",
     maxHeight: "85vh",
     overflowY: "auto",
-    animation: "bloomOpen 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)",
+    animation: "bloomOpen 0.4s cubic-bezier(0.22, 1, 0.36, 1) both",
     boxShadow: "0 24px 64px rgba(0,0,0,0.18)",
     position: "relative",
     overflow: "hidden",

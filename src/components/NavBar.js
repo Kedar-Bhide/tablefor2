@@ -13,9 +13,11 @@ function NavBar({ currentPage, setCurrentPage }) {
       {tabs.map((tab) => (
         <button
           key={tab.id}
+          className="clickable-card"
           style={{
             ...styles.tab,
             color: currentPage === tab.id ? "#ff6b6b" : "#aaa",
+            transition: "color 0.3s ease, transform 0.1s ease",
           }}
           onClick={() => setCurrentPage(tab.id)}
         >

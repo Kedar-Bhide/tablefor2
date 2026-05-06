@@ -147,11 +147,31 @@ function App() {
 
   return (
     <div style={{ paddingBottom: "70px" }}>
-      {currentPage === "today" && <Today setCurrentPage={setCurrentPage} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />}
-      {currentPage === "logMeal" && <LogMeal setCurrentPage={setCurrentPage} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />}
-      {currentPage === "weekly" && <Weekly setCurrentPage={setCurrentPage} setGalleryDate={setGalleryDate} setGalleryFilter={setGalleryFilter} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />}
-      {currentPage === "gallery" && <Gallery galleryDate={galleryDate} setGalleryDate={setGalleryDate} galleryFilter={galleryFilter} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />}
-      {currentPage === "profile" && <Profile user={user} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />}
+      {currentPage === "today" && (
+        <div className="page-transition">
+          <Today setCurrentPage={setCurrentPage} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />
+        </div>
+      )}
+      {currentPage === "logMeal" && (
+        <div className="page-transition">
+          <LogMeal setCurrentPage={setCurrentPage} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />
+        </div>
+      )}
+      {currentPage === "weekly" && (
+        <div className="page-transition">
+          <Weekly setCurrentPage={setCurrentPage} setGalleryDate={setGalleryDate} setGalleryFilter={setGalleryFilter} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />
+        </div>
+      )}
+      {currentPage === "gallery" && (
+        <div className="page-transition">
+          <Gallery galleryDate={galleryDate} setGalleryDate={setGalleryDate} galleryFilter={galleryFilter} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />
+        </div>
+      )}
+      {currentPage === "profile" && (
+        <div className="page-transition">
+          <Profile user={user} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />
+        </div>
+      )}
       {currentPage !== "logMeal" && <NavBar currentPage={currentPage} setCurrentPage={setCurrentPage} />}
     </div>
   );

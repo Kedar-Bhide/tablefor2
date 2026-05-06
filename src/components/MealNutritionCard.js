@@ -1,6 +1,7 @@
 import React from "react";
 
-export default function MealNutritionCard({ 
+// React.memo: prevents re-renders when parent state changes but props haven't
+export default React.memo(function MealNutritionCard({ 
   nutrition, 
   editable = false, 
   onNutritionChange = null,
@@ -49,67 +50,39 @@ export default function MealNutritionCard({
   if (!editable && (!nutrition || !nutrition.calories || nutrition.calories <= 0)) return null;
 
   return (
-    <>
-      <style>
-        {`
-          .editable-macro {
-            padding: 0 4px;
-            border-radius: 4px;
-            transition: all 0.2s ease;
-          }
-          .editable-macro:focus {
-            outline: 1px dashed #aaa !important;
-            background-color: #fff;
-            padding: 0 4px;
-          }
-          .spinner-small {
-            width: 16px;
-            height: 16px;
-            border: 2px solid #f3f3f3;
-            border-top: 2px solid #ff6b6b;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-          }
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        `}
-      </style>
-      <div style={styles.mealNutritionCard}>
-        <div style={styles.mealNutritionRow}>
-          {[
-            { label: "Calories", key: "calories", unit: "kcal" },
-            { label: "Protein", key: "protein_g", unit: "g" },
-            { label: "Carbs", key: "carbs_g", unit: "g" },
-            { label: "Fat", key: "fat_g", unit: "g" },
-            { label: "Fiber", key: "fiber_g", unit: "g" },
-          ].map((m, idx, arr) => (
-            <React.Fragment key={m.key}>
-              <div style={styles.mealNutritionPill}>
-                <p style={styles.mealNutritionLabel}>{m.label}</p>
-                <p style={styles.mealNutritionValue}>
-                  <span 
-                    className="editable-macro"
-                    contentEditable={editable} 
-                    suppressContentEditableWarning 
-                    onBlur={(e) => onNutritionChange && onNutritionChange(m.key, Number(e.target.innerText.replace(/\D/g, '')))}
-                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.target.blur())}
-                    style={{ outline: "none", cursor: editable ? "text" : "default" }}
-                  >
-                    {Math.round(nutrition[m.key] || 0)}
-                  </span>
-                  <span style={styles.mealNutritionUnit}>{m.unit}</span>
-                </p>
-              </div>
-              {idx < arr.length - 1 && <div style={styles.separator} />}
-            </React.Fragment>
-          ))}
-        </div>
+    <div style={styles.mealNutritionCard}>
+      <div style={styles.mealNutritionRow}>
+        {[
+          { label: "Calories", key: "calories", unit: "kcal" },
+          { label: "Protein", key: "protein_g", unit: "g" },
+          { label: "Carbs", key: "carbs_g", unit: "g" },
+          { label: "Fat", key: "fat_g", unit: "g" },
+          { label: "Fiber", key: "fiber_g", unit: "g" },
+        ].map((m, idx, arr) => (
+          <React.Fragment key={m.key}>
+            <div style={styles.mealNutritionPill}>
+              <p style={styles.mealNutritionLabel}>{m.label}</p>
+              <p style={styles.mealNutritionValue}>
+                <span 
+                  className="editable-macro"
+                  contentEditable={editable} 
+                  suppressContentEditableWarning 
+                  onBlur={(e) => onNutritionChange && onNutritionChange(m.key, Number(e.target.innerText.replace(/\D/g, '')))}
+                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.target.blur())}
+                  style={{ outline: "none", cursor: editable ? "text" : "default" }}
+                >
+                  {Math.round(nutrition[m.key] || 0)}
+                </span>
+                <span style={styles.mealNutritionUnit}>{m.unit}</span>
+              </p>
+            </div>
+            {idx < arr.length - 1 && <div style={styles.separator} />}
+          </React.Fragment>
+        ))}
       </div>
-    </>
+    </div>
   );
-}
+});
 
 const styles = {
   mealNutritionCard: {

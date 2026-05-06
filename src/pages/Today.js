@@ -221,7 +221,6 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         return bTime - aTime;
       });
       setMeals(sorted);
-      console.log("Today's meals in state:", sorted.length);
 
       // Only count TODAY's meals for nutrition — filter by localDate
       const todayDateStr = formatLocalDateKey(new Date());
@@ -233,8 +232,6 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
           const mealDate = getMealLocalDateKey(m);
           return mealDate === todayDateStr;
         });
-
-      console.log("My meals for nutrition calculation:", allMyMeals.map(m => ({ name: m.name, kcal: m.nutrition?.calories })));
 
       if (allMyMeals.length > 0) {
         const totals = allMyMeals.reduce((acc, m) => ({
@@ -750,13 +747,14 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   };
 
   return (
-    <div style={styles.container}>
+    <>
+      <div style={styles.container}>
       <div style={styles.brandingHeader}>
         <h1 style={styles.appName}>Table For 2</h1>
       </div>
 
       {/* Progress Card */}
-      <div style={styles.card}>
+      <div className="clickable-card" style={styles.card}>
         <div style={styles.cardRow}>
           <img src={myPhoto} alt="avatar" style={styles.avatar} referrerPolicy="no-referrer" />
           <div style={styles.cardInfo}>
@@ -1063,7 +1061,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         const isPartnerMeal = meal.uid !== user.uid;
 
         return (
-          <div key={meal.id} style={styles.mealCard} onClick={() => {
+          <div key={meal.id} className="clickable-card" style={styles.mealCard} onClick={() => {
             if (isPartnerMeal && !myVersion) {
               const pendingTask = getPendingTaskForMeal(meal);
               if (pendingTask) {
@@ -1093,7 +1091,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
               const mealPhotos = getPhotos(displayMeal);
               if (mealPhotos.length === 0) return null;
               if (mealPhotos.length === 1) return (
-                <img src={mealPhotos[0]} alt="meal" style={styles.mealPhoto} />
+                <img src={mealPhotos[0]} alt="meal" style={styles.mealPhoto} loading="lazy" />
               );
               const visiblePhotos = mealPhotos.slice(0, 3);
               const rotations = [-3, 1.5, 0];
@@ -1105,6 +1103,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                       key={i}
                       src={url}
                       alt="meal"
+                      loading="lazy"
                       style={{
                         ...styles.mealPhoto,
                         position: "absolute",
@@ -1186,8 +1185,9 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
           </div>
         );
       })}
-      {/* Bottom Sheet */}
-      {selectedMeal && (
+    </div>
+    {/* Bottom Sheet - Moved outside container for perfect centering */}
+    {selectedMeal && (
         <div style={styles.overlay} onClick={() => { setSelectedMeal(null); setEditMode(false); }}>
           <div style={styles.sheet} onClick={(e) => e.stopPropagation()}>
             {!editMode ? (
@@ -1374,6 +1374,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                           src={preview}
                           alt={`meal ${index + 1}`}
                           style={styles.photoThumb}
+                          loading="lazy"
                         />
                         <button
                           style={styles.removePhotoBtn}
@@ -1976,7 +1977,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -2125,24 +2126,25 @@ const styles = {
   overlay: {
     position: "fixed",
     top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.4)",
     zIndex: 150,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     padding: "1.5rem",
-    animation: "fadeInOverlay 0.25s ease",
+    animation: "fadeInOverlay 0.3s ease both",
+    backdropFilter: "blur(4px)",
   },
   sheet: {
     backgroundColor: "white",
-    borderRadius: "20px",
+    borderRadius: "24px",
     padding: "1.5rem",
     width: "100%",
     maxWidth: "380px",
     maxHeight: "85vh",
     overflowY: "auto",
-    animation: "bloomOpen 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
-    boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
+    animation: "bloomOpen 0.4s cubic-bezier(0.22, 1, 0.36, 1) both",
+    boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
   },
   sheetTitle: {
     fontWeight: "bold",
