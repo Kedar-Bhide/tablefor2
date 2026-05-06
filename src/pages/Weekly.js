@@ -276,12 +276,9 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
       const partnerCount = getDayMealCount(dateStr, partnerMonthMeals);
       const bgColor = getCalendarColor(myCount, partnerCount);
       const isToday = dateStr === today;
-      const handleDateClick = () => {
-        handleCalendarDayTap(dateStr);
-      };
 
       cells.push(
-        <div key={d} onClick={handleDateClick} style={{
+        <div key={d} onClick={() => handleCalendarDayTap(dateStr)} style={{
           ...styles.calCell,
           backgroundColor: bgColor,
           border: isToday ? "2px solid #ff6b6b" : "2px solid transparent",
