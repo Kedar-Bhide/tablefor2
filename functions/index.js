@@ -272,8 +272,6 @@ async function aggregateMonthlyNutrition(uid, year, month) {
 
   if (goals) {
     days.forEach((day) => {
-      // For calories, we define 'hit' as staying within +/- 150 kcal or under if weight loss
-      // But let's keep it simple: hit if within 10% of target
       const calDiff = Math.abs(day.calories - goals.calories);
       if (calDiff <= 200) goalsReached.calories++;
 
@@ -312,7 +310,7 @@ async function aggregateMonthlyNutrition(uid, year, month) {
     daysTracked,
     totalMeals: mealsWithNutrition.length,
     typeBreakdown: typeMap,
-    topDescriptors: sortedDescriptors.slice(0, 8),
+    topDescriptors,
     goalsReached: goals ? goalsReached : null,
     nutrientGoals: goals,
   };
@@ -659,7 +657,7 @@ exports.onMealCreated = onDocumentCreated(
                   fromIngredients: meal.ingredients || meal.quantity || "",
                   fromPortionSize: meal.portionSize || "",
                   fromNutrition: finalNutrition || null,
-                  fromQuantity: "", // Legacy cleanup
+                  fromQuantity: "",
                   localDate: meal.localDate || "",
                   localTime: meal.localTime || "",
                   isRestaurant: meal.isRestaurant || false,
@@ -731,7 +729,7 @@ exports.onBadgeEarned = onDocumentUpdated("users/{uid}", async (event) => {
       `Achievement unlocked: ${badgeName}!`,
     ];
     const body = messages[Math.floor(Math.random() * messages.length)];
-    await sendNotification(token, "TableFor2 🏆", body, partner.fcmTokens || []);
+    await sendNotification(token, "TableFor2 🏆", body, after.fcmTokens || []);
   }
 });
 
