@@ -30,9 +30,6 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
       
       // Update local state if the meal is currently being viewed
       if (viewMeal && viewMeal.id === mealId) {
-        // We'll rely on the user closing and reopening or a refresh for now, 
-        // but we can also update viewMeal if we want.
-        // Actually, let's just refresh the list.
         fetchMeals();
       }
     } catch (e) {
@@ -42,7 +39,6 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
     }
   };
 
-  // fetchPartner removed 
 
   useEffect(() => {
     setFilter(galleryFilter || "mine");
@@ -465,29 +461,6 @@ const styles = {
     width: "38px",
     height: "38px",
     borderRadius: "50%",
-  },
-  partnerResponseCard: {
-    backgroundColor: "#fffaf5",
-    borderRadius: "10px",
-    padding: "0.8rem 1rem",
-    marginTop: "0.8rem",
-    border: "1px solid #f5ede6",
-  },
-  partnerResponseContent: {
-    flex: 1,
-  },
-  partnerResponseComment: {
-    fontSize: "0.9rem",
-    color: "#444",
-    margin: "0 0 4px 0",
-    fontStyle: "italic",
-    lineHeight: 1.4,
-  },
-  partnerResponseName: {
-    fontSize: "0.75rem",
-    color: "#777",
-    margin: 0,
-    textAlign: "right",
   },
   viewReactionRow: {
     borderTop: "1px solid #f5f5f5",
