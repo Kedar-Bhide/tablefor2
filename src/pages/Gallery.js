@@ -143,7 +143,8 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
 
 
   return (
-    <div style={styles.container}>
+    <>
+      <div style={styles.container}>
       <h2 style={styles.title}>Gallery</h2>
 
       {partnerUid && (
@@ -175,6 +176,7 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
               {group.meals.map((meal) => (
                 <div
                   key={`${meal.id}_${meal._photoIndex}`}
+                  className="clickable-card"
                   style={styles.photoWrapper}
                   onClick={async () => {
                     setViewMeal(meal);
@@ -185,6 +187,7 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
                     src={meal._galleryPhoto || meal.photoURL}
                     alt={meal.name}
                     style={styles.photo}
+                    loading="lazy"
                   />
                 </div>
               ))}
@@ -192,13 +195,13 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
           </div>
         ))
       )}
-
-      {/* Meal Viewer */}
-      {viewMeal && (
-        <div
-          style={styles.overlay}
-          onClick={() => setViewMeal(null)}
-        >
+    </div>
+    {/* Meal Viewer - Moved outside container for perfect centering */}
+    {viewMeal && (
+      <div
+        style={styles.overlay}
+        onClick={() => setViewMeal(null)}
+      >
           <div
             style={styles.sheet}
             onClick={(e) => e.stopPropagation()}
@@ -357,7 +360,7 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -421,24 +424,25 @@ const styles = {
   overlay: {
     position: "fixed",
     top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.4)",
     zIndex: 150,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     padding: "1.5rem",
-    animation: "fadeInOverlay 0.25s ease",
+    animation: "fadeInOverlay 0.3s ease both",
+    backdropFilter: "blur(4px)",
   },
   sheet: {
     backgroundColor: "white",
-    borderRadius: "20px",
+    borderRadius: "24px",
     padding: "1.5rem",
     width: "100%",
     maxWidth: "380px",
     maxHeight: "85vh",
     overflowY: "auto",
-    animation: "bloomOpen 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
-    boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
+    animation: "bloomOpen 0.4s cubic-bezier(0.22, 1, 0.36, 1) both",
+    boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
   },
   viewHeader: {
     display: "flex",

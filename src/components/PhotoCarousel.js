@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 
-export default function PhotoCarousel({ photos, initialIndex = 0 }) {
+// React.memo: prevents re-renders when the same photos/initialIndex are passed
+export default React.memo(function PhotoCarousel({ photos, initialIndex = 0 }) {
   const [carouselIndex, setCarouselIndex] = useState(initialIndex);
   const [swipeStartX, setSwipeStartX] = useState(null);
   const [swipeDirection, setSwipeDirection] = useState(null);
@@ -15,7 +16,7 @@ export default function PhotoCarousel({ photos, initialIndex = 0 }) {
   if (photos.length === 1) {
     return (
       <div style={{ position: "relative", width: "100%" }}>
-        <img src={photos[0]} alt="meal" style={styles.sheetPhoto} />
+        <img src={photos[0]} alt="meal" style={styles.sheetPhoto} loading="lazy" />
       </div>
     );
   }
@@ -44,11 +45,13 @@ export default function PhotoCarousel({ photos, initialIndex = 0 }) {
           key={carouselIndex}
           src={photos[carouselIndex]}
           alt="meal"
+          loading="lazy"
           style={{
             ...styles.sheetPhoto,
+            // Uses carousel-slide-* keyframes defined in index.css
             animation: `${swipeDirection === "left"
-              ? "slideInFromRight"
-              : "slideInFromLeft"} 0.25s cubic-bezier(0.34, 1.2, 0.64, 1) both`,
+              ? "carousel-slide-in-right"
+              : "carousel-slide-in-left"} 0.25s cubic-bezier(0.34, 1.2, 0.64, 1) both`,
           }}
         />
         {carouselIndex > 0 && (
@@ -80,19 +83,9 @@ export default function PhotoCarousel({ photos, initialIndex = 0 }) {
           />
         ))}
       </div>
-      <style>{`
-        @keyframes slideInFromRight {
-          0% { transform: translateX(100%); opacity: 0; }
-          100% { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes slideInFromLeft {
-          0% { transform: translateX(-100%); opacity: 0; }
-          100% { transform: translateX(0); opacity: 1; }
-        }
-      `}</style>
     </div>
   );
-}
+});
 
 const styles = {
   sheetPhoto: {
