@@ -22,6 +22,22 @@ export function getMealLocalDateKey(meal) {
   return createdAt ? formatLocalDateKey(createdAt) : null;
 }
 
+export function getLocalDateKeyInTz(date, timezone) {
+  if (!timezone) return formatLocalDateKey(date);
+  try {
+    const formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    return formatter.format(date); // en-CA format is YYYY-MM-DD
+  } catch (e) {
+    console.error("Error formatting date in timezone:", timezone, e);
+    return formatLocalDateKey(date);
+  }
+}
+
 export function getCurrentTimezone() {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || null;
 }
