@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { db, auth, storage } from "../firebase";
 import { collection, query, where, onSnapshot, updateDoc, deleteDoc, doc, getDoc, getDocs, addDoc, deleteField } from "firebase/firestore";
 import { compressImage } from "../utils/compressImage";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getPhotos } from "../utils/getPhotos";
-import { formatLocalDateKey, getMealLocalDateKey } from "../utils/dateTime";
+import { getLocalDateKeyInTz, getMealCreatedAtDate, getMealLocalDateKey } from "../utils/dateTime";
 import { shouldShowWeightCheckIn } from "../utils/shouldShowWeightCheckIn";
 import OnboardingPopup from "../components/OnboardingPopup";
 import PhotoCarousel from "../components/PhotoCarousel";
@@ -15,6 +15,7 @@ import PartnerResponseCard from "../components/PartnerResponseCard";
 function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const user = auth.currentUser;
   const [meals, setMeals] = useState([]);
+  const [rawRecentMeals, setRawRecentMeals] = useState([]);
 
   const partnerUid = globalPartnerData?.uid || null;
   const partnerPhoto = globalPartnerData?.photoURL || null;
@@ -170,89 +171,18 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   useEffect(() => {
     const uids = partnerUid ? [user.uid, partnerUid] : [user.uid];
     const now = new Date();
-    const recentStart = new Date(now.getTime() - 42 * 60 * 60 * 1000);
+    // 48 hour window to ensure we catch "today" across any timezone transition
+    const recentStart = new Date(now.getTime() - 48 * 60 * 60 * 1000);
     const q = query(
       collection(db, "meals"),
       where("uid", "in", uids),
       where("createdAt", ">=", recentStart)
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const todayLocalDate = formatLocalDateKey(now);
-      const yesterdayLocalDate = formatLocalDateKey(
-        new Date(now.getTime() - 24 * 60 * 60 * 1000)
-      );
-      const tomorrowLocalDate = formatLocalDateKey(
-        new Date(now.getTime() + 24 * 60 * 60 * 1000)
-      );
-
-      const data = snapshot.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((m) => {
-          const isOwn = m.uid === user.uid;
-          const mealLocalDate = getMealLocalDateKey(m);
-
-          if (isOwn) {
-            return mealLocalDate === todayLocalDate;
-          } else {
-            const mealTime = m.createdAt?.toDate
-              ? m.createdAt.toDate()
-              : new Date(m.createdAt);
-            const withinWindow = mealTime >= new Date(now.getTime() - 18 * 60 * 60 * 1000);
-            const isRelevantDate = mealLocalDate === todayLocalDate ||
-              mealLocalDate === yesterdayLocalDate ||
-              mealLocalDate === tomorrowLocalDate;
-
-            // If the meal is from today's localDate, always show it
-            if (mealLocalDate === todayLocalDate) {
-              return withinWindow && isRelevantDate;
-            }
-
-            // For non-today partner meals (yesterday/tomorrow due to timezone),
-            // only keep them visible until 9am local time — after that, let them go
-            const currentHour = now.getHours();
-            if (currentHour >= 9) return false;
-
-            return withinWindow && isRelevantDate;
-          }
-        });
-      const sorted = data.sort((a, b) => {
-        const aTime = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
-        const bTime = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
-        return bTime - aTime;
-      });
-      setMeals(sorted);
-
-      // Only count TODAY's meals for nutrition — filter by localDate
-      const todayDateStr = formatLocalDateKey(new Date());
-      const allMyMeals = snapshot.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((m) => {
-          if (m.uid !== user.uid) return false;
-          if (!m.nutrition) return false;
-          const mealDate = getMealLocalDateKey(m);
-          return mealDate === todayDateStr;
-        });
-
-      if (allMyMeals.length > 0) {
-        const totals = allMyMeals.reduce((acc, m) => ({
-          calories: acc.calories + (m.nutrition.calories || 0),
-          protein_g: acc.protein_g + (m.nutrition.protein_g || 0),
-          carbs_g: acc.carbs_g + (m.nutrition.carbs_g || 0),
-          fat_g: acc.fat_g + (m.nutrition.fat_g || 0),
-          fiber_g: acc.fiber_g + (m.nutrition.fiber_g || 0),
-        }), { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 });
-        setNutrition({
-          calories: Math.round(totals.calories),
-          protein_g: Math.round(totals.protein_g),
-          carbs_g: Math.round(totals.carbs_g),
-          fat_g: Math.round(totals.fat_g),
-          fiber_g: Math.round(totals.fiber_g),
-        });
-      } else {
-        setNutrition({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 });
-      }
-
+      const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setRawRecentMeals(data);
     });
+
     // Fetch pending tasks for this user
     const taskQ = query(
       collection(db, "tasks"),
@@ -270,6 +200,91 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       unsubscribeTasks();
     };
   }, [user.uid, partnerUid]);
+
+  // Unified Filtering Logic for Today Feed
+  const filteredMeals = useMemo(() => {
+    const myTz = globalUserData?.timezone;
+    const partnerTz = globalPartnerData?.timezone;
+    const now = new Date();
+
+    // Group raw meals by their "Event ID" (the original meal's ID)
+    const groups = {};
+    rawRecentMeals.forEach(m => {
+      const eventId = m.sourceMealId || m.id;
+      if (!groups[eventId]) groups[eventId] = [];
+      groups[eventId].push(m);
+    });
+
+    const result = [];
+    Object.values(groups).forEach(group => {
+      // The Logger is the one who created the original meal
+      const original = group.find(m => !m.sourceMealId) || group[0];
+      const isMyOriginal = original.uid === user.uid;
+      const loggerTz = isMyOriginal ? myTz : partnerTz;
+      
+      if (!loggerTz) return;
+
+      const currentDayInLoggerTz = getLocalDateKeyInTz(now, loggerTz);
+      const mealDate = getMealLocalDateKey(original);
+      
+      const isTodayInLoggerTz = mealDate === currentDayInLoggerTz;
+
+      // Exception: If I have a pending task for this meal, keep it visible regardless of day.
+      const hasTask = pendingTasks.some(t => t.sourceMealId === original.id || (original.sourceMealId && t.sourceMealId === original.sourceMealId));
+
+      if (isTodayInLoggerTz || hasTask) {
+        // If the original meal is still "Today" in the logger's timezone, or I have a task, show the group
+        result.push(...group);
+      }
+    });
+
+    // Sort by createdAt descending
+    return result.sort((a, b) => {
+      const aTime = getMealCreatedAtDate(a);
+      const bTime = getMealCreatedAtDate(b);
+      return bTime - aTime;
+    });
+  }, [rawRecentMeals, pendingTasks, globalUserData?.timezone, globalPartnerData?.timezone, user.uid]);
+
+  // Sync filteredMeals to the legacy meals state for JSX
+  useEffect(() => {
+    setMeals(filteredMeals);
+  }, [filteredMeals]);
+
+  // Calculate Today's Nutrition Totals
+  useEffect(() => {
+    const userTz = globalUserData?.timezone;
+    const now = new Date();
+    const todayKey = getLocalDateKeyInTz(now, userTz);
+
+    const myTodayMeals = filteredMeals.filter((m) => {
+      if (m.uid !== user.uid) return false;
+      if (!m.nutrition) return false;
+      const mealCreatedAt = getMealCreatedAtDate(m);
+      const mealLocalDateKeyInUserTz = getLocalDateKeyInTz(mealCreatedAt, userTz);
+      return mealLocalDateKeyInUserTz === todayKey;
+    });
+
+    if (myTodayMeals.length > 0) {
+      const totals = myTodayMeals.reduce((acc, m) => ({
+        calories: acc.calories + (m.nutrition.calories || 0),
+        protein_g: acc.protein_g + (m.nutrition.protein_g || 0),
+        carbs_g: acc.carbs_g + (m.nutrition.carbs_g || 0),
+        fat_g: acc.fat_g + (m.nutrition.fat_g || 0),
+        fiber_g: acc.fiber_g + (m.nutrition.fiber_g || 0),
+      }), { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 });
+
+      setNutrition({
+        calories: Math.round(totals.calories),
+        protein_g: Math.round(totals.protein_g),
+        carbs_g: Math.round(totals.carbs_g),
+        fat_g: Math.round(totals.fat_g),
+        fiber_g: Math.round(totals.fiber_g),
+      });
+    } else {
+      setNutrition({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 });
+    }
+  }, [filteredMeals, globalUserData?.timezone, user.uid]);
 
   // Pre-populate task macros when a task is opened
   useEffect(() => {
@@ -328,7 +343,12 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
     }
   }, [selectedMeal, editMode]);
 
-  const mealCount = meals.length;
+  const displayMeals = useMemo(() => {
+    // Only show the "representative" meal for each group in the feed list
+    return meals.filter(m => !m.sourceMealId || !meals.some(orig => orig.id === m.sourceMealId));
+  }, [meals]);
+
+  const mealCount = displayMeals.length;
 
   const handleDelete = async (mealId) => {
     await deleteDoc(doc(db, "meals", mealId));
@@ -1046,10 +1066,10 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
       {/* Meals Feed */}
       <h3 style={styles.sectionTitle}>Meals Today</h3>
-      {meals.length === 0 && (
+      {mealCount === 0 && (
         <p style={styles.empty}>No meals logged yet today. Add your first one!</p>
       )}
-      {meals.filter(m => !m.sourceMealId).map((meal) => {
+      {displayMeals.map((meal) => {
         // For shared meals, we want to show the current user's specific version (portion/macros)
         // while still treating it as the "main" card for that shared event.
         const myVersion = meal.isShared ? meals.find(m => m.sourceMealId === meal.id && m.uid === user.uid) : null;
