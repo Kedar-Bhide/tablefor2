@@ -101,8 +101,8 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
         const dateStr = formatLocalDateKey(d);
         const dayMeals = allMeals.filter(
           (m) => m.uid === user.uid &&
-          (getMealLocalDateKey(m) === dateStr) &&
-          m.nutrition
+            (getMealLocalDateKey(m) === dateStr) &&
+            m.nutrition
         );
         const totalsRaw = dayMeals.reduce((acc, m) => ({
           calories: acc.calories + (m.nutrition.calories || 0),
@@ -111,7 +111,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
           fat_g: acc.fat_g + (m.nutrition.fat_g || 0),
           fiber_g: acc.fiber_g + (m.nutrition.fiber_g || 0),
         }), { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 });
-        
+
         const totals = {
           calories: Math.round(totalsRaw.calories),
           protein_g: Math.round(totalsRaw.protein_g),
@@ -176,11 +176,11 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
       getDocs(ownQuery),
       partnerUid
         ? getDocs(query(
-            collection(db, "meals"),
-            where("uid", "==", partnerUid),
-            where("createdAt", ">=", start),
-            where("createdAt", "<=", end)
-          ))
+          collection(db, "meals"),
+          where("uid", "==", partnerUid),
+          where("createdAt", ">=", start),
+          where("createdAt", "<=", end)
+        ))
         : Promise.resolve(null),
     ]);
 
@@ -191,7 +191,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
 
     setMonthMeals(ownMonthMeals);
     setPartnerMonthMeals(partnerMonthMealsData);
-    
+
     // Calculate monthly nutrition totals from my meals only
     const mealsWithNutrition = ownMonthMeals.filter((m) => m.nutrition);
 
@@ -383,16 +383,16 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
   return (
     <>
       <div style={styles.container}>
-      <h2 style={styles.title}>Stats</h2>
+        <h2 style={styles.title}>Stats</h2>
 
-      {/* Streak Banners */}
-      <div style={styles.streakRow}>
-        <div style={styles.streakCard}>
-          <span style={styles.streakEmoji}>🔥</span>
-          <p style={styles.streakNumber}>{streakCount}</p>
-          <p style={styles.streakSub}>Days with 3+ meals{"\n"}in a row</p>
-        </div>
-        {/* Couple Streak */}
+        {/* Streak Banners */}
+        <div style={styles.streakRow}>
+          <div style={styles.streakCard}>
+            <span style={styles.streakEmoji}>🔥</span>
+            <p style={styles.streakNumber}>{streakCount}</p>
+            <p style={styles.streakSub}>Days with 3+ meals{"\n"}in a row</p>
+          </div>
+          {/* Couple Streak */}
           {partnerUid && (
             <div style={styles.streakCard}>
               <span style={styles.streakEmoji}>💑</span>
@@ -400,240 +400,240 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
               <p style={styles.streakSub}>with {partnerName ? partnerName.split(" ")[0] : "partner"}</p>
             </div>
           )}
-      </div>
+        </div>
 
-      {/* Weekly Macro Trend */}
-      {weeklyNutrition?.some((d) => d.hasMeals && d.calories > 0) && (
-        <div style={{ ...styles.card, animation: "slideUpFade 0.4s ease both" }}>
-          <p style={styles.cardTitle}>📊 Weekly Macros</p>
-          <div style={styles.macroTable}>
-            {/* Header row */}
-            <div style={styles.macroTableRow}>
-              <div style={styles.macroTableLabelCell} />
-              {weeklyNutrition.map((day) => (
-                <div key={day.date} style={styles.macroTableHeaderCell}>
-                  {day.label}
-                </div>
-              ))}
-            </div>
-            {/* Macro rows */}
-            {[
-              { key: "protein_g", label: "Protein", color: "#ff6b6b" },
-              { key: "carbs_g", label: "Carbs", color: "#ffb347" },
-              { key: "fat_g", label: "Fat", color: "#7ec8a4" },
-              { key: "fiber_g", label: "Fiber", color: "#a78bfa" },
-            ].map((macro, rowIdx) => (
-              <div
-                key={macro.key}
-                style={{
-                  ...styles.macroTableRow,
-                  backgroundColor: rowIdx % 2 === 0 ? "#fafafa" : "white",
-                  borderRadius: "6px",
-                }}
-              >
-                <div style={{ ...styles.macroTableLabelCell, color: macro.color }}>
-                  {macro.label}
-                </div>
+        {/* Weekly Macro Trend */}
+        {weeklyNutrition?.some((d) => d.hasMeals && d.calories > 0) && (
+          <div style={{ ...styles.card, animation: "slideUpFade 0.4s ease both" }}>
+            <p style={styles.cardTitle}>📊 Weekly Macros</p>
+            <div style={styles.macroTable}>
+              {/* Header row */}
+              <div style={styles.macroTableRow}>
+                <div style={styles.macroTableLabelCell} />
                 {weeklyNutrition.map((day) => (
-                  <div key={day.date} style={styles.macroTableCell}>
-                    {day.hasMeals && day[macro.key] > 0
-                      ? <span style={{ color: macro.color, fontWeight: "600" }}>
-                          {day[macro.key]}g
-                        </span>
-                      : <span style={styles.macroTableEmpty}>—</span>
-                    }
+                  <div key={day.date} style={styles.macroTableHeaderCell}>
+                    {day.label}
                   </div>
                 ))}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Monthly Calendar */}
-      <div style={styles.card}>
-        <div style={styles.monthNav}>
-          <button style={styles.navButton} onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1))}>‹</button>
-          <p style={styles.cardTitle}>{monthName}</p>
-          <button style={styles.navButton} onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1))}>›</button>
-        </div>
-
-        {/* Day Labels */}
-        <div style={styles.calGrid}>
-          {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
-            <div key={d} style={styles.calHeader}>{d}</div>
-          ))}
-          {renderCalendar()}
-        </div>
-
-        {/* Legend */}
-        <div style={styles.legend}>
-          <div style={styles.legendItem}>
-            <div style={{ ...styles.legendDot, backgroundColor: "#ffb347" }} />
-            <span>You 3+</span>
-          </div>
-          {partnerUid && (
-            <>
-              <div style={styles.legendItem}>
-                <div style={{ ...styles.legendDot, backgroundColor: "#ffb6c1" }} />
-                <span>{partnerName ? partnerName.split(" ")[0] : "Partner"} 3+</span>
-              </div>
-              <div style={styles.legendItem}>
-                <div style={{ ...styles.legendDot, backgroundColor: "#ff6b6b" }} />
-                <span>Both 3+</span>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Monthly Summary */}
-      <div style={styles.card}>
-        <p style={styles.cardTitle}>Monthly Summary</p>
-        <div style={styles.summaryRow}>
-          <div style={styles.summaryItem}>
-            <p style={styles.summaryNumber}>{totalMeals}</p>
-            <p style={styles.summarySub}>Total meals</p>
-          </div>
-          <div style={styles.summaryDivider} />
-          <div style={styles.summaryItem}>
-            <p style={styles.summaryNumber}>{daysHit}</p>
-            <p style={styles.summarySub}>Days with 3+</p>
-          </div>
-          <div style={styles.summaryDivider} />
-          {partnerUid && (
-            <>
-              <div style={styles.summaryDivider} />
-              <div style={styles.summaryItem}>
-                <p style={styles.summaryNumber}>{coupleStreakCount}</p>
-                <p style={styles.summarySub}>Couple streak</p>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Monthly Macro Overview */}
-      {monthlyNutrition && (
-        <div style={{ ...styles.card, animation: "slideUpFade 0.5s ease both" }}>
-          <p style={styles.cardTitle}>🗓️ {monthName} Nutrition</p>
-
-          {/* Calorie headline */}
-          <div style={{ ...styles.monthCalorieRow, marginTop: "1rem" }}>
-            <div style={styles.monthCalorieCard}>
-              <p style={styles.monthCalorieNumber}>{monthlyNutrition.avgCalories}</p>
-              <p style={styles.monthCalorieLabel}>avg kcal/day</p>
-            </div>
-            <div style={styles.monthCalorieCard}>
-              <p style={styles.monthCalorieNumber}>{monthlyNutrition.totalMeals}</p>
-              <p style={styles.monthCalorieLabel}>meals tracked</p>
-            </div>
-          </div>
-
-          {/* Macro averages grid */}
-          <div style={styles.monthMacroGrid}>
-            {[
-              { key: "avgProtein", label: "Protein", color: "#ff6b6b" },
-              { key: "avgCarbs", label: "Carbs", color: "#ffb347" },
-              { key: "avgFat", label: "Fat", color: "#7ec8a4" },
-              { key: "avgFiber", label: "Fiber", color: "#a78bfa" },
-            ].map((macro) => (
-              <div key={macro.key} style={styles.monthMacroCard}>
-                <p style={styles.monthMacroLabel}>{macro.label}</p>
-                <p style={{ ...styles.monthMacroValue, color: macro.color }}>
-                  {monthlyNutrition[macro.key] || 0}g
-                </p>
-                <p style={styles.monthMacroSub}>daily avg</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Meal Type Split */}
-      <div style={styles.card}>
-        <p style={styles.cardTitle}>{partnerUid ? `Meal Split — ${monthName}` : `Your Meals — ${monthName}`}</p>
-        <div style={{ ...styles.cardTitle, marginTop: "1rem" }}></div>
-        <div style={styles.splitRow}>
-
-          {/* Mine */}
-          <div style={styles.splitSide}>
-            <p style={styles.splitName}>You</p>
-            {mySplit.length === 0 ? (
-              <p style={styles.splitEmpty}>No meals</p>
-            ) : (
-              <>
-                <PieChart width={130} height={130}>
-                  <Pie
-                    data={mySplit}
-                    cx={60}
-                    cy={60}
-                    innerRadius={35}
-                    outerRadius={55}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {mySplit.map((entry, index) => (
-                      <Cell key={index} fill={entry.color} />
-                    ))}
-                  </Pie>
-                </PieChart>
-                <div style={styles.splitLegend}>
-                  {mySplit.map((entry) => (
-                    <div key={entry.name} style={styles.splitLegendItem}>
-                      <div style={{ ...styles.splitDot, backgroundColor: entry.color }} />
-                      <span style={styles.splitLabel}>{entry.name}</span>
-                      <span style={styles.splitCount}>{entry.value}</span>
+              {/* Macro rows */}
+              {[
+                { key: "protein_g", label: "Protein", color: "#ff6b6b" },
+                { key: "carbs_g", label: "Carbs", color: "#ffb347" },
+                { key: "fat_g", label: "Fat", color: "#7ec8a4" },
+                { key: "fiber_g", label: "Fiber", color: "#a78bfa" },
+              ].map((macro, rowIdx) => (
+                <div
+                  key={macro.key}
+                  style={{
+                    ...styles.macroTableRow,
+                    backgroundColor: rowIdx % 2 === 0 ? "#fafafa" : "white",
+                    borderRadius: "6px",
+                  }}
+                >
+                  <div style={{ ...styles.macroTableLabelCell, color: macro.color }}>
+                    {macro.label}
+                  </div>
+                  {weeklyNutrition.map((day) => (
+                    <div key={day.date} style={styles.macroTableCell}>
+                      {day.hasMeals && day[macro.key] > 0
+                        ? <span style={{ color: macro.color, fontWeight: "600" }}>
+                          {day[macro.key]}g
+                        </span>
+                        : <span style={styles.macroTableEmpty}>—</span>
+                      }
                     </div>
                   ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Monthly Calendar */}
+        <div style={styles.card}>
+          <div style={styles.monthNav}>
+            <button style={styles.navButton} onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1))}>‹</button>
+            <p style={styles.cardTitle}>{monthName}</p>
+            <button style={styles.navButton} onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1))}>›</button>
+          </div>
+
+          {/* Day Labels */}
+          <div style={styles.calGrid}>
+            {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
+              <div key={d} style={styles.calHeader}>{d}</div>
+            ))}
+            {renderCalendar()}
+          </div>
+
+          {/* Legend */}
+          <div style={styles.legend}>
+            <div style={styles.legendItem}>
+              <div style={{ ...styles.legendDot, backgroundColor: "#ffb347" }} />
+              <span>You 3+</span>
+            </div>
+            {partnerUid && (
+              <>
+                <div style={styles.legendItem}>
+                  <div style={{ ...styles.legendDot, backgroundColor: "#ffb6c1" }} />
+                  <span>{partnerName ? partnerName.split(" ")[0] : "Partner"} 3+</span>
+                </div>
+                <div style={styles.legendItem}>
+                  <div style={{ ...styles.legendDot, backgroundColor: "#ff6b6b" }} />
+                  <span>Both 3+</span>
                 </div>
               </>
             )}
           </div>
+        </div>
 
-          {partnerUid && (
-            <>
-              <div style={styles.splitDivider} />
-              <div style={styles.splitSide}>
-                <p style={styles.splitName}>{partnerName ? partnerName.split(" ")[0] : "Partner"}</p>
-                {partnerSplit.length === 0 ? (
-                  <p style={styles.splitEmpty}>No meals</p>
-                ) : (
-                  <>
-                    <PieChart width={130} height={130}>
-                      <Pie
-                        data={partnerSplit}
-                        cx={60}
-                        cy={60}
-                        innerRadius={35}
-                        outerRadius={55}
-                        paddingAngle={3}
-                        dataKey="value"
-                      >
-                        {partnerSplit.map((entry, index) => (
-                          <Cell key={index} fill={entry.color} />
-                        ))}
-                      </Pie>
-                    </PieChart>
-                    <div style={styles.splitLegend}>
-                      {partnerSplit.map((entry) => (
-                        <div key={entry.name} style={styles.splitLegendItem}>
-                          <div style={{ ...styles.splitDot, backgroundColor: entry.color }} />
-                          <span style={styles.splitLabel}>{entry.name}</span>
-                          <span style={styles.splitCount}>{entry.value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
+        {/* Monthly Summary */}
+        <div style={styles.card}>
+          <p style={styles.cardTitle}>Monthly Summary</p>
+          <div style={styles.summaryRow}>
+            <div style={styles.summaryItem}>
+              <p style={styles.summaryNumber}>{totalMeals}</p>
+              <p style={styles.summarySub}>Total meals</p>
+            </div>
+            <div style={styles.summaryDivider} />
+            <div style={styles.summaryItem}>
+              <p style={styles.summaryNumber}>{daysHit}</p>
+              <p style={styles.summarySub}>Days with 3+</p>
+            </div>
+            <div style={styles.summaryDivider} />
+            {partnerUid && (
+              <>
+                <div style={styles.summaryDivider} />
+                <div style={styles.summaryItem}>
+                  <p style={styles.summaryNumber}>{coupleStreakCount}</p>
+                  <p style={styles.summarySub}>Couple streak</p>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Monthly Macro Overview */}
+        {monthlyNutrition && (
+          <div style={{ ...styles.card, animation: "slideUpFade 0.5s ease both" }}>
+            <p style={styles.cardTitle}>🗓️ {monthName} Nutrition</p>
+
+            {/* Calorie headline */}
+            <div style={{ ...styles.monthCalorieRow, marginTop: "1rem" }}>
+              <div style={styles.monthCalorieCard}>
+                <p style={styles.monthCalorieNumber}>{monthlyNutrition.avgCalories}</p>
+                <p style={styles.monthCalorieLabel}>avg kcal/day</p>
               </div>
-            </>
-          )}
+              <div style={styles.monthCalorieCard}>
+                <p style={styles.monthCalorieNumber}>{monthlyNutrition.totalMeals}</p>
+                <p style={styles.monthCalorieLabel}>meals tracked</p>
+              </div>
+            </div>
+
+            {/* Macro averages grid */}
+            <div style={styles.monthMacroGrid}>
+              {[
+                { key: "avgProtein", label: "Protein", color: "#ff6b6b" },
+                { key: "avgCarbs", label: "Carbs", color: "#ffb347" },
+                { key: "avgFat", label: "Fat", color: "#7ec8a4" },
+                { key: "avgFiber", label: "Fiber", color: "#a78bfa" },
+              ].map((macro) => (
+                <div key={macro.key} style={styles.monthMacroCard}>
+                  <p style={styles.monthMacroLabel}>{macro.label}</p>
+                  <p style={{ ...styles.monthMacroValue, color: macro.color }}>
+                    {monthlyNutrition[macro.key] || 0}g
+                  </p>
+                  <p style={styles.monthMacroSub}>daily avg</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Meal Type Split */}
+        <div style={styles.card}>
+          <p style={styles.cardTitle}>{partnerUid ? `Meal Split — ${monthName}` : `Your Meals — ${monthName}`}</p>
+          <div style={{ ...styles.cardTitle, marginTop: "1rem" }}></div>
+          <div style={styles.splitRow}>
+
+            {/* Mine */}
+            <div style={styles.splitSide}>
+              <p style={styles.splitName}>You</p>
+              {mySplit.length === 0 ? (
+                <p style={styles.splitEmpty}>No meals</p>
+              ) : (
+                <>
+                  <PieChart width={130} height={130}>
+                    <Pie
+                      data={mySplit}
+                      cx={60}
+                      cy={60}
+                      innerRadius={35}
+                      outerRadius={55}
+                      paddingAngle={3}
+                      dataKey="value"
+                    >
+                      {mySplit.map((entry, index) => (
+                        <Cell key={index} fill={entry.color} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                  <div style={styles.splitLegend}>
+                    {mySplit.map((entry) => (
+                      <div key={entry.name} style={styles.splitLegendItem}>
+                        <div style={{ ...styles.splitDot, backgroundColor: entry.color }} />
+                        <span style={styles.splitLabel}>{entry.name}</span>
+                        <span style={styles.splitCount}>{entry.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {partnerUid && (
+              <>
+                <div style={styles.splitDivider} />
+                <div style={styles.splitSide}>
+                  <p style={styles.splitName}>{partnerName ? partnerName.split(" ")[0] : "Partner"}</p>
+                  {partnerSplit.length === 0 ? (
+                    <p style={styles.splitEmpty}>No meals</p>
+                  ) : (
+                    <>
+                      <PieChart width={130} height={130}>
+                        <Pie
+                          data={partnerSplit}
+                          cx={60}
+                          cy={60}
+                          innerRadius={35}
+                          outerRadius={55}
+                          paddingAngle={3}
+                          dataKey="value"
+                        >
+                          {partnerSplit.map((entry, index) => (
+                            <Cell key={index} fill={entry.color} />
+                          ))}
+                        </Pie>
+                      </PieChart>
+                      <div style={styles.splitLegend}>
+                        {partnerSplit.map((entry) => (
+                          <div key={entry.name} style={styles.splitLegendItem}>
+                            <div style={{ ...styles.splitDot, backgroundColor: entry.color }} />
+                            <span style={styles.splitLabel}>{entry.name}</span>
+                            <span style={styles.splitCount}>{entry.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
-    </div>
-    {/* Day Nutrition Popup - Moved outside container for perfect centering */}
-    {selectedCalendarDay && (
+      {/* Day Nutrition Popup - Moved outside container for perfect centering */}
+      {selectedCalendarDay && (
         <div
           style={styles.overlayCenter}
           onClick={() => setSelectedCalendarDay(null)}
@@ -689,7 +689,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                       {/* Calorie headline */}
                       {dayTotals.calories > 0 && (
                         <div style={styles.dayCalorieCard}>
-                          <div style={{ textAlign: "center" }}>
+                          <div style={{ textAlign: "left" }}>
                             <p style={styles.dayCalorieNumber}>
                               {dayTotals.calories}
                               {globalUserData?.nutrientGoals && (
@@ -699,15 +699,41 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                             <p style={styles.dayCalorieLabel}>kcal consumed</p>
                           </div>
                           {globalUserData?.nutrientGoals && (
-                            <div style={{ textAlign: "right" }}>
-                              <p style={{
-                                ...styles.dayPopupCalorieRemaining,
-                                color: (globalUserData.nutrientGoals.calories - dayTotals.calories) >= 0 ? "#7ec8a4" : "#ff6b6b"
-                              }}>
-                                {Math.abs(globalUserData.nutrientGoals.calories - dayTotals.calories)}
+                            <div
+                              style={{
+                                textAlign: "right",
+                                marginLeft: "auto",
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "flex-end",
+                              }}
+                            >
+                              <p
+                                style={{
+                                  ...styles.dayPopupCalorieRemaining,
+                                  color:
+                                    (globalUserData.nutrientGoals.calories - dayTotals.calories) >= 0
+                                      ? "#7ec8a4"
+                                      : "#ff6b6b",
+                                }}
+                              >
+                                {Math.abs(
+                                  globalUserData.nutrientGoals.calories - dayTotals.calories
+                                )}
                               </p>
-                              <p style={styles.dayCalorieLabel}>
-                                {(globalUserData.nutrientGoals.calories - dayTotals.calories) >= 0 ? "remaining" : "over"}
+
+                              <p
+                                style={{
+                                  ...styles.dayCalorieLabel,
+                                  color:
+                                    (globalUserData.nutrientGoals.calories - dayTotals.calories) >= 0
+                                      ? "#7ec8a4"
+                                      : "#ff6b6b",
+                                }}
+                              >
+                                {(globalUserData.nutrientGoals.calories - dayTotals.calories) >= 0
+                                  ? "under"
+                                  : "over"}
                               </p>
                             </div>
                           )}
@@ -726,7 +752,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                             ].map((macro) => {
                               const eaten = dayTotals[macro.key] || 0;
                               const goal = globalUserData?.nutrientGoals?.[macro.key];
-                              
+
                               return (
                                 <div key={macro.key} style={styles.macroGridItem}>
                                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
@@ -944,8 +970,8 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                 {weightInsight.weightDelta === 0
                   ? "No change this period"
                   : weightInsight.weightDelta < 0
-                  ? `↓ ${Math.abs(weightInsight.weightDelta)}kg this period`
-                  : `↑ ${weightInsight.weightDelta}kg this period`}
+                    ? `↓ ${Math.abs(weightInsight.weightDelta)}kg this period`
+                    : `↑ ${weightInsight.weightDelta}kg this period`}
               </p>
             )}
 
