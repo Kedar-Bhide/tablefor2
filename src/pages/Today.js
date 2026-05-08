@@ -27,6 +27,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [editName, setEditName] = useState("");
   const [editPhotos, setEditPhotos] = useState([]);
   const [editPhotoPreviews, setEditPhotoPreviews] = useState([]);
+  const [editIsShared, setEditIsShared] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showEditPhotoOptions, setShowEditPhotoOptions] = useState(false);
   const [reactionMeal, setReactionMeal] = useState(null);
@@ -339,6 +340,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         setEditFat(String(selectedMeal.nutrition.fat_g || ""));
         setEditFiber(String(selectedMeal.nutrition.fiber_g || ""));
       }
+      setEditIsShared(selectedMeal.isShared || false);
       setManualMacrosModified(false);
     }
   }, [selectedMeal, editMode]);
@@ -417,6 +419,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         portionSize: editPortionSize.trim(),
         isRestaurant: editCookType === "Restaurant",
         isPackaged: editCookType === "Packaged",
+        isShared: editIsShared,
         quantity: "", // Clear old quantity field
         nutrition: {
           calories: parseInt(editCalories) || 0,
@@ -1365,7 +1368,6 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                     </button>
                   ))}
                 </div>
-
                 <div style={styles.typeRow}>
                   {["Homemade", "Restaurant", "Packaged"].map((type) => (
                     <button
@@ -1381,6 +1383,89 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                     </button>
                   ))}
                 </div>
+
+                {/* Shared Meal Toggle */}
+                {globalPartnerData && (
+                  <div style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "0.8rem 1rem",
+                    backgroundColor: "#fffafa",
+                    borderRadius: "16px",
+                    marginBottom: "1rem",
+                    border: "1px solid #ffebeb",
+                    cursor: "pointer"
+                  }} onClick={() => setEditIsShared(!editIsShared)}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                      <div style={{ display: "flex", position: "relative", width: "52px", height: "32px" }}>
+                        <img src={user.photoURL} alt="you" style={{ 
+                          width: "32px", 
+                          height: "32px", 
+                          borderRadius: "50%", 
+                          border: "2px solid white",
+                          zIndex: 2,
+                          boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+                        }} referrerPolicy="no-referrer" />
+                        {globalPartnerData.photoURL ? (
+                          <img src={globalPartnerData.photoURL} alt="partner" style={{ 
+                            width: "32px", 
+                            height: "32px", 
+                            borderRadius: "50%", 
+                            border: "2px solid white",
+                            marginLeft: "-12px",
+                            zIndex: 1,
+                            boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+                          }} referrerPolicy="no-referrer" />
+                        ) : (
+                          <div style={{ 
+                            width: "32px", 
+                            height: "32px", 
+                            borderRadius: "50%", 
+                            border: "2px solid white",
+                            marginLeft: "-12px",
+                            zIndex: 1,
+                            backgroundColor: "#eee",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "1rem",
+                            boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
+                          }}>👩</div>
+                        )}
+                      </div>
+                      <div>
+                        <p style={{ margin: 0, fontSize: "0.85rem", fontWeight: "600", color: "#444" }}>Shared meal</p>
+                        <p style={{ margin: 0, fontSize: "0.7rem", color: "#aaa" }}>Tag dining partners</p>
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        width: "50px",
+                        height: "28px",
+                        borderRadius: "14px",
+                        padding: "2px",
+                        transition: "background 0.3s ease",
+                        backgroundColor: editIsShared ? "#ff6b6b" : "#e0e0e0",
+                        position: "relative"
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "22px",
+                          height: "22px",
+                          backgroundColor: "white",
+                          borderRadius: "50%",
+                          transition: "transform 0.3s ease",
+                          transform: editIsShared ? "translateX(22px)" : "translateX(2px)",
+                          top: "3px",
+                          position: "absolute",
+                          boxShadow: "0 2px 5px rgba(0,0,0,0.1)"
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
 
 
                 {/* Photo */}
@@ -2168,7 +2253,7 @@ const styles = {
   },
   sheetTitle: {
     fontWeight: "bold",
-    fontSize: "1.1rem",
+    fontSize: "1.0rem",
     color: "#333",
     margin: "0 0 4px 0",
   },
@@ -2210,18 +2295,19 @@ const styles = {
     cursor: "pointer",
   },
   editLabel: {
-    fontSize: "0.9rem",
+    fontSize: "0.8rem",
     color: "#555",
-    marginBottom: "0.4rem",
+    marginBottom: "0.2rem",
+    marginTop: "0.5rem",
   },
   typeRow: {
     display: "flex",
     gap: "0.5rem",
-    marginBottom: "1rem",
+    marginBottom: "0.7rem",
   },
   typeButton: {
     flex: 1,
-    padding: "0.5rem 0",
+    padding: "0.4rem 0",
     border: "1px solid #eee",
     borderRadius: "8px",
     fontSize: "0.75rem",
@@ -2242,10 +2328,10 @@ const styles = {
   editInput: {
     width: "100%",
     padding: "0.6rem",
-    fontSize: "1rem",
+    fontSize: "0.85rem",
     borderRadius: "8px",
     border: "1px solid #ddd",
-    marginBottom: "1rem",
+    marginBottom: "0.7rem",
     boxSizing: "border-box",
   },
   reactionRow: {
