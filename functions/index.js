@@ -1075,46 +1075,119 @@ exports.retryAnalysis = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (request)
   }
 });
 
-exports.onMealReacted = onDocumentUpdated("meals/{mealId}", async (event) => {
+exports.onMealUpdated = onDocumentUpdated("meals/{mealId}", async (event) => {
   const before = event.data.before.data();
   const after = event.data.after.data();
+  const mealId = event.params.mealId;
 
   const mealOwnerUid = after.uid;
   const mealOwner = await getUser(mealOwnerUid);
-  if (!mealOwner || !mealOwner.fcmToken) return;
-  if (mealOwner.notifSettings?.partnerMeal === false) return;
+  if (!mealOwner) return;
 
-  // Check for new reaction
-  const prevReactions = before.reactions || {};
-  const newReactions = after.reactions || {};
-  const newReactionEntry = Object.entries(newReactions).find(
-    ([uid, emoji]) => prevReactions[uid] !== emoji && uid !== mealOwnerUid
-  );
+  // 1. Check for isShared transition (false -> true) to create partner tasks
+  if (!before.isShared && after.isShared && mealOwner.partnerUid) {
+    try {
+      const partner = await getUser(mealOwner.partnerUid);
+      if (partner) {
+        // Check if task already exists for this meal
+        const existingTask = await db.collection("tasks")
+          .where("sourceMealId", "==", mealId)
+          .where("toUid", "==", mealOwner.partnerUid)
+          .get();
 
-  // Check for new comment
-  const prevComments = before.comments || {};
-  const newComments = after.comments || {};
-  const newCommentEntry = Object.entries(newComments).find(
-    ([uid, text]) => prevComments[uid] !== text && uid !== mealOwnerUid
-  );
+        if (existingTask.empty) {
+          await db.collection("tasks").add({
+            sourceMealId: mealId,
+            fromUid: mealOwnerUid,
+            toUid: mealOwner.partnerUid,
+            mealName: after.name || "",
+            mealType: after.type || "Meal",
+            photos: after.photos?.length > 0 ? after.photos : after.photoURL ? [after.photoURL] : [],
+            fromIngredients: after.ingredients || after.quantity || "",
+            fromPortionSize: after.portionSize || "",
+            fromNutrition: after.nutrition || null,
+            fromQuantity: "",
+            localDate: after.localDate || "",
+            localTime: after.localTime || "",
+            isRestaurant: after.isRestaurant || false,
+            completed: false,
+            dismissed: false,
+            completedAt: null,
+            createdAt: new Date(),
+          });
+          console.log(`Task created for edited meal ${mealId} via sharing transition`);
 
-  if (!newReactionEntry && !newCommentEntry) return;
-
-  // Get reactor/commenter name
-  const actorUid = newReactionEntry?.[0] || newCommentEntry?.[0];
-  const actor = await getUser(actorUid);
-  const actorName = actor?.name ? actor.name.split(" ")[0] : "Your partner";
-
-  let body = "";
-  if (newReactionEntry && newCommentEntry) {
-    body = `${actorName} reacted ${newReactionEntry[1]} and commented on your ${after.type.toLowerCase()} 💬`;
-  } else if (newReactionEntry) {
-    body = `${actorName} reacted ${newReactionEntry[1]} to your ${after.type.toLowerCase()} 🍽️`;
-  } else if (newCommentEntry) {
-    body = `${actorName} commented on your ${after.type.toLowerCase()}: "${newCommentEntry[1]}" 💬`;
+          // Send notification to partner about the new shared meal
+          if (partner.fcmToken && partner.notifSettings?.partnerMeal !== false) {
+            const firstName = mealOwner.name ? mealOwner.name.split(" ")[0] : "Your partner";
+            const body = `${firstName} shared a ${after.type.toLowerCase()} with you 🍽️ — add your quantities!`;
+            await sendNotification(partner.fcmToken, "TableFor2", body, partner.fcmTokens || []);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to create task during isShared transition:", err);
+    }
   }
 
-  await sendNotification(mealOwner.fcmToken, "TableFor2", body, mealOwner.fcmTokens || []);
+  // 3. Check for isShared transition (true -> false) to remove incomplete partner tasks
+  if (before.isShared && !after.isShared && mealOwner.partnerUid) {
+    try {
+      const existingTasks = await db.collection("tasks")
+        .where("sourceMealId", "==", mealId)
+        .where("toUid", "==", mealOwner.partnerUid)
+        .where("completed", "==", false)
+        .get();
+
+      if (!existingTasks.empty) {
+        const batch = db.batch();
+        existingTasks.docs.forEach(doc => {
+          batch.delete(doc.ref);
+        });
+        await batch.commit();
+        console.log(`Incomplete tasks deleted for meal ${mealId} because sharing was disabled`);
+      }
+    } catch (err) {
+      console.error("Failed to delete tasks during isShared disabled transition:", err);
+    }
+  }
+
+  // 2. Check for reactions/comments notifications
+  if (mealOwner.fcmToken && mealOwner.notifSettings?.partnerMeal !== false) {
+    // Check for new reaction
+    const prevReactions = before.reactions || {};
+    const newReactions = after.reactions || {};
+    const newReactionEntry = Object.entries(newReactions).find(
+      ([uid, emoji]) => prevReactions[uid] !== emoji && uid !== mealOwnerUid
+    );
+
+    // Check for new comment
+    const prevComments = before.comments || {};
+    const newComments = after.comments || {};
+    const newCommentEntry = Object.entries(newComments).find(
+      ([uid, text]) => prevComments[uid] !== text && uid !== mealOwnerUid
+    );
+
+    if (newReactionEntry || newCommentEntry) {
+      // Get reactor/commenter name
+      const actorUid = newReactionEntry?.[0] || newCommentEntry?.[0];
+      const actor = await getUser(actorUid);
+      const actorName = actor?.name ? actor.name.split(" ")[0] : "Your partner";
+
+      let body = "";
+      if (newReactionEntry && newCommentEntry) {
+        body = `${actorName} reacted ${newReactionEntry[1]} and commented on your ${after.type.toLowerCase()} 💬`;
+      } else if (newReactionEntry) {
+        body = `${actorName} reacted ${newReactionEntry[1]} to your ${after.type.toLowerCase()} 🍽️`;
+      } else if (newCommentEntry) {
+        body = `${actorName} commented on your ${after.type.toLowerCase()}: "${newCommentEntry[1]}" 💬`;
+      }
+
+      if (body) {
+        await sendNotification(mealOwner.fcmToken, "TableFor2", body, mealOwner.fcmTokens || []);
+      }
+    }
+  }
 });
 
 
