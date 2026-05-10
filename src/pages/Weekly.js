@@ -23,48 +23,67 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
   const [weightInsight, setWeightInsight] = useState(null);
   const [showWeightInsight, setShowWeightInsight] = useState(false);
 
+  const [rawMonthlyInsights, setRawMonthlyInsights] = useState([]);
+  const [rawWeightInsights, setRawWeightInsights] = useState([]);
+
   useEffect(() => {
     const fetchInsights = async () => {
-      // Fetch latest weight insight
       try {
-        const insightsSnap = await getDocs(
-          collection(db, "users", user.uid, "weightInsights")
-        );
-        if (!insightsSnap.empty) {
-          const latest = insightsSnap.docs
-            .sort((a, b) => b.id.localeCompare(a.id))[0];
-          setWeightInsight({ ...latest.data(), id: latest.id });
+        // Fetch collections in parallel
+        const [weightSnap, monthlySnap] = await Promise.all([
+          getDocs(query(collection(db, "users", user.uid, "weightInsights"))),
+          getDocs(query(collection(db, "users", user.uid, "insights")))
+        ]);
+
+        if (!weightSnap.empty) {
+          setRawWeightInsights(weightSnap.docs.map(d => ({ ...d.data(), id: d.id })));
+        }
+        if (!monthlySnap.empty) {
+          setRawMonthlyInsights(monthlySnap.docs.map(d => ({ ...d.data(), id: d.id, key: d.id })));
         }
       } catch (e) {
-        console.error("Failed to fetch weight insight:", e);
-      }
-      // Check for monthly insight to show
-      try {
-        const now = new Date();
-        const dayOfMonth = now.getDate();
-        const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
-        const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth();
-        const insightKey = `${prevYear}-${String(prevMonth).padStart(2, "0")}`;
-
-        const dismissed = globalUserData?.dismissedInsights || [];
-
-        const insightSnap = await getDoc(
-          doc(db, "users", user.uid, "insights", insightKey)
-        );
-
-        if (insightSnap.exists()) {
-          setMonthlyInsight({ ...insightSnap.data(), key: insightKey });
-          // Only auto-show in first 7 days and if not dismissed
-          if (dayOfMonth <= 7 && !dismissed.includes(insightKey)) {
-            setShowInsightPopup(true);
-          }
-        }
-      } catch (e) {
-        console.error("Failed to fetch monthly insight:", e);
+        console.error("Failed to fetch insights:", e);
       }
     };
     fetchInsights();
-  }, [user.uid, globalUserData?.dismissedInsights]);
+  }, [user.uid]);
+
+  // Derived state for insights (filters dismissed ones)
+  const { filteredMonthly, filteredWeight, autoShowMonthly } = useMemo(() => {
+    const dismissed = globalUserData?.dismissedInsights || [];
+
+    const monthly = rawMonthlyInsights
+      .sort((a, b) => b.id.localeCompare(a.id))
+      .filter(ins => !dismissed.includes(ins.key));
+
+    const weight = rawWeightInsights
+      .sort((a, b) => b.id.localeCompare(a.id))[0] || null;
+
+    // Auto-show logic for the most recent monthly one if it matches the expected previous month
+    let autoShow = null;
+    if (monthly.length > 0) {
+      const now = new Date();
+      const dayOfMonth = now.getDate();
+      const latest = monthly[0];
+      const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+      const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth();
+      const expectedKey = `${prevYear}-${String(prevMonth).padStart(2, "0")}`;
+
+      if (latest.key === expectedKey && dayOfMonth <= 7) {
+        autoShow = latest;
+      }
+    }
+
+    return { filteredMonthly: monthly, filteredWeight: weight, autoShowMonthly: autoShow };
+  }, [rawMonthlyInsights, rawWeightInsights, globalUserData?.dismissedInsights]);
+
+  // Auto-trigger popup
+  useEffect(() => {
+    if (autoShowMonthly && !showInsightPopup) {
+      setMonthlyInsight(autoShowMonthly);
+      setShowInsightPopup(true);
+    }
+  }, [autoShowMonthly, showInsightPopup]);
 
   useEffect(() => {
     const fetchWeekMeals = async () => {
@@ -361,18 +380,21 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
     };
   };
 
-  const handleDismissInsight = async () => {
-    if (!monthlyInsight || dismissingInsight) return;
+  const handleDismissInsight = async (insightKey) => {
+    if (!insightKey || dismissingInsight) return;
     setDismissingInsight(true);
     setShowInsightPopup(false);
+    setShowWeightInsight(false);
     try {
-      const userSnap = await getDoc(doc(db, "users", user.uid));
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
       const existing = userSnap.data()?.dismissedInsights || [];
-      if (!existing.includes(monthlyInsight.key)) {
-        await updateDoc(doc(db, "users", user.uid), {
-          dismissedInsights: [...existing, monthlyInsight.key],
+      if (!existing.includes(insightKey)) {
+        await updateDoc(userRef, {
+          dismissedInsights: [...existing, insightKey],
         });
       }
+      // UI updates automatically via useMemo and globalUserData listener
     } catch (e) {
       console.error("Failed to save dismissed insight:", e);
     } finally {
@@ -631,6 +653,32 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
             )}
           </div>
         </div>
+
+        {/* Insight Revisit Buttons - Now inside the container */}
+        {!showInsightPopup && filteredMonthly.map((ins) => (
+          <button
+            key={ins.key}
+            style={styles.revisitInsightButton}
+            onClick={() => {
+              setMonthlyInsight(ins);
+              setShowInsightPopup(true);
+            }}
+          >
+            📋 View {ins.month} insights
+          </button>
+        ))}
+
+        {filteredWeight && !showWeightInsight && (
+          <button
+            style={styles.weightInsightButton}
+            onClick={() => {
+              setWeightInsight(filteredWeight);
+              setShowWeightInsight(true);
+            }}
+          >
+            ✨ View insights · {filteredWeight.date}
+          </button>
+        )}
       </div>
       {/* Day Nutrition Popup - Moved outside container for perfect centering */}
       {selectedCalendarDay && (
@@ -890,7 +938,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                 ...styles.insightPopupButton,
                 opacity: dismissingInsight ? 0.6 : 1,
               }}
-              onClick={handleDismissInsight}
+              onClick={() => handleDismissInsight(monthlyInsight.key)}
               disabled={dismissingInsight}
             >
               {dismissingInsight ? "Saving..." : "Got it! 👍"}
@@ -903,26 +951,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
           </div>
         </div>
       )}
-      {/* Last month's insight revisit */}
-      {monthlyInsight && !showInsightPopup && (
-        <button
-          style={styles.revisitInsightButton}
-          onClick={() => {
-            setShowInsightPopup(true);
-          }}
-        >
-          📋 View {monthlyInsight.month} insights
-        </button>
-      )}
-      {/* Weight Insight Button */}
-      {weightInsight && (
-        <button
-          style={styles.weightInsightButton}
-          onClick={() => setShowWeightInsight(true)}
-        >
-          ✨ View insights · {weightInsight.date}
-        </button>
-      )}
+      {/* Insight revisit buttons moved to container */}
 
       {/* Weight Insight Popup */}
       {showWeightInsight && weightInsight && (
@@ -988,7 +1017,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
               style={styles.insightPopupButton}
               onClick={() => setShowWeightInsight(false)}
             >
-              Close
+              Got it! 👍
             </button>
           </div>
         </div>
@@ -1517,28 +1546,37 @@ const styles = {
   },
   revisitInsightButton: {
     width: "100%",
-    padding: "0.7rem",
-    backgroundColor: "transparent",
-    color: "#777",
+    padding: "0.8rem",
+    backgroundColor: "white",
+    color: "black",
     border: "1px solid #eee",
-    borderRadius: "10px",
-    fontSize: "0.82rem",
+    borderRadius: "12px",
+    fontSize: "0.88rem",
     cursor: "pointer",
-    marginTop: "0.5rem",
-    marginBottom: "1rem",
+    marginBottom: "0.6rem",
+    fontWeight: "500",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
   },
   weightInsightButton: {
     width: "100%",
     padding: "0.8rem",
-    backgroundColor: "#fffaf5",
-    color: "#ff6b6b",
-    border: "1px solid #ffddcc",
+    backgroundColor: "white",
+    color: "black",
+    border: "1px solid #eee",
     borderRadius: "12px",
     fontSize: "0.88rem",
-    fontWeight: "500",
     cursor: "pointer",
-    marginTop: "0.5rem",
-    marginBottom: "1rem",
+    marginBottom: "0.6rem",
+    fontWeight: "500",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
   },
   insightPopupEyebrow: {
     fontSize: "0.72rem",
