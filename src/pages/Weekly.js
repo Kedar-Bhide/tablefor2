@@ -161,14 +161,22 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
   }, [user.uid, partnerUid]);
 
   const fetchMonthMeals = useCallback(async () => {
-    const start = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
-    const end = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0, 23, 59, 59);
+    // We fetch a wider range of createdAt to catch meals that were logged at the end
+    // of a month but accepted by the partner in the next month.
+    // We then filter strictly by localDate to ensure they appear on the correct day.
+    const startRange = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+    startRange.setDate(startRange.getDate() - 3); // 3 day buffer
+    const endRange = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0, 23, 59, 59);
+    endRange.setDate(endRange.getDate() + 14); // 14 day buffer for late-accepted shared meals
+
+    const monthStartStr = formatLocalDateKey(new Date(monthDate.getFullYear(), monthDate.getMonth(), 1));
+    const monthEndStr = formatLocalDateKey(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0));
 
     const ownQuery = query(
       collection(db, "meals"),
       where("uid", "==", user.uid),
-      where("createdAt", ">=", start),
-      where("createdAt", "<=", end)
+      where("createdAt", ">=", startRange),
+      where("createdAt", "<=", endRange)
     );
 
     // Fetch own and partner month meals in parallel
@@ -178,15 +186,26 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
         ? getDocs(query(
           collection(db, "meals"),
           where("uid", "==", partnerUid),
-          where("createdAt", ">=", start),
-          where("createdAt", "<=", end)
+          where("createdAt", ">=", startRange),
+          where("createdAt", "<=", endRange)
         ))
         : Promise.resolve(null),
     ]);
 
-    const ownMonthMeals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const ownMonthMeals = snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter(m => {
+        const dateKey = getMealLocalDateKey(m);
+        return dateKey >= monthStartStr && dateKey <= monthEndStr;
+      });
+
     const partnerMonthMealsData = pSnap
-      ? pSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      ? pSnap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter(m => {
+          const dateKey = getMealLocalDateKey(m);
+          return dateKey >= monthStartStr && dateKey <= monthEndStr;
+        })
       : [];
 
     setMonthMeals(ownMonthMeals);
@@ -313,31 +332,12 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
   const daysHit = [...new Set((monthMeals || []).map((m) => getMealLocalDateKey(m)))]
     .filter((dateStr) => getDayMealCount(dateStr, monthMeals || []) >= 3).length;
 
-  const handleCalendarDayTap = async (dateStr) => {
-    try {
-      const start = new Date(dateStr + "T00:00:00");
-      const end = new Date(dateStr + "T23:59:59");
-
-      const q = query(
-        collection(db, "meals"),
-        where("uid", "==", user.uid),
-        where("createdAt", ">=", start),
-        where("createdAt", "<=", end)
-      );
-      const snap = await getDocs(q);
-      const meals = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((m) => {
-          return getMealLocalDateKey(m) === dateStr;
-        });
-
-      setCalendarDayMeals(meals);
-      setSelectedCalendarDay(dateStr);
-    } catch (e) {
-      console.error("Error fetching day meals:", e);
-      setCalendarDayMeals([]);
-      setSelectedCalendarDay(dateStr);
-    }
+  const handleCalendarDayTap = (dateStr) => {
+    // Use the already-fetched monthMeals to show daily details.
+    // This is more reliable as it includes late-accepted shared meals caught by the wider month fetch.
+    const meals = monthMeals.filter((m) => getMealLocalDateKey(m) === dateStr);
+    setCalendarDayMeals(meals);
+    setSelectedCalendarDay(dateStr);
   };
 
   const getDayNutritionTotals = (meals) => {
