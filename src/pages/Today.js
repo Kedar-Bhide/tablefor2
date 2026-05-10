@@ -1952,7 +1952,14 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
             <div style={styles.viewHeader}>
               <div>
                 <p style={styles.viewName}>{activeTask.mealName}</p>
-                <p style={styles.viewMeta}>{activeTask.mealType}</p>
+                <p style={styles.viewMeta}>
+                  {activeTask.mealType}
+                  {activeTask.localDate && (
+                    <span style={{ fontSize: "0.75rem", color: "#aaa", display: "block", marginTop: "2px", fontWeight: "400" }}>
+                      Posted on {activeTask.localDate.split("-").slice(1).join("/")} at {activeTask.localTime || "—"}
+                    </span>
+                  )}
+                </p>
               </div>
               <img
                 src={partnerPhoto}
@@ -1983,18 +1990,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
             <div style={styles.insightDivider} />
 
-            {/* Your details input */}
-            <p style={styles.taskYourQuantityLabel}>Your ingredients</p>
-            <input
-              type="text"
-              placeholder={activeTask.fromIngredients || activeTask.fromQuantity || "What did you have?"}
-              value={taskIngredients}
-              onChange={(e) => setTaskIngredients(e.target.value)}
-              style={styles.taskQuantityInput}
-              className="comment-input"
-            />
-
-            <p style={{ ...styles.taskYourQuantityLabel, marginTop: "1rem" }}>Your portion size</p>
+            {/* Your details input - Removed Ingredients as requested */}
+            <p style={{ ...styles.taskYourQuantityLabel, marginTop: "0.5rem" }}>Your portion size</p>
             <input
               type="text"
               placeholder={activeTask.fromPortionSize || "Standard portion?"}
