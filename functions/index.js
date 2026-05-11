@@ -419,32 +419,14 @@ If recognizable:
 - prioritize known commercial nutritional standards from training knowledge
 - use restaurant or packaged nutrition patterns when appropriate
 
-4. Ingredient Decomposition
-Break the meal into likely nutritional components:
-- proteins
-- grains
-- vegetables
-- sauces
-- oils/fats
-- cheeses
-- dressings
-- toppings
-- beverages
-- desserts
-- hidden ingredients when contextually appropriate
+4. Ingredient Decomposition & Weight Estimation
+Break the meal into specific nutritional components (e.g., 150g cooked pasta, 80g chicken breast, 1 tbsp olive oil). 
 
-Use cuisine and preparation style to guide assumptions.
+CRITICAL: For every component, you MUST estimate a specific weight in grams or volume (ml/tbsp). This is the absolute foundation of your final calculation. 
 
-Estimate cooking fats, oils, butter, cream, dressings, and sugar additions contextually.
+Use cuisine and preparation style to guide assumptions. Estimate cooking fats, oils, butter, cream, dressings, and sugar additions contextually. 
 
-Increase fat/calorie estimates only when supported by:
-- restaurant preparation
-- fried preparation
-- creamy sauces
-- cheese-heavy dishes
-- butter/ghee-based cuisine
-- rich gravies or dressings
-- ingredient descriptions suggesting higher fat preparation
+Increase fat/calorie estimates only when supported by restaurant preparation, fried methods, creamy sauces, or rich gravies. Focus strictly on the estimated component weights and caloric density of each identified ingredient rather than defaulting to generic meal averages.
 
 Do NOT assume excessive hidden calories for:
 - visibly lean meals
@@ -515,11 +497,22 @@ PACKAGED:
 - Use known packaged-food nutritional expectations when identifiable
 
 -----------------------------------
-STEP 4: MACRONUTRIENT ESTIMATION
+STEP 4: COMPONENT-BASED BREAKDOWN (CALCULATION)
+-----------------------------------
+
+Before finalizing, perform a mental tally:
+- Component A (e.g., Protein source): [Estimated Weight]g -> [Calories]
+- Component B (e.g., Starch/Grain): [Estimated Weight]g -> [Calories]
+- Component C (e.g., Fats/Sauces): [Estimated Weight]g/ml -> [Calories]
+
+The final "calories" value MUST be the sum of these estimated components. 
+
+-----------------------------------
+STEP 5: MACRONUTRIENT ESTIMATION
 -----------------------------------
 
 Estimate:
-- calories
+- calories (Sum of components)
 - protein
 - carbohydrates
 - fat
@@ -534,7 +527,7 @@ Guidelines:
 Prioritize realistic balance over optimistic or pessimistic assumptions.
 
 -----------------------------------
-STEP 5: FINAL VALIDATION
+STEP 6: FINAL VALIDATION
 -----------------------------------
 
 Before returning:
@@ -557,6 +550,7 @@ OUTPUT FORMAT
 Return ONLY valid JSON.
 
 {
+  "reasoning": "Brief component breakdown (e.g., 200g Rice: 260kcal, 100g Chicken: 165kcal...)",
   "calories": number,
   "protein_g": number,
   "carbs_g": number,
@@ -610,13 +604,15 @@ Your objective is to generate realistic, evidence-based nutritional estimates us
 
 ESTIMATION PRINCIPLES:
 
-1. PRIORITIZE REAL-WORLD MATCHES
-- If a meal resembles a known restaurant item, packaged food, or commercial product, use realistic nutritional expectations based on known food patterns.
-- Prefer recognizable dish standards over generic assumptions.
+1. COMPONENT-BASED REASONING (MANDATORY)
+- Break the meal into estimated weights/volumes (e.g. 150g salmon, 200g salad, 1 tbsp oil).
+- Calculate total calories as the SUM of these individual component estimates.
+- AVOID "AVERAGING": Ensure the result reflects the specific volume and density of the components identified. Do not default to generic baseline averages unless the specific inputs lead there.
 
 2. CONTEXTUAL CUISINE REASONING
 - Use cuisine-specific preparation knowledge when estimating macros.
 - Account for oils, butter, sauces, cream, dressings, and cooking fats only when contextually appropriate.
+- Use restaurant-style preparation standards when context supports it.
 - Do not automatically inflate calories or fats without evidence from:
   - cuisine type
   - preparation method
@@ -652,6 +648,7 @@ OUTPUT REQUIREMENTS:
 
 Required format:
 {
+  "reasoning": "Brief breakdown with weights and kcal",
   "calories": number,
   "protein_g": number,
   "carbs_g": number,
