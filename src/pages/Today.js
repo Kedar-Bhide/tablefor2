@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { db, auth, storage } from "../firebase";
-import { collection, query, where, onSnapshot, updateDoc, deleteDoc, doc, getDoc, getDocs, addDoc, deleteField } from "firebase/firestore";
+import { collection, query, where, onSnapshot, updateDoc, deleteDoc, doc, getDoc, getDocs, addDoc, deleteField, Timestamp } from "firebase/firestore";
 import { compressImage } from "../utils/compressImage";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -90,6 +90,11 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [editFat, setEditFat] = useState("");
   const [editFiber, setEditFiber] = useState("");
   const [manualMacrosModified, setManualMacrosModified] = useState(false);
+  const [energyCheckIn, setEnergyCheckIn] = useState(null);
+  const [physicalLevel, setPhysicalLevel] = useState(50);
+  const [mentalLevel, setMentalLevel] = useState(50);
+  const [energySaving, setEnergySaving] = useState(false);
+  const [rawEnergyCheckIns, setRawEnergyCheckIns] = useState([]);
 
   useEffect(() => {
     if (globalUserData?.photoURL) {
@@ -202,6 +207,67 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
     };
   }, [user.uid, partnerUid]);
 
+  useEffect(() => {
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const q = query(
+      collection(db, "energy_checkins"),
+      where("uid", "==", user.uid)
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(c => {
+          const d = c.createdAt instanceof Timestamp ? c.createdAt.toDate() : new Date(c.createdAt);
+          return d >= dayAgo;
+        });
+      setRawEnergyCheckIns(data);
+    });
+    return () => unsubscribe();
+  }, [user.uid]);
+
+  useEffect(() => {
+    const checkEligibility = () => {
+      const now = new Date();
+      const todayString = now.toLocaleDateString("en-CA"); // YYYY-MM-DD
+
+      const completedToday = rawEnergyCheckIns.filter(c => {
+        if (c.status !== "completed" || !c.respondedAt) return false;
+        const d = c.respondedAt?.toDate?.() || new Date(c.respondedAt);
+        return d.toLocaleDateString("en-CA") === todayString;
+      }).length;
+
+      if (completedToday >= 2) {
+        setEnergyCheckIn(null);
+        return;
+      }
+
+      const pending = rawEnergyCheckIns
+        .filter(c => c.status === "pending")
+        .sort((a, b) => (a.scheduledTriggerAt?.toDate?.() || a.scheduledTriggerAt) - (b.scheduledTriggerAt?.toDate?.() || b.scheduledTriggerAt));
+
+      for (const c of pending) {
+        const triggerTime = c.scheduledTriggerAt?.toDate?.() || new Date(c.scheduledTriggerAt);
+        const gracePeriodMs = 2 * 60 * 60 * 1000; // 2 hours
+        const expirationTime = new Date(triggerTime.getTime() + gracePeriodMs);
+
+        if (now >= triggerTime && now < expirationTime) {
+          // If we are already showing a check-in, don't swap it unless it's a different one and we want oldest
+          if (!energyCheckIn || energyCheckIn.id !== c.id) {
+            setEnergyCheckIn(c);
+          }
+          return;
+        } else if (now >= expirationTime) {
+          updateDoc(doc(db, "energy_checkins", c.id), { status: "expired", updatedAt: new Date() });
+        }
+      }
+      setEnergyCheckIn(null);
+    };
+
+    checkEligibility();
+    const interval = setInterval(checkEligibility, 30000); // Check every 30s
+    return () => clearInterval(interval);
+  }, [rawEnergyCheckIns, energyCheckIn]);
+
   // Unified Filtering Logic for Today Feed
   const filteredMeals = useMemo(() => {
     const myTz = globalUserData?.timezone;
@@ -222,12 +288,12 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       const original = group.find(m => !m.sourceMealId) || group[0];
       const isMyOriginal = original.uid === user.uid;
       const loggerTz = isMyOriginal ? myTz : partnerTz;
-      
+
       if (!loggerTz) return;
 
       const currentDayInLoggerTz = getLocalDateKeyInTz(now, loggerTz);
       const mealDate = getMealLocalDateKey(original);
-      
+
       const isTodayInLoggerTz = mealDate === currentDayInLoggerTz;
 
       // Exception: If I have a pending task for this meal, keep it visible regardless of day.
@@ -354,6 +420,15 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
   const handleDelete = async (mealId) => {
     await deleteDoc(doc(db, "meals", mealId));
+
+    // Cancel energy check-in if pending
+    try {
+      const { cancelEnergyCheckIn } = await import("../utils/energyCheckIn");
+      await cancelEnergyCheckIn(user.uid, mealId);
+    } catch (e) {
+      console.error("Failed to cancel energy check-in:", e);
+    }
+
     setSelectedMeal(null);
   };
 
@@ -432,6 +507,14 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
       await updateDoc(mealRef, updateData);
 
+      // Update energy check-in if exists
+      try {
+        const { updateEnergyCheckIn } = await import("../utils/energyCheckIn");
+        await updateEnergyCheckIn(user.uid, selectedMeal.id, { ...selectedMeal, ...updateData });
+      } catch (e) {
+        console.error("Failed to update energy check-in:", e);
+      }
+
       // Sync to frequent meals if it was originally saved from this log
       try {
         const q = query(collection(db, "frequentMeals"), where("originalMealId", "==", selectedMeal.id));
@@ -493,6 +576,38 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
 
 
+
+  const handleEnergySubmit = async () => {
+    if (!energyCheckIn || energySaving) return;
+    setEnergySaving(true);
+    try {
+      await updateDoc(doc(db, "energy_checkins", energyCheckIn.id), {
+        status: "completed",
+        physicalEnergy: physicalLevel,
+        mentalEnergy: mentalLevel,
+        respondedAt: new Date(),
+        updatedAt: new Date(),
+      });
+      setEnergyCheckIn(null);
+    } catch (e) {
+      console.error("Failed to save energy check-in:", e);
+    } finally {
+      setEnergySaving(false);
+    }
+  };
+
+  const handleEnergyDismiss = async () => {
+    if (!energyCheckIn) return;
+    try {
+      await updateDoc(doc(db, "energy_checkins", energyCheckIn.id), {
+        status: "dismissed",
+        updatedAt: new Date()
+      });
+      setEnergyCheckIn(null);
+    } catch (e) {
+      console.error("Failed to dismiss energy check-in:", e);
+    }
+  };
 
   const handleWeightCheckInSave = async () => {
     if (!newWeight || weightCheckInSaving) return;
@@ -606,7 +721,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         }
       }
 
-      await addDoc(collection(db, "meals"), {
+      const mealObj = {
         uid: user.uid,
         name: activeTask.mealName,
         type: activeTask.mealType,
@@ -623,7 +738,16 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         localTime: activeTask.localTime || "",
         saveToFrequent: taskSaveToFrequent,
         createdAt: now,
-      });
+      };
+      const mealRef = await addDoc(collection(db, "meals"), mealObj);
+
+      // Schedule energy check-in if qualifying
+      try {
+        const { scheduleEnergyCheckIn } = await import("../utils/energyCheckIn");
+        await scheduleEnergyCheckIn(user.uid, mealRef.id, mealObj);
+      } catch (e) {
+        console.error("Failed to schedule energy check-in:", e);
+      }
 
       // Mark task complete
       await updateDoc(doc(db, "tasks", activeTask.id), {
@@ -772,445 +896,445 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   return (
     <>
       <div style={styles.container}>
-      <div style={styles.brandingHeader}>
-        <h1 style={styles.appName}>Table For 2</h1>
-      </div>
+        <div style={styles.brandingHeader}>
+          <h1 style={styles.appName}>Table For 2</h1>
+        </div>
 
-      {/* Progress Card */}
-      <div className="clickable-card" style={styles.card}>
-        <div style={styles.cardRow}>
-          <img src={myPhoto} alt="avatar" style={styles.avatar} referrerPolicy="no-referrer" />
-          <div style={styles.cardInfo}>
-            <p style={styles.name}>{user.displayName.split(" ")[0]}</p>
-            <p style={styles.mealCount}>{mealCount} meal{mealCount !== 1 ? "s" : ""} logged today</p>
+        {/* Progress Card */}
+        <div className="clickable-card" style={styles.card}>
+          <div style={styles.cardRow}>
+            <img src={myPhoto} alt="avatar" style={styles.avatar} referrerPolicy="no-referrer" />
+            <div style={styles.cardInfo}>
+              <p style={styles.name}>{user.displayName.split(" ")[0]}</p>
+              <p style={styles.mealCount}>{mealCount} meal{mealCount !== 1 ? "s" : ""} logged today</p>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Welcome popup for new users */}
-      {isNewUser && (
-        <OnboardingPopup onDismiss={() => setIsNewUser(false)} />
-      )}
+        {/* Welcome popup for new users */}
+        {isNewUser && (
+          <OnboardingPopup onDismiss={() => setIsNewUser(false)} />
+        )}
 
-      {/* Daily Nutrition Card - Hide if goals are set since the goals card shows it better */}
-      {nutrition.calories > 0 && globalUserData && !nutrientGoals && (
-        <div style={styles.nutritionCard}>
-          <div style={styles.nutritionHeader}>
-            <p style={styles.nutritionTitle}>Today's Nutrition</p>
-            <p style={styles.nutritionCalories}>{nutrition.calories} kcal</p>
-          </div>
-          <div style={styles.macroPillRow}>
-            {[
-              { key: "protein_g", label: "Protein", color: "#ff6b6b" },
-              { key: "carbs_g", label: "Carbs", color: "#ffb347" },
-              { key: "fat_g", label: "Fat", color: "#7ec8a4" },
-              { key: "fiber_g", label: "Fiber", color: "#a78bfa" },
-            ].map((macro) => (
-              <div key={macro.key} style={styles.macroPill}>
-                <p style={styles.macroPillLabel}>{macro.label}</p>
-                <p style={{ ...styles.macroPillValue, color: macro.color }}>
-                  {nutrition[macro.key] || 0}g
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Nutrient Goals Card */}
-      {nutrientGoals ? (
-        <div style={styles.goalsCard}>
-          <div style={styles.goalsHeader}>
-            <p style={styles.goalsTitle}>🎯 Daily Goals</p>
-            <button
-              style={styles.goalsEditButton}
-              onClick={() => {
-                setManualGoals({
-                  calories: String(nutrientGoals.calories || ""),
-                  protein_g: String(nutrientGoals.protein_g || ""),
-                  carbs_g: String(nutrientGoals.carbs_g || ""),
-                  fat_g: String(nutrientGoals.fat_g || ""),
-                  fiber_g: String(nutrientGoals.fiber_g || ""),
-                });
-                setGoalSetupStep("manual");
-              }}
-            >Edit</button>
-          </div>
-          {/* Calorie progress */}
-          <div style={styles.goalCalorieRow}>
-            <div>
-              <p style={styles.goalCalorieEaten}>{nutrition.calories || 0}</p>
-              <p style={styles.goalCalorieLabel}>eaten</p>
+        {/* Daily Nutrition Card - Hide if goals are set since the goals card shows it better */}
+        {nutrition.calories > 0 && globalUserData && !nutrientGoals && (
+          <div style={styles.nutritionCard}>
+            <div style={styles.nutritionHeader}>
+              <p style={styles.nutritionTitle}>Today's Nutrition</p>
+              <p style={styles.nutritionCalories}>{nutrition.calories} kcal</p>
             </div>
-            <div style={styles.goalCalorieDivider}>
-              <p style={styles.goalCalorieDividerText}>/</p>
-            </div>
-            <div>
-              <p style={styles.goalCalorieTarget}>{nutrientGoals.calories}</p>
-              <p style={styles.goalCalorieLabel}>kcal goal</p>
-            </div>
-            <div style={{ flex: 1 }} />
-            <div>
-              <p style={{
-                ...styles.goalCalorieRemaining,
-                color: (nutrientGoals.calories - (nutrition.calories || 0)) >= 0 ? "#7ec8a4" : "#ff6b6b",
-              }}>
-                {Math.abs(nutrientGoals.calories - (nutrition.calories || 0))}
-              </p>
-              <p style={styles.goalCalorieLabel}>
-                {(nutrientGoals.calories - (nutrition.calories || 0)) >= 0 ? "remaining" : "over"}
-              </p>
-            </div>
-          </div>
-          {/* Macro progress bars */}
-          <div style={styles.goalMacroList}>
-            {[
-              { key: "protein_g", label: "Protein", unit: "g", color: "#ff6b6b" },
-              { key: "carbs_g", label: "Carbs", unit: "g", color: "#ffb347" },
-              { key: "fat_g", label: "Fat", unit: "g", color: "#7ec8a4" },
-              { key: "fiber_g", label: "Fiber", unit: "g", color: "#a78bfa" },
-            ].map((macro) => {
-              const eaten = nutrition[macro.key] || 0;
-              const goal = nutrientGoals[macro.key] || 1;
-              const pct = Math.min((eaten / goal) * 100, 100);
-              return (
-                <div key={macro.key} style={styles.goalMacroRow}>
-                  <p style={styles.goalMacroLabel}>{macro.label}</p>
-                  <div style={styles.goalMacroBarTrack}>
-                    <div style={{
-                      ...styles.goalMacroBarFill,
-                      backgroundColor: macro.color,
-                      width: `${pct}%`,
-                    }} />
-                  </div>
-                  <p style={styles.goalMacroValues}>
-                    {eaten}/{goal}{macro.unit}
+            <div style={styles.macroPillRow}>
+              {[
+                { key: "protein_g", label: "Protein", color: "#ff6b6b" },
+                { key: "carbs_g", label: "Carbs", color: "#ffb347" },
+                { key: "fat_g", label: "Fat", color: "#7ec8a4" },
+                { key: "fiber_g", label: "Fiber", color: "#a78bfa" },
+              ].map((macro) => (
+                <div key={macro.key} style={styles.macroPill}>
+                  <p style={styles.macroPillLabel}>{macro.label}</p>
+                  <p style={{ ...styles.macroPillValue, color: macro.color }}>
+                    {nutrition[macro.key] || 0}g
                   </p>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-        <div style={styles.goalSetupCard} onClick={() => setGoalSetupStep("choose")}>
-          <div style={styles.goalSetupInner}>
-            <p style={styles.goalSetupEmoji}>🎯</p>
-            <div>
-              <p style={styles.goalSetupTitle}>Set Your Daily Goals</p>
-              <p style={styles.goalSetupSub}>Track calories & macros against personalized targets</p>
+              ))}
             </div>
           </div>
-          <div style={styles.goalSetupArrow}>→</div>
-        </div>
-      )}
+        )}
 
-      {/* Goal Setup Popup */}
-      {goalSetupStep && (
-        <div style={styles.overlay} onClick={() => setGoalSetupStep(null)}>
-          <div style={styles.sheet} onClick={(e) => e.stopPropagation()}>
-            {/* Step 1: Choose method */}
-            {goalSetupStep === "choose" && (
-              <>
-                <p style={styles.sheetTitle}>Set Daily Goals</p>
-                <p style={styles.sheetMeta}>How would you like to set your nutrient goals?</p>
-                <button
-                  style={styles.goalOptionButton}
-                  onClick={() => {
-                    setManualGoals({ calories: "", protein_g: "", carbs_g: "", fat_g: "", fiber_g: "" });
-                    setGoalSetupStep("manual");
-                  }}
-                >
-                  <span style={styles.goalOptionEmoji}>✏️</span>
-                  <span>
-                    <strong>Fill in manually</strong>
-                    <br />
-                    <span style={styles.goalOptionSub}>I know my targets</span>
-                  </span>
-                </button>
-                <button
-                  style={styles.goalOptionButton}
-                  onClick={handleAIGoalGenerate}
-                >
-                  <span style={styles.goalOptionEmoji}>🤖</span>
-                  <span>
-                    <strong>Let AI decide</strong>
-                    <br />
-                    <span style={styles.goalOptionSub}>Based on your profile &amp; weight goals</span>
-                  </span>
-                </button>
-                <button style={styles.cancelButton} onClick={() => setGoalSetupStep(null)}>
-                  Cancel
-                </button>
-              </>
-            )}
+        {/* Nutrient Goals Card */}
+        {nutrientGoals ? (
+          <div style={styles.goalsCard}>
+            <div style={styles.goalsHeader}>
+              <p style={styles.goalsTitle}>🎯 Daily Goals</p>
+              <button
+                style={styles.goalsEditButton}
+                onClick={() => {
+                  setManualGoals({
+                    calories: String(nutrientGoals.calories || ""),
+                    protein_g: String(nutrientGoals.protein_g || ""),
+                    carbs_g: String(nutrientGoals.carbs_g || ""),
+                    fat_g: String(nutrientGoals.fat_g || ""),
+                    fiber_g: String(nutrientGoals.fiber_g || ""),
+                  });
+                  setGoalSetupStep("manual");
+                }}
+              >Edit</button>
+            </div>
+            {/* Calorie progress */}
+            <div style={styles.goalCalorieRow}>
+              <div>
+                <p style={styles.goalCalorieEaten}>{nutrition.calories || 0}</p>
+                <p style={styles.goalCalorieLabel}>eaten</p>
+              </div>
+              <div style={styles.goalCalorieDivider}>
+                <p style={styles.goalCalorieDividerText}>/</p>
+              </div>
+              <div>
+                <p style={styles.goalCalorieTarget}>{nutrientGoals.calories}</p>
+                <p style={styles.goalCalorieLabel}>kcal goal</p>
+              </div>
+              <div style={{ flex: 1 }} />
+              <div>
+                <p style={{
+                  ...styles.goalCalorieRemaining,
+                  color: (nutrientGoals.calories - (nutrition.calories || 0)) >= 0 ? "#7ec8a4" : "#ff6b6b",
+                }}>
+                  {Math.abs(nutrientGoals.calories - (nutrition.calories || 0))}
+                </p>
+                <p style={styles.goalCalorieLabel}>
+                  {(nutrientGoals.calories - (nutrition.calories || 0)) >= 0 ? "remaining" : "over"}
+                </p>
+              </div>
+            </div>
+            {/* Macro progress bars */}
+            <div style={styles.goalMacroList}>
+              {[
+                { key: "protein_g", label: "Protein", unit: "g", color: "#ff6b6b" },
+                { key: "carbs_g", label: "Carbs", unit: "g", color: "#ffb347" },
+                { key: "fat_g", label: "Fat", unit: "g", color: "#7ec8a4" },
+                { key: "fiber_g", label: "Fiber", unit: "g", color: "#a78bfa" },
+              ].map((macro) => {
+                const eaten = nutrition[macro.key] || 0;
+                const goal = nutrientGoals[macro.key] || 1;
+                const pct = Math.min((eaten / goal) * 100, 100);
+                return (
+                  <div key={macro.key} style={styles.goalMacroRow}>
+                    <p style={styles.goalMacroLabel}>{macro.label}</p>
+                    <div style={styles.goalMacroBarTrack}>
+                      <div style={{
+                        ...styles.goalMacroBarFill,
+                        backgroundColor: macro.color,
+                        width: `${pct}%`,
+                      }} />
+                    </div>
+                    <p style={styles.goalMacroValues}>
+                      {eaten}/{goal}{macro.unit}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div style={styles.goalSetupCard} onClick={() => setGoalSetupStep("choose")}>
+            <div style={styles.goalSetupInner}>
+              <p style={styles.goalSetupEmoji}>🎯</p>
+              <div>
+                <p style={styles.goalSetupTitle}>Set Your Daily Goals</p>
+                <p style={styles.goalSetupSub}>Track calories & macros against personalized targets</p>
+              </div>
+            </div>
+            <div style={styles.goalSetupArrow}>→</div>
+          </div>
+        )}
 
-            {/* Step 2a: Manual entry */}
-            {goalSetupStep === "manual" && (
-              <>
-                <p style={styles.sheetTitle}>Enter Your Goals</p>
-                {[
-                  { key: "calories", label: "Calories", unit: "kcal", placeholder: "0" },
-                  { key: "protein_g", label: "Protein", unit: "g", placeholder: "0" },
-                  { key: "carbs_g", label: "Carbs", unit: "g", placeholder: "0" },
-                  { key: "fat_g", label: "Fat", unit: "g", placeholder: "0" },
-                  { key: "fiber_g", label: "Fiber", unit: "g", placeholder: "0" },
-                ].map((field) => (
-                  <div key={field.key} style={styles.goalInputRow}>
-                    <p style={styles.goalInputLabel}>{field.label}</p>
-                    <div style={styles.goalInputWrapper}>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        placeholder={field.placeholder}
-                        className="goal-input"
-                        value={manualGoals[field.key]}
-                        onChange={(e) => setManualGoals(prev => ({
-                          ...prev,
-                          [field.key]: e.target.value.replace(/[^0-9]/g, ""),
-                        }))}
-                        style={styles.goalInput}
-                      />
-                      <span style={styles.goalInputUnit}>{field.unit}</span>
+        {/* Goal Setup Popup */}
+        {goalSetupStep && (
+          <div style={styles.overlay} onClick={() => setGoalSetupStep(null)}>
+            <div style={styles.sheet} onClick={(e) => e.stopPropagation()}>
+              {/* Step 1: Choose method */}
+              {goalSetupStep === "choose" && (
+                <>
+                  <p style={styles.sheetTitle}>Set Daily Goals</p>
+                  <p style={styles.sheetMeta}>How would you like to set your nutrient goals?</p>
+                  <button
+                    style={styles.goalOptionButton}
+                    onClick={() => {
+                      setManualGoals({ calories: "", protein_g: "", carbs_g: "", fat_g: "", fiber_g: "" });
+                      setGoalSetupStep("manual");
+                    }}
+                  >
+                    <span style={styles.goalOptionEmoji}>✏️</span>
+                    <span>
+                      <strong>Fill in manually</strong>
+                      <br />
+                      <span style={styles.goalOptionSub}>I know my targets</span>
+                    </span>
+                  </button>
+                  <button
+                    style={styles.goalOptionButton}
+                    onClick={handleAIGoalGenerate}
+                  >
+                    <span style={styles.goalOptionEmoji}>🤖</span>
+                    <span>
+                      <strong>Let AI decide</strong>
+                      <br />
+                      <span style={styles.goalOptionSub}>Based on your profile &amp; weight goals</span>
+                    </span>
+                  </button>
+                  <button style={styles.cancelButton} onClick={() => setGoalSetupStep(null)}>
+                    Cancel
+                  </button>
+                </>
+              )}
+
+              {/* Step 2a: Manual entry */}
+              {goalSetupStep === "manual" && (
+                <>
+                  <p style={styles.sheetTitle}>Enter Your Goals</p>
+                  {[
+                    { key: "calories", label: "Calories", unit: "kcal", placeholder: "0" },
+                    { key: "protein_g", label: "Protein", unit: "g", placeholder: "0" },
+                    { key: "carbs_g", label: "Carbs", unit: "g", placeholder: "0" },
+                    { key: "fat_g", label: "Fat", unit: "g", placeholder: "0" },
+                    { key: "fiber_g", label: "Fiber", unit: "g", placeholder: "0" },
+                  ].map((field) => (
+                    <div key={field.key} style={styles.goalInputRow}>
+                      <p style={styles.goalInputLabel}>{field.label}</p>
+                      <div style={styles.goalInputWrapper}>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder={field.placeholder}
+                          className="goal-input"
+                          value={manualGoals[field.key]}
+                          onChange={(e) => setManualGoals(prev => ({
+                            ...prev,
+                            [field.key]: e.target.value.replace(/[^0-9]/g, ""),
+                          }))}
+                          style={styles.goalInput}
+                        />
+                        <span style={styles.goalInputUnit}>{field.unit}</span>
+                      </div>
+                    </div>
+                  ))}
+                  <button
+                    style={styles.goalSaveButton}
+                    onClick={handleManualGoalSubmit}
+                    disabled={goalSaving}
+                  >
+                    {goalSaving ? "Saving..." : "Save Goals"}
+                  </button>
+                  <button
+                    style={styles.cancelButton}
+                    onClick={() => setGoalSetupStep(nutrientGoals ? null : "choose")}
+                  >
+                    {nutrientGoals ? "Cancel" : "← Back"}
+                  </button>
+                </>
+              )}
+
+              {/* Step 2b: Profile completion (for AI) */}
+              {goalSetupStep === "profile" && (
+                <>
+                  <p style={styles.sheetTitle}>Complete Your Profile</p>
+                  <p style={styles.sheetMeta}>We need a few details to calculate your goals</p>
+                  {[
+                    { key: "age", label: "Age", unit: "yrs", placeholder: "0", inputMode: "numeric" },
+                    { key: "height_cm", label: "Height", unit: "cm", placeholder: "0", inputMode: "numeric" },
+                    { key: "weight_kg", label: "Current Weight", unit: "kg", placeholder: "0", inputMode: "decimal" },
+                    { key: "target_weight_kg", label: "Target Weight", unit: "kg", placeholder: "0", inputMode: "decimal" },
+                  ].map((field) => (
+                    <div key={field.key} style={styles.goalInputRow}>
+                      <p style={styles.goalInputLabel}>{field.label}</p>
+                      <div style={styles.goalInputWrapper}>
+                        <input
+                          type="text"
+                          inputMode={field.inputMode}
+                          placeholder={field.placeholder}
+                          className="goal-input"
+                          value={profileDraft[field.key]}
+                          onChange={(e) => setProfileDraft(prev => ({
+                            ...prev,
+                            [field.key]: e.target.value.replace(/[^0-9.]/g, ""),
+                          }))}
+                          style={styles.goalInput}
+                        />
+                        <span style={styles.goalInputUnit}>{field.unit}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {/* Gender selector */}
+                  <div style={styles.goalInputRow}>
+                    <p style={styles.goalInputLabel}>Gender</p>
+                    <div style={styles.goalGenderRow}>
+                      {["Male", "Female"].map((g) => (
+                        <button
+                          key={g}
+                          style={{
+                            ...styles.goalGenderButton,
+                            backgroundColor: profileDraft.gender === g ? "#ff6b6b" : "white",
+                            color: profileDraft.gender === g ? "white" : "#888",
+                          }}
+                          onClick={() => setProfileDraft(prev => ({ ...prev, gender: g }))}
+                        >
+                          {g}
+                        </button>
+                      ))}
                     </div>
                   </div>
-                ))}
-                <button
-                  style={styles.goalSaveButton}
-                  onClick={handleManualGoalSubmit}
-                  disabled={goalSaving}
-                >
-                  {goalSaving ? "Saving..." : "Save Goals"}
-                </button>
-                <button
-                  style={styles.cancelButton}
-                  onClick={() => setGoalSetupStep(nutrientGoals ? null : "choose")}
-                >
-                  {nutrientGoals ? "Cancel" : "← Back"}
-                </button>
-              </>
-            )}
+                  <button
+                    style={styles.goalSaveButton}
+                    onClick={handleProfileDraftSubmit}
+                    disabled={goalSaving || !profileDraft.age || !profileDraft.gender || !profileDraft.height_cm || !profileDraft.weight_kg || !profileDraft.target_weight_kg}
+                  >
+                    {goalSaving ? "Saving..." : "Calculate My Goals"}
+                  </button>
+                  <button
+                    style={styles.cancelButton}
+                    onClick={() => setGoalSetupStep(nutrientGoals ? null : "choose")}
+                  >
+                    {nutrientGoals ? "Cancel" : "← Back"}
+                  </button>
+                </>
+              )}
 
-            {/* Step 2b: Profile completion (for AI) */}
-            {goalSetupStep === "profile" && (
-              <>
-                <p style={styles.sheetTitle}>Complete Your Profile</p>
-                <p style={styles.sheetMeta}>We need a few details to calculate your goals</p>
-                {[
-                  { key: "age", label: "Age", unit: "yrs", placeholder: "0", inputMode: "numeric" },
-                  { key: "height_cm", label: "Height", unit: "cm", placeholder: "0", inputMode: "numeric" },
-                  { key: "weight_kg", label: "Current Weight", unit: "kg", placeholder: "0", inputMode: "decimal" },
-                  { key: "target_weight_kg", label: "Target Weight", unit: "kg", placeholder: "0", inputMode: "decimal" },
-                ].map((field) => (
-                  <div key={field.key} style={styles.goalInputRow}>
-                    <p style={styles.goalInputLabel}>{field.label}</p>
-                    <div style={styles.goalInputWrapper}>
-                      <input
-                        type="text"
-                        inputMode={field.inputMode}
-                        placeholder={field.placeholder}
-                        className="goal-input"
-                        value={profileDraft[field.key]}
-                        onChange={(e) => setProfileDraft(prev => ({
-                          ...prev,
-                          [field.key]: e.target.value.replace(/[^0-9.]/g, ""),
-                        }))}
-                        style={styles.goalInput}
-                      />
-                      <span style={styles.goalInputUnit}>{field.unit}</span>
-                    </div>
-                  </div>
-                ))}
-                {/* Gender selector */}
-                <div style={styles.goalInputRow}>
-                  <p style={styles.goalInputLabel}>Gender</p>
-                  <div style={styles.goalGenderRow}>
-                    {["Male", "Female"].map((g) => (
-                      <button
-                        key={g}
+              {/* Step 2c: AI generating */}
+              {goalSetupStep === "ai_generating" && (
+                <div style={{ textAlign: "center", padding: "2rem 0" }}>
+                  <p style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🤖</p>
+                  <p style={styles.sheetTitle}>Calculating your goals...</p>
+                  <p style={styles.sheetMeta}>Analyzing your profile data</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Meals Feed */}
+        <h3 style={styles.sectionTitle}>Meals Today</h3>
+        {mealCount === 0 && (
+          <p style={styles.empty}>No meals logged yet today. Add your first one!</p>
+        )}
+        {displayMeals.map((meal) => {
+          // For shared meals, we want to show the current user's specific version (portion/macros)
+          // while still treating it as the "main" card for that shared event.
+          const myVersion = meal.isShared ? meals.find(m => m.sourceMealId === meal.id && m.uid === user.uid) : null;
+          const displayMeal = myVersion || meal;
+
+          const ismine = displayMeal.uid === user.uid;
+          const avatarSrc = ismine ? myPhoto : partnerPhoto;
+          const personName = ismine ? user.displayName.split(" ")[0] : (partnerName ? partnerName.split(" ")[0] : "Partner");
+          const isPartnerMeal = meal.uid !== user.uid;
+
+          return (
+            <div key={meal.id} className="clickable-card" style={styles.mealCard} onClick={() => {
+              if (isPartnerMeal && !myVersion) {
+                const pendingTask = getPendingTaskForMeal(meal);
+                if (pendingTask) {
+                  setActiveTask(pendingTask);
+                  setTaskIngredients("");
+                } else {
+                  setViewMeal(meal);
+                  setComment(meal.comments?.[user.uid] || "");
+                }
+              } else {
+                // It's my own meal OR I've already accepted this shared meal
+                setSelectedMeal(displayMeal);
+                setEditType(displayMeal.type);
+                setEditName(displayMeal.name);
+                setEditIngredients(displayMeal.ingredients || displayMeal.quantity || "");
+                setEditPortionSize(displayMeal.portionSize || "");
+                setEditCookType(displayMeal.isRestaurant ? "Restaurant" : (displayMeal.isPackaged ? "Packaged" : "Homemade"));
+                setEditMode(false);
+                const existingPhotos = displayMeal.photos?.length > 0
+                  ? displayMeal.photos
+                  : displayMeal.photoURL ? [displayMeal.photoURL] : [];
+                setEditPhotos([]);
+                setEditPhotoPreviews(existingPhotos);
+              }
+            }}>
+              {(() => {
+                const mealPhotos = getPhotos(displayMeal);
+                if (mealPhotos.length === 0) return null;
+                if (mealPhotos.length === 1) return (
+                  <img src={mealPhotos[0]} alt="meal" style={styles.mealPhoto} loading="lazy" />
+                );
+                const visiblePhotos = mealPhotos.slice(0, 3);
+                const rotations = [-3, 1.5, 0];
+                const offsets = [{ x: -6, y: 3 }, { x: 4, y: -2 }, { x: 0, y: 0 }];
+                return (
+                  <div style={styles.photoStack}>
+                    {visiblePhotos.map((url, i) => (
+                      <img
+                        key={i}
+                        src={url}
+                        alt="meal"
+                        loading="lazy"
                         style={{
-                          ...styles.goalGenderButton,
-                          backgroundColor: profileDraft.gender === g ? "#ff6b6b" : "white",
-                          color: profileDraft.gender === g ? "white" : "#888",
+                          ...styles.mealPhoto,
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          transform: `rotate(${rotations[i] || 0}deg) translate(${offsets[i]?.x || 0}px, ${offsets[i]?.y || 0}px)`,
+                          zIndex: visiblePhotos.length - i,
+                          boxShadow: i < visiblePhotos.length - 1
+                            ? "0 4px 12px rgba(0,0,0,0.15)"
+                            : "0 2px 8px rgba(0,0,0,0.1)",
+                          animation: `cardFanOut 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) ${i * 0.08}s both`,
+                          borderRadius: "12px",
                         }}
-                        onClick={() => setProfileDraft(prev => ({ ...prev, gender: g }))}
-                      >
-                        {g}
-                      </button>
+                      />
                     ))}
                   </div>
+                );
+              })()}
+              <div style={styles.mealInfo}>
+                <div style={styles.mealHeader}>
+                  <p style={styles.mealName}>{displayMeal.name}</p>
                 </div>
-                <button
-                  style={styles.goalSaveButton}
-                  onClick={handleProfileDraftSubmit}
-                  disabled={goalSaving || !profileDraft.age || !profileDraft.gender || !profileDraft.height_cm || !profileDraft.weight_kg || !profileDraft.target_weight_kg}
-                >
-                  {goalSaving ? "Saving..." : "Calculate My Goals"}
-                </button>
-                <button
-                  style={styles.cancelButton}
-                  onClick={() => setGoalSetupStep(nutrientGoals ? null : "choose")}
-                >
-                  {nutrientGoals ? "Cancel" : "← Back"}
-                </button>
-              </>
-            )}
-
-            {/* Step 2c: AI generating */}
-            {goalSetupStep === "ai_generating" && (
-              <div style={{ textAlign: "center", padding: "2rem 0" }}>
-                <p style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>🤖</p>
-                <p style={styles.sheetTitle}>Calculating your goals...</p>
-                <p style={styles.sheetMeta}>Analyzing your profile data</p>
+                <p style={styles.mealMeta}>
+                  {displayMeal.type}
+                </p>
+                {displayMeal.analysisStatus === "analyzing" && (!displayMeal.nutrition || !displayMeal.nutrition.calories) && (
+                  <p style={{ color: "#888", fontSize: "0.7rem", fontStyle: "italic", margin: "4px 0 0 0" }}>
+                    Calculating...
+                  </p>
+                )}
+                {displayMeal.analysisStatus === "failed" && (
+                  <p style={{ color: "#d93025", fontSize: "0.7rem", fontWeight: "600", margin: "4px 0 0 0" }}>
+                    ⚠️ Analysis Failed
+                  </p>
+                )}
+                {displayMeal.reactions && Object.keys(displayMeal.reactions).length > 0 && (
+                  <div style={styles.reactionsRow}>
+                    {Object.entries(displayMeal.reactions).map(([uid, emoji]) => (
+                      <span key={uid} style={styles.reactionBadge}>
+                        {emoji}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {/* Task hint */}
+                {isPartnerMeal && !myVersion && getPendingTaskForMeal(meal) && (
+                  <div style={styles.taskHint}>
+                    ✨ Add your quantities →
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Meals Feed */}
-      <h3 style={styles.sectionTitle}>Meals Today</h3>
-      {mealCount === 0 && (
-        <p style={styles.empty}>No meals logged yet today. Add your first one!</p>
-      )}
-      {displayMeals.map((meal) => {
-        // For shared meals, we want to show the current user's specific version (portion/macros)
-        // while still treating it as the "main" card for that shared event.
-        const myVersion = meal.isShared ? meals.find(m => m.sourceMealId === meal.id && m.uid === user.uid) : null;
-        const displayMeal = myVersion || meal;
-
-        const ismine = displayMeal.uid === user.uid;
-        const avatarSrc = ismine ? myPhoto : partnerPhoto;
-        const personName = ismine ? user.displayName.split(" ")[0] : (partnerName ? partnerName.split(" ")[0] : "Partner");
-        const isPartnerMeal = meal.uid !== user.uid;
-
-        return (
-          <div key={meal.id} className="clickable-card" style={styles.mealCard} onClick={() => {
-            if (isPartnerMeal && !myVersion) {
-              const pendingTask = getPendingTaskForMeal(meal);
-              if (pendingTask) {
-                setActiveTask(pendingTask);
-                setTaskIngredients("");
-              } else {
-                setViewMeal(meal);
-                setComment(meal.comments?.[user.uid] || "");
-              }
-            } else {
-              // It's my own meal OR I've already accepted this shared meal
-              setSelectedMeal(displayMeal);
-              setEditType(displayMeal.type);
-              setEditName(displayMeal.name);
-              setEditIngredients(displayMeal.ingredients || displayMeal.quantity || "");
-              setEditPortionSize(displayMeal.portionSize || "");
-              setEditCookType(displayMeal.isRestaurant ? "Restaurant" : (displayMeal.isPackaged ? "Packaged" : "Homemade"));
-              setEditMode(false);
-              const existingPhotos = displayMeal.photos?.length > 0
-                ? displayMeal.photos
-                : displayMeal.photoURL ? [displayMeal.photoURL] : [];
-              setEditPhotos([]);
-              setEditPhotoPreviews(existingPhotos);
-            }
-          }}>
-            {(() => {
-              const mealPhotos = getPhotos(displayMeal);
-              if (mealPhotos.length === 0) return null;
-              if (mealPhotos.length === 1) return (
-                <img src={mealPhotos[0]} alt="meal" style={styles.mealPhoto} loading="lazy" />
-              );
-              const visiblePhotos = mealPhotos.slice(0, 3);
-              const rotations = [-3, 1.5, 0];
-              const offsets = [{ x: -6, y: 3 }, { x: 4, y: -2 }, { x: 0, y: 0 }];
-              return (
-                <div style={styles.photoStack}>
-                  {visiblePhotos.map((url, i) => (
+              <div style={styles.mealOwner}>
+                {meal.isShared ? (
+                  <div style={styles.sharedAvatarStack}>
                     <img
-                      key={i}
-                      src={url}
-                      alt="meal"
-                      loading="lazy"
-                      style={{
-                        ...styles.mealPhoto,
-                        position: "absolute",
-                        top: 0,
-                        left: 0,
-                        transform: `rotate(${rotations[i] || 0}deg) translate(${offsets[i]?.x || 0}px, ${offsets[i]?.y || 0}px)`,
-                        zIndex: visiblePhotos.length - i,
-                        boxShadow: i < visiblePhotos.length - 1
-                          ? "0 4px 12px rgba(0,0,0,0.15)"
-                          : "0 2px 8px rgba(0,0,0,0.1)",
-                        animation: `cardFanOut 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) ${i * 0.08}s both`,
-                        borderRadius: "12px",
-                      }}
+                      src={avatarSrc}
+                      alt="owner"
+                      style={styles.ownerAvatar}
+                      referrerPolicy="no-referrer"
                     />
-                  ))}
-                </div>
-              );
-            })()}
-            <div style={styles.mealInfo}>
-              <div style={styles.mealHeader}>
-                <p style={styles.mealName}>{displayMeal.name}</p>
+                    <img
+                      src={ismine ? partnerPhoto : myPhoto}
+                      alt="partner"
+                      style={{
+                        ...styles.ownerAvatar,
+                        position: "absolute",
+                        left: "14px",
+                        top: 0,
+                        border: "2px solid white",
+                      }}
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                ) : (
+                  <img src={avatarSrc} alt={personName} style={styles.ownerAvatar} referrerPolicy="no-referrer" />
+                )}
+                <p style={styles.ownerName}>{meal.isShared ? "Shared" : personName}</p>
               </div>
-              <p style={styles.mealMeta}>
-                {displayMeal.type}
-              </p>
-              {displayMeal.analysisStatus === "analyzing" && (!displayMeal.nutrition || !displayMeal.nutrition.calories) && (
-                <p style={{ color: "#888", fontSize: "0.7rem", fontStyle: "italic", margin: "4px 0 0 0" }}>
-                  Calculating...
-                </p>
-              )}
-              {displayMeal.analysisStatus === "failed" && (
-                <p style={{ color: "#d93025", fontSize: "0.7rem", fontWeight: "600", margin: "4px 0 0 0" }}>
-                  ⚠️ Analysis Failed
-                </p>
-              )}
-              {displayMeal.reactions && Object.keys(displayMeal.reactions).length > 0 && (
-                <div style={styles.reactionsRow}>
-                  {Object.entries(displayMeal.reactions).map(([uid, emoji]) => (
-                    <span key={uid} style={styles.reactionBadge}>
-                      {emoji}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {/* Task hint */}
-              {isPartnerMeal && !myVersion && getPendingTaskForMeal(meal) && (
-                <div style={styles.taskHint}>
-                  ✨ Add your quantities →
-                </div>
-              )}
             </div>
-            <div style={styles.mealOwner}>
-              {meal.isShared ? (
-                <div style={styles.sharedAvatarStack}>
-                  <img
-                    src={avatarSrc}
-                    alt="owner"
-                    style={styles.ownerAvatar}
-                    referrerPolicy="no-referrer"
-                  />
-                  <img
-                    src={ismine ? partnerPhoto : myPhoto}
-                    alt="partner"
-                    style={{
-                      ...styles.ownerAvatar,
-                      position: "absolute",
-                      left: "14px",
-                      top: 0,
-                      border: "2px solid white",
-                    }}
-                    referrerPolicy="no-referrer"
-                  />
-                </div>
-              ) : (
-                <img src={avatarSrc} alt={personName} style={styles.ownerAvatar} referrerPolicy="no-referrer" />
-              )}
-              <p style={styles.ownerName}>{meal.isShared ? "Shared" : personName}</p>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-    {/* Bottom Sheet - Moved outside container for perfect centering */}
-    {selectedMeal && (
+          );
+        })}
+      </div>
+      {/* Bottom Sheet - Moved outside container for perfect centering */}
+      {selectedMeal && (
         <div style={styles.overlay} onClick={() => { setSelectedMeal(null); setEditMode(false); }}>
           <div style={styles.sheet} onClick={(e) => e.stopPropagation()}>
             {!editMode ? (
@@ -1399,29 +1523,29 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                   }} onClick={() => setEditIsShared(!editIsShared)}>
                     <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
                       <div style={{ display: "flex", position: "relative", width: "52px", height: "32px" }}>
-                        <img src={user.photoURL} alt="you" style={{ 
-                          width: "32px", 
-                          height: "32px", 
-                          borderRadius: "50%", 
+                        <img src={user.photoURL} alt="you" style={{
+                          width: "32px",
+                          height: "32px",
+                          borderRadius: "50%",
                           border: "2px solid white",
                           zIndex: 2,
                           boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
                         }} referrerPolicy="no-referrer" />
                         {globalPartnerData.photoURL ? (
-                          <img src={globalPartnerData.photoURL} alt="partner" style={{ 
-                            width: "32px", 
-                            height: "32px", 
-                            borderRadius: "50%", 
+                          <img src={globalPartnerData.photoURL} alt="partner" style={{
+                            width: "32px",
+                            height: "32px",
+                            borderRadius: "50%",
                             border: "2px solid white",
                             marginLeft: "-12px",
                             zIndex: 1,
                             boxShadow: "0 2px 4px rgba(0,0,0,0.1)"
                           }} referrerPolicy="no-referrer" />
                         ) : (
-                          <div style={{ 
-                            width: "32px", 
-                            height: "32px", 
-                            borderRadius: "50%", 
+                          <div style={{
+                            width: "32px",
+                            height: "32px",
+                            borderRadius: "50%",
                             border: "2px solid white",
                             marginLeft: "-12px",
                             zIndex: 1,
@@ -2076,6 +2200,85 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
               Dismiss — I didn't have this
             </button>
 
+          </div>
+        </div>
+      )}
+      {/* Energy Check-In Popup */}
+      {energyCheckIn && (
+        <div style={styles.overlayCenter} onClick={handleEnergyDismiss}>
+          <div style={styles.energyPopup} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.energyHeader}>
+              <p style={styles.energyEyebrow}>How are you feeling? ✨</p>
+              <h3 style={styles.energyTitle}>Energy Check-In</h3>
+              <p style={styles.energySubtitle}>
+                Based on your {energyCheckIn.mealType}
+              </p>
+            </div>
+
+            <div style={styles.energyField}>
+              <div style={styles.energyLabelRow}>
+                <span style={styles.energyLabel}>⚡️ Physical Energy</span>
+                <span style={styles.energyValueText}>{physicalLevel}%</span>
+              </div>
+              <div style={styles.batteryContainer}>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={physicalLevel}
+                  onChange={(e) => setPhysicalLevel(parseInt(e.target.value))}
+                  style={styles.energySlider}
+                />
+                <div style={styles.batteryTrack}>
+                  <div
+                    style={{
+                      ...styles.batteryFill,
+                      width: `${physicalLevel}%`,
+                      backgroundColor: physicalLevel > 60 ? "#7ec8a4" : (physicalLevel > 30 ? "#ffb347" : "#ff6b6b")
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.energyField}>
+              <div style={styles.energyLabelRow}>
+                <span style={styles.energyLabel}>🧠 Mental Focus</span>
+                <span style={styles.energyValueText}>{mentalLevel}%</span>
+              </div>
+              <div style={styles.batteryContainer}>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={mentalLevel}
+                  onChange={(e) => setMentalLevel(parseInt(e.target.value))}
+                  style={styles.energySlider}
+                />
+                <div style={styles.batteryTrack}>
+                  <div
+                    style={{
+                      ...styles.batteryFill,
+                      width: `${mentalLevel}%`,
+                      backgroundColor: mentalLevel > 60 ? "#7ec8a4" : (mentalLevel > 30 ? "#ffb347" : "#ff6b6b")
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.energyActions}>
+              <button style={styles.energyLaterBtn} onClick={handleEnergyDismiss}>
+                Maybe Later
+              </button>
+              <button
+                style={styles.energySubmitBtn}
+                onClick={handleEnergySubmit}
+                disabled={energySaving}
+              >
+                {energySaving ? "Saving..." : "Done"}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -3075,6 +3278,137 @@ const styles = {
     cursor: "pointer",
     marginTop: "0.5rem",
     marginBottom: "0.4rem",
+  },
+  // --- Energy Check-In Styles ---
+  overlayCenter: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    backdropFilter: "blur(4px)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2000,
+    padding: "1.5rem",
+  },
+  energyPopup: {
+    width: "100%",
+    maxWidth: "400px",
+    backgroundColor: "white",
+    borderRadius: "24px",
+    padding: "2rem",
+    boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
+    animation: "slideUpFade 0.4s ease both",
+  },
+  energyHeader: {
+    textAlign: "center",
+    marginBottom: "2rem",
+  },
+  energyEyebrow: {
+    fontSize: "0.75rem",
+    color: "#ff6b6b",
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    margin: "0 0 4px 0",
+  },
+  energyTitle: {
+    fontSize: "1.4rem",
+    fontWeight: "700",
+    color: "#333",
+    margin: "0 0 6px 0",
+  },
+  energySubtitle: {
+    fontSize: "0.85rem",
+    color: "#888",
+    margin: 0,
+  },
+  energyField: {
+    marginBottom: "1.5rem",
+  },
+  energyLabelRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "0.8rem",
+  },
+  energyLabel: {
+    fontSize: "0.9rem",
+    fontWeight: "600",
+    color: "#444",
+  },
+  energyValueText: {
+    fontSize: "1rem",
+    fontWeight: "700",
+    color: "#333",
+    backgroundColor: "#f5f5f5",
+    padding: "2px 8px",
+    borderRadius: "6px",
+  },
+  batteryContainer: {
+    position: "relative",
+    height: "36px",
+    width: "100%",
+    backgroundColor: "#f0f0f0",
+    borderRadius: "10px",
+    padding: "4px",
+    display: "flex",
+    alignItems: "center",
+  },
+  batteryTrack: {
+    position: "absolute",
+    top: 4,
+    left: 4,
+    right: 4,
+    bottom: 4,
+    borderRadius: "7px",
+    overflow: "hidden",
+    pointerEvents: "none",
+  },
+  batteryFill: {
+    height: "100%",
+    transition: "width 0.3s ease, background-color 0.3s ease",
+  },
+  energySlider: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: "100%",
+    height: "100%",
+    opacity: 0,
+    cursor: "pointer",
+    zIndex: 2,
+  },
+  energyActions: {
+    display: "flex",
+    gap: "0.8rem",
+    marginTop: "2rem",
+  },
+  energyLaterBtn: {
+    flex: 1,
+    padding: "0.9rem",
+    backgroundColor: "transparent",
+    border: "1px solid #eee",
+    borderRadius: "14px",
+    fontSize: "0.9rem",
+    fontWeight: "600",
+    color: "#888",
+    cursor: "pointer",
+  },
+  energySubmitBtn: {
+    flex: 2,
+    padding: "0.9rem",
+    backgroundColor: "#ff6b6b",
+    color: "white",
+    border: "none",
+    borderRadius: "14px",
+    fontSize: "0.95rem",
+    fontWeight: "700",
+    cursor: "pointer",
+    boxShadow: "0 8px 16px rgba(255,107,107,0.25)",
   },
 };
 

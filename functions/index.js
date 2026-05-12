@@ -1234,6 +1234,34 @@ exports.dinnerReminder = onSchedule("*/15 * * * *", async () => {
   ]);
 });
 
+exports.energyCheckInReminder = onSchedule("*/5 * * * *", async () => {
+  const now = new Date();
+  const checkInsSnap = await db.collection("energy_checkins")
+    .where("status", "==", "pending")
+    .where("notified", "==", false)
+    .where("scheduledTriggerAt", "<=", now)
+    .get();
+
+  if (checkInsSnap.empty) return;
+
+  const promises = checkInsSnap.docs.map(async (docSnap) => {
+    const checkIn = docSnap.data();
+    const user = await getUser(checkIn.uid);
+    if (!user || !user.fcmToken) return;
+
+    await sendNotification(
+      user.fcmToken,
+      "Energy Check-in ✨",
+      `How are you feeling after your ${checkIn.mealType}? Log your energy now!`,
+      user.fcmTokens || []
+    );
+
+    await docSnap.ref.update({ notified: true, updatedAt: now });
+  });
+
+  await Promise.all(promises);
+});
+
 async function sendMealReminder(mealType, reminderLocalHour, reminderLocalMinute, messages) {
   console.log(`Running ${mealType} reminder check at UTC: ${new Date().toISOString()}`);
   const usersSnap = await db.collection("users").get();
