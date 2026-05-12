@@ -148,14 +148,14 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
       rec.onend = () => {
         // Use ref here to avoid stale closures and dependency warnings
         if (!isIntentionalStop.current && isRecordingRef.current) {
-          try { rec.start(); } catch (e) {}
+          try { rec.start(); } catch (e) { }
           return;
         }
         setIsRecording(false);
         isRecordingRef.current = false;
         if (finalTranscriptRef.current.trim()) {
           handleVoiceLog(finalTranscriptRef.current);
-          finalTranscriptRef.current = ""; 
+          finalTranscriptRef.current = "";
         }
       };
       rec.onresult = (event) => {
@@ -167,7 +167,7 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
       };
       rec.onerror = (e) => {
         // 'no-speech' happens if the user stays silent; we can ignore it
-        if (e.error === "no-speech") return; 
+        if (e.error === "no-speech") return;
 
         if (e.error === "not-allowed" || e.error === "service-not-allowed") {
           // This triggers if the user has blocked access at the browser level
@@ -224,7 +224,7 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
       // 2. Clear state and attempt to start
       isIntentionalStop.current = false;
       finalTranscriptRef.current = "";
-      
+
       try {
         recognition.start();
       } catch (e) {
@@ -285,9 +285,7 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
     const localTime = showDatePicker ? mealTime : formatLocalTimeHHMM(now);
     const timezone = getCurrentTimezone();
     const utcOffsetMinutesAtLog = -createdAt.getTimezoneOffset();
-
-    // Update meal
-    await addDoc(collection(db, "meals"), {
+    const mealObj = {
       uid: user.uid,
       name: mealName,
       type: mealType,
@@ -306,7 +304,18 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
       nutrition: previewNutrition || null,
       analysisStatus: previewNutrition ? "completed" : "analyzing",
       saveToFrequent: saveAsFrequent,
-    });
+    };
+
+    // Update meal
+    const mealRef = await addDoc(collection(db, "meals"), mealObj);
+
+    // Schedule energy check-in if qualifying
+    try {
+      const { scheduleEnergyCheckIn } = await import("../utils/energyCheckIn");
+      await scheduleEnergyCheckIn(user.uid, mealRef.id, mealObj);
+    } catch (e) {
+      console.error("Failed to schedule energy check-in:", e);
+    }
 
     // Update local state so it appears immediately next time
     if (saveAsFrequent) {
