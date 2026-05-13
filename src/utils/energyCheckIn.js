@@ -97,7 +97,16 @@ export const scheduleEnergyCheckIn = async (uid, mealId, mealData) => {
       return;
     }
 
-    // 2. Check if user already has a check-in for THIS meal
+    // 2. Calorie Threshold Check:
+    // Only schedule for "significant" meals (> 150 kcal).
+    // If calories are null/missing (analyzing), we allow it to proceed to be safe.
+    const calories = mealData.nutrition?.calories;
+    if (calories !== undefined && calories !== null && calories > 0 && calories < 150) {
+      console.log(`[EnergyCheckIn] Skipping: ${calories} kcal is below the 150 kcal threshold.`);
+      return;
+    }
+
+    // 3. Check if user already has a check-in for THIS meal
     const qSelf = query(
       collection(db, "energy_checkins"),
       where("uid", "==", uid),
