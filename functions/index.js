@@ -11,6 +11,11 @@ const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
 admin.initializeApp();
 const db = admin.firestore();
 
+const WHITELISTED_WALLET_UIDS = [
+  "f4Pnwy9imIeYEn987KNkATi2yG33",
+  "P8Hw72zyZqhJ19oxNZ9LYQTJvLT2"
+];
+
 async function sendNotification(token, title, body, extraTokens = []) {
   if (!token) return;
 
@@ -1213,24 +1218,24 @@ async function hasLoggedToday(uid, mealType) {
 exports.breakfastReminder = onSchedule("*/15 * * * *", async () => {
   await sendMealReminder("Breakfast", 10, 30, [
     "Good morning! Don't skip breakfast 🌅",
-    "Breakfast time! Log it before 11am for $2 💰",
-    "Rise and eat! Breakfast is waiting 🍳",
+    "Time for breakfast! How are you starting your day? 🍳",
+    "Rise and eat! Breakfast is waiting 🥣",
   ]);
 });
 
 exports.lunchReminder = onSchedule("*/15 * * * *", async () => {
   await sendMealReminder("Lunch", 13, 30, [
-    "Lunchtime! Don't forget to log it 🥗",
-    "It's almost 2pm — log lunch for $2 💰",
-    "Halfway through the day — have you eaten? 🍱",
+    "Lunchtime! Don't forget to log your meal 🥗",
+    "Time for a break? Remember to log lunch 🍱",
+    "Halfway through the day — have you eaten? 🌯",
   ]);
 });
 
 exports.dinnerReminder = onSchedule("*/15 * * * *", async () => {
   await sendMealReminder("Dinner", 20, 30, [
-    "Dinner time! Log it before 9pm for $2 💰",
-    "Almost 9pm — don't miss your dinner reward 🌙",
-    "Last meal of the day — make it count! 🍽️",
+    "Dinner time! Don't forget to log it 🌙",
+    "Hope you had a great dinner! Log it now 🍽️",
+    "Last meal of the day — make it count! ✨",
   ]);
 });
 
