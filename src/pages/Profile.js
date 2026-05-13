@@ -4,7 +4,7 @@ import { signOut } from "firebase/auth";
 import { doc, getDoc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { calculateBadges } from "../utils/calculateBadges";
-import { calculateWallet } from "../utils/calculateWallet";
+import { calculateWallet, WHITELISTED_WALLET_UIDS } from "../utils/calculateWallet";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { deleteField } from "firebase/firestore";
 import Cropper from "react-easy-crop";
@@ -16,7 +16,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
   const handleProfilePhoto = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    
+
     const reader = new FileReader();
     reader.addEventListener("load", () => {
       setImageToCrop(reader.result);
@@ -348,8 +348,8 @@ function Profile({ user, globalUserData, globalPartnerData }) {
       <div style={styles.headerRow}>
         <h2 style={styles.title}>My Profile</h2>
         <div style={styles.menuContainer}>
-          <button 
-            style={styles.hamburgerButton} 
+          <button
+            style={styles.hamburgerButton}
             onClick={(e) => {
               e.stopPropagation();
               setShowMenu(!showMenu);
@@ -365,15 +365,15 @@ function Profile({ user, globalUserData, globalPartnerData }) {
           {showMenu && (
             <div style={styles.dropdownMenu}>
               {partnerUid && (
-                <button 
-                  style={styles.dropdownItem} 
+                <button
+                  style={styles.dropdownItem}
                   onClick={() => setShowUnlinkConfirm(true)}
                 >
                   💔 Unlink Partner
                 </button>
               )}
-              <button 
-                style={{ ...styles.dropdownItem, borderBottom: "none" }} 
+              <button
+                style={{ ...styles.dropdownItem, borderBottom: "none" }}
                 onClick={handleSignOut}
               >
                 🚪 Sign Out
@@ -428,14 +428,14 @@ function Profile({ user, globalUserData, globalPartnerData }) {
             <div style={styles.cropperControls}>
               <p style={styles.cropperHint}>Pinch or drag to adjust</p>
               <div style={styles.cropperButtons}>
-                <button 
-                  style={styles.cropperCancel} 
+                <button
+                  style={styles.cropperCancel}
                   onClick={() => setImageToCrop(null)}
                 >
                   Cancel
                 </button>
-                <button 
-                  style={styles.cropperSave} 
+                <button
+                  style={styles.cropperSave}
                   onClick={handleCropSave}
                   disabled={saving}
                 >
@@ -523,70 +523,72 @@ function Profile({ user, globalUserData, globalPartnerData }) {
         )}
       </div>
 
-      {/* Wallet Card */}
-      <div style={styles.walletFront} onClick={() => setShowRewardsModal(true)}>
-        <div style={styles.walletHeader}>
-          <p style={styles.badgeTitle}>💰 My Wallet</p>
-          <select
-            value={currency}
-            onChange={(e) => {
-              e.stopPropagation();
-              setCurrency(e.target.value);
-            }}
-            style={styles.currencySelect}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <option value="USD">USD ($)</option>
-            <option value="INR">INR (₹)</option>
-          </select>
-        </div>
-        {wallet?.resetAt && (
-          <p style={styles.walletReset}>
-            Since {wallet.resetAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-          </p>
-        )}
-
-        <div style={styles.walletBalance}>
-          <p style={styles.walletAmount}>{formatWalletValue(wallet ? wallet.total : 0)}</p>
-          <p style={styles.walletSub}>rewarded from meals</p>
-        </div>
-
-        <div style={styles.walletBreakdown}>
-          <div style={styles.walletItem}>
-            <p style={styles.walletItemEmoji}>🟢</p>
-            <p style={styles.walletItemCount}>{wallet?.fullCount ?? 0}</p>
-            <p style={styles.walletItemLabel}>{currency === "INR" ? "₹20" : "$2"} meals</p>
+      {/* Wallet Card - Only show for whitelisted users */}
+      {WHITELISTED_WALLET_UIDS.includes(user.uid) && (
+        <div style={styles.walletFront} onClick={() => setShowRewardsModal(true)}>
+          <div style={styles.walletHeader}>
+            <p style={styles.badgeTitle}>💰 My Wallet</p>
+            <select
+              value={currency}
+              onChange={(e) => {
+                e.stopPropagation();
+                setCurrency(e.target.value);
+              }}
+              style={styles.currencySelect}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <option value="USD">USD ($)</option>
+              <option value="INR">INR (₹)</option>
+            </select>
           </div>
-          <div style={styles.walletDivider} />
-          <div style={styles.walletItem}>
-            <p style={styles.walletItemEmoji}>🟡</p>
-            <p style={styles.walletItemCount}>{wallet?.halfCount ?? 0}</p>
-            <p style={styles.walletItemLabel}>{currency === "INR" ? "₹10" : "$1"} meals</p>
-          </div>
-          <div style={styles.walletDivider} />
-          <div style={styles.walletItem}>
-            <p style={styles.walletItemEmoji}>🔴</p>
-            <p style={styles.walletItemCount}>{wallet?.quarterCount ?? 0}</p>
-            <p style={styles.walletItemLabel}>{currency === "INR" ? "₹5" : "$0.50"} meals</p>
-          </div>
-        </div>
+          {wallet?.resetAt && (
+            <p style={styles.walletReset}>
+              Since {wallet.resetAt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+            </p>
+          )}
 
-        {!showResetConfirm ? (
-          <button style={styles.resetButton} onClick={(e) => { e.stopPropagation(); setShowResetConfirm(true); }}>
-            Reset Wallet
-          </button>
-        ) : (
-          <div style={styles.confirmRow} onClick={(e) => e.stopPropagation()}>
-            <p style={styles.confirmText}>Are you sure? This can't be undone.</p>
-            <div style={styles.confirmButtons}>
-              <button style={styles.confirmYes} onClick={handleWalletReset}>Yes, Reset</button>
-              <button style={styles.confirmNo} onClick={() => setShowResetConfirm(false)}>Cancel</button>
+          <div style={styles.walletBalance}>
+            <p style={styles.walletAmount}>{formatWalletValue(wallet ? wallet.total : 0)}</p>
+            <p style={styles.walletSub}>rewarded from meals</p>
+          </div>
+
+          <div style={styles.walletBreakdown}>
+            <div style={styles.walletItem}>
+              <p style={styles.walletItemEmoji}>🟢</p>
+              <p style={styles.walletItemCount}>{wallet?.fullCount ?? 0}</p>
+              <p style={styles.walletItemLabel}>{currency === "INR" ? "₹20" : "$2"} meals</p>
+            </div>
+            <div style={styles.walletDivider} />
+            <div style={styles.walletItem}>
+              <p style={styles.walletItemEmoji}>🟡</p>
+              <p style={styles.walletItemCount}>{wallet?.halfCount ?? 0}</p>
+              <p style={styles.walletItemLabel}>{currency === "INR" ? "₹10" : "$1"} meals</p>
+            </div>
+            <div style={styles.walletDivider} />
+            <div style={styles.walletItem}>
+              <p style={styles.walletItemEmoji}>🔴</p>
+              <p style={styles.walletItemCount}>{wallet?.quarterCount ?? 0}</p>
+              <p style={styles.walletItemLabel}>{currency === "INR" ? "₹5" : "$0.50"} meals</p>
             </div>
           </div>
-        )}
 
-        <p style={styles.flipHint}>Tap for rewards overview</p>
-      </div>
+          {!showResetConfirm ? (
+            <button style={styles.resetButton} onClick={(e) => { e.stopPropagation(); setShowResetConfirm(true); }}>
+              Reset Wallet
+            </button>
+          ) : (
+            <div style={styles.confirmRow} onClick={(e) => e.stopPropagation()}>
+              <p style={styles.confirmText}>Are you sure? This can't be undone.</p>
+              <div style={styles.confirmButtons}>
+                <button style={styles.confirmYes} onClick={handleWalletReset}>Yes, Reset</button>
+                <button style={styles.confirmNo} onClick={() => setShowResetConfirm(false)}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          <p style={styles.flipHint}>Tap for rewards overview</p>
+        </div>
+      )}
 
       {/* Rewards Modal */}
       {showRewardsModal && (
@@ -659,34 +661,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
           </div>
         </div>
       )}
-      <div style={styles.card}>
-        <p style={styles.badgeTitle}>My Badges</p>
-        <div style={styles.badgeGrid}>
-          {badges
-            .filter((badge) => {
-              if (!partnerUid && ["in_sync", "sharing_is_caring"].includes(badge.id)) return false;
-              return true;
-            })
-            .map((badge) => (
-              <div key={badge.id} style={{
-                ...styles.badgeItem,
-                opacity: badge.earned ? 1 : 0.3,
-              }}
-              >
-                <div style={{
-                  ...styles.badgeEmoji,
-                  backgroundColor: badge.earned ? "#fff5f5" : "#f5f5f5",
-                  border: badge.earned ? "2px solid #ffcccc" : "2px solid transparent",
-                }}>
-                  {badge.emoji}
-                </div>
-                <p style={styles.badgeName}>{badge.name}</p>
-                <p style={styles.badgeDesc}>{badge.description}</p>
-              </div>
-            ))}
-        </div>
-      </div>
-      {/* Personal Stats */}
+      {/* Personal Info */}
       <div style={styles.card}>
         <p style={styles.badgeTitle}>📋 Personal Info</p>
         <p style={styles.personalInfoSubtitle}>
@@ -857,6 +832,35 @@ function Profile({ user, globalUserData, globalPartnerData }) {
               )}
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Badges */}
+      <div style={styles.card}>
+        <p style={styles.badgeTitle}>My Badges</p>
+        <div style={styles.badgeGrid}>
+          {badges
+            .filter((badge) => {
+              if (!partnerUid && ["in_sync", "sharing_is_caring"].includes(badge.id)) return false;
+              return true;
+            })
+            .map((badge) => (
+              <div key={badge.id} style={{
+                ...styles.badgeItem,
+                opacity: badge.earned ? 1 : 0.3,
+              }}
+              >
+                <div style={{
+                  ...styles.badgeEmoji,
+                  backgroundColor: badge.earned ? "#fff5f5" : "#f5f5f5",
+                  border: badge.earned ? "2px solid #ffcccc" : "2px solid transparent",
+                }}>
+                  {badge.emoji}
+                </div>
+                <p style={styles.badgeName}>{badge.name}</p>
+                <p style={styles.badgeDesc}>{badge.description}</p>
+              </div>
+            ))}
         </div>
       </div>
     </div>
