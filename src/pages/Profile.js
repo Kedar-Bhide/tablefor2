@@ -449,7 +449,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
       <div style={styles.card}>
         {partnerName ? (
           <div style={{ textAlign: "center" }}>
-            <p style={styles.linkedLabel}>💑 Linked with</p>
+            <p style={styles.linkedLabel}>Partnered with</p>
             <p style={styles.linkedName}>{partnerName}</p>
           </div>
         ) : (
@@ -1040,10 +1040,12 @@ const styles = {
     fontWeight: "bold",
     fontSize: "1.1rem",
     color: "#333",
+    margin: "0 0 2px 0",
   },
   email: {
     color: "#888",
     fontSize: "0.9rem",
+    margin: 6,
   },
   label: {
     fontSize: "1rem",
