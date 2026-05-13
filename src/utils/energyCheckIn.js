@@ -166,18 +166,28 @@ export const updateEnergyCheckIn = async (uid, mealId, mealData) => {
     );
     const snap = await getDocs(q);
 
+    const calories = mealData.nutrition?.calories;
+    const isBelowThreshold = calories !== undefined && calories !== null && calories > 0 && calories < 150;
+
     if (snap.empty) {
-      // If it doesn't exist but now qualifies, schedule it
-      if (QUALIFYING_MEAL_TYPES.includes(mealData.type?.toLowerCase())) {
-        // We need the UID here, but updateEnergyCheckIn doesn't have it passed in.
-        // Let's assume we pass it or check if we can skip this edge case for now.
-        // Actually, if it was a snack and now it's a meal, we should schedule it.
-        // I'll add uid to the params.
+      // If it doesn't exist but now qualifies (and is above threshold), schedule it
+      if (QUALIFYING_MEAL_TYPES.includes(mealData.type?.toLowerCase()) && !isBelowThreshold) {
+        await scheduleEnergyCheckIn(uid, mealId, mealData);
       }
       return;
     }
 
     const checkInDoc = snap.docs[0];
+
+    // If it now falls below threshold, cancel it
+    if (isBelowThreshold) {
+      console.log(`[EnergyCheckIn] Cancelling check-in for meal ${mealId} (calories dropped to ${calories})`);
+      await updateDoc(checkInDoc.ref, {
+        status: "cancelled",
+        updatedAt: new Date()
+      });
+      return;
+    }
     const checkInId = checkInDoc.id;
 
     if (!QUALIFYING_MEAL_TYPES.includes(mealData.type?.toLowerCase())) {
