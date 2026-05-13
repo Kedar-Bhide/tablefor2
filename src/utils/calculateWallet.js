@@ -7,6 +7,11 @@ const CUTOFFS = {
   Dinner: 21,
 };
 
+export const WHITELISTED_WALLET_UIDS = [
+  "f4Pnwy9imIeYEn987KNkATi2yG33",
+  "P8Hw72zyZqhJ19oxNZ9LYQTJvLT2"
+];
+
 export function getRewardForMeal(meal) {
   const type = meal.type;
   if (!CUTOFFS[type]) return 0;
@@ -42,6 +47,9 @@ export function getRewardForMeal(meal) {
 }
 
 export async function calculateWallet(uid) {
+  if (!WHITELISTED_WALLET_UIDS.includes(uid)) {
+    return { total: 0, fullCount: 0, halfCount: 0, quarterCount: 0, resetAt: null };
+  }
   const userRef = doc(db, "users", uid);
   const userSnap = await getDoc(userRef);
   const resetAt = userSnap.exists() && userSnap.data().walletResetAt
@@ -54,11 +62,11 @@ export async function calculateWallet(uid) {
 
   const filtered = resetAt
     ? meals.filter((m) => {
-        const mealDate = m.createdAt?.toDate
-          ? m.createdAt.toDate()
-          : new Date(m.createdAt);
-        return mealDate > resetAt;
-      })
+      const mealDate = m.createdAt?.toDate
+        ? m.createdAt.toDate()
+        : new Date(m.createdAt);
+      return mealDate > resetAt;
+    })
     : meals;
 
   let total = 0;
