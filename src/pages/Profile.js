@@ -56,6 +56,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
   const [linkCopied, setLinkCopied] = useState(false);
   const [currency, setCurrency] = useState("USD");
   const [showMenu, setShowMenu] = useState(false);
+  const [showPartnerProfile, setShowPartnerProfile] = useState(false);
 
   // Cropper states
   const [imageToCrop, setImageToCrop] = useState(null);
@@ -222,15 +223,18 @@ function Profile({ user, globalUserData, globalPartnerData }) {
       }
 
       // Link both accounts
+      const linkDate = new Date();
       await updateDoc(doc(db, "users", user.uid), {
         partnerUid: fromUid,
         partnerEmail: incomingRequest.fromEmail,
         partnerRequest: deleteField(),
+        partnerLinkedAt: linkDate,
       });
       await updateDoc(doc(db, "users", fromUid), {
         partnerUid: user.uid,
         partnerEmail: user.email,
         pendingPartnerRequest: deleteField(),
+        partnerLinkedAt: linkDate,
       });
 
       // Notify requester that request was accepted
@@ -446,11 +450,21 @@ function Profile({ user, globalUserData, globalPartnerData }) {
           </div>
         </div>
       )}
-      <div style={styles.card}>
+      <div
+        style={partnerName ? { ...styles.card, cursor: "pointer", transition: "transform 0.2s" } : styles.card}
+        onClick={() => partnerName && setShowPartnerProfile(true)}
+        onMouseEnter={(e) => partnerName && (e.currentTarget.style.transform = "translateY(-2px)")}
+        onMouseLeave={(e) => partnerName && (e.currentTarget.style.transform = "translateY(0)")}
+      >
         {partnerName ? (
-          <div style={{ textAlign: "center" }}>
-            <p style={styles.linkedLabel}>Partnered with</p>
-            <p style={styles.linkedName}>{partnerName}</p>
+          <div style={{ textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
+            <div style={styles.partnerSmallAvatarWrapper}>
+              <img src={globalPartnerData.photoURL} alt="p" style={styles.partnerSmallAvatar} />
+            </div>
+            <div style={{ textAlign: "left" }}>
+              <p style={styles.linkedLabel}>Partnered with</p>
+              <p style={styles.linkedName}>{partnerName} ↗</p>
+            </div>
           </div>
         ) : (
           <>
@@ -834,6 +848,35 @@ function Profile({ user, globalUserData, globalPartnerData }) {
           )}
         </div>
       </div>
+      {/* Partner Profile Modal */}
+      {showPartnerProfile && globalPartnerData && (
+        <div style={styles.overlay} onClick={() => setShowPartnerProfile(false)}>
+          <div style={styles.partnerModal} onClick={(e) => e.stopPropagation()}>
+            <button style={styles.modalCloseButton} onClick={() => setShowPartnerProfile(false)}>✕</button>
+            
+            <div style={styles.partnerModalBody}>
+              <div style={styles.partnerLargeAvatarWrapper}>
+                <img 
+                  src={globalPartnerData.photoURL} 
+                  alt={partnerName} 
+                  style={styles.partnerLargeAvatar} 
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+              <h2 style={styles.partnerModalName}>{partnerName}</h2>
+              <p style={styles.partnerModalEmail}>{globalPartnerData.email}</p>
+              
+              <div style={styles.partnerStatusTag}>
+                <span style={styles.partnerHeart}>💖</span> Partner Since {(() => {
+                  const linkDate = globalUserData.partnerLinkedAt || globalUserData.createdAt || null;
+                  const date = linkDate ? (linkDate.toDate ? linkDate.toDate() : new Date(linkDate)) : new Date();
+                  return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+                })()}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Badges */}
       <div style={styles.card}>
@@ -1093,6 +1136,91 @@ const styles = {
     fontSize: "1.1rem",
     color: "#ff6b6b",
     margin: 0,
+  },
+  partnerSmallAvatarWrapper: {
+    width: "40px",
+    height: "40px",
+    borderRadius: "50%",
+    overflow: "hidden",
+    border: "2px solid #fff5f5",
+    boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
+  },
+  partnerSmallAvatar: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+  },
+  partnerModal: {
+    backgroundColor: "white",
+    padding: "2.5rem 2rem",
+    borderRadius: "32px",
+    width: "90%",
+    maxWidth: "360px",
+    textAlign: "center",
+    position: "relative",
+    boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+    animation: "bloomOpen 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)",
+  },
+  modalCloseButton: {
+    position: "absolute",
+    top: "1.5rem",
+    right: "1.5rem",
+    background: "#f5f5f5",
+    border: "none",
+    width: "32px",
+    height: "32px",
+    borderRadius: "50%",
+    fontSize: "1rem",
+    color: "#666",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    transition: "background-color 0.2s",
+  },
+  partnerModalBody: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+  },
+  partnerLargeAvatarWrapper: {
+    width: "120px",
+    height: "120px",
+    borderRadius: "50%",
+    overflow: "hidden",
+    marginBottom: "1.5rem",
+    border: "4px solid #fff5f5",
+    boxShadow: "0 8px 20px rgba(255,107,107,0.2)",
+  },
+  partnerLargeAvatar: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+  },
+  partnerModalName: {
+    fontSize: "1.6rem",
+    fontWeight: "800",
+    color: "#333",
+    margin: "0 0 0.5rem 0",
+  },
+  partnerModalEmail: {
+    fontSize: "1rem",
+    color: "#888",
+    margin: "0 0 2rem 0",
+  },
+  partnerStatusTag: {
+    backgroundColor: "#fff5f5",
+    padding: "0.8rem 1.2rem",
+    borderRadius: "20px",
+    fontSize: "0.85rem",
+    color: "#ff6b6b",
+    fontWeight: "600",
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+  },
+  partnerHeart: {
+    fontSize: "1rem",
   },
   message: {
     fontSize: "0.85rem",
