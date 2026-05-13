@@ -1236,30 +1236,68 @@ exports.dinnerReminder = onSchedule("*/15 * * * *", async () => {
 
 exports.energyCheckInReminder = onSchedule("*/5 * * * *", async () => {
   const now = new Date();
-  const checkInsSnap = await db.collection("energy_checkins")
-    .where("status", "==", "pending")
-    .where("notified", "==", false)
-    .where("scheduledTriggerAt", "<=", now)
-    .get();
+  console.log(`[EnergyReminder] Starting check at ${now.toISOString()}`);
 
-  if (checkInsSnap.empty) return;
+  try {
+    // 1. Fetch all pending, un-notified check-ins
+    // We filter by date in memory to avoid index requirements
+    const checkInsSnap = await db.collection("energy_checkins")
+      .where("status", "==", "pending")
+      .where("notified", "==", false)
+      .get();
 
-  const promises = checkInsSnap.docs.map(async (docSnap) => {
-    const checkIn = docSnap.data();
-    const user = await getUser(checkIn.uid);
-    if (!user || !user.fcmToken) return;
+    if (checkInsSnap.empty) {
+      console.log("[EnergyReminder] No pending check-ins found.");
+      return;
+    }
 
-    await sendNotification(
-      user.fcmToken,
-      "Energy Check-in ✨",
-      `How are you feeling after your ${checkIn.mealType}? Log your energy now!`,
-      user.fcmTokens || []
-    );
+    console.log(`[EnergyReminder] Found ${checkInsSnap.size} documents to evaluate.`);
 
-    await docSnap.ref.update({ notified: true, updatedAt: now });
-  });
+    const promises = checkInsSnap.docs.map(async (docSnap) => {
+      try {
+        const checkIn = docSnap.data();
+        const triggerTime = checkIn.scheduledTriggerAt?.toDate?.() || new Date(checkIn.scheduledTriggerAt);
+        
+        // Skip if it's not time yet
+        if (triggerTime > now) {
+          console.log(`[EnergyReminder] Doc ${docSnap.id} is not ready yet (Trigger: ${triggerTime.toISOString()})`);
+          return;
+        }
 
-  await Promise.all(promises);
+        const user = await getUser(checkIn.uid);
+        if (!user) {
+          console.error(`[EnergyReminder] User ${checkIn.uid} not found for doc ${docSnap.id}`);
+          return;
+        }
+
+        if (!user.fcmToken) {
+          console.log(`[EnergyReminder] User ${user.name || checkIn.uid} has no FCM token. Skipping notification.`);
+          // We mark it as notified anyway to avoid re-checking a user without tokens
+          await docSnap.ref.update({ notified: true, updatedAt: now });
+          return;
+        }
+
+        console.log(`[EnergyReminder] Sending notification to ${user.name || user.uid} for ${checkIn.mealType}`);
+
+        await sendNotification(
+          user.fcmToken,
+          "Energy Check-in ✨",
+          `How are you feeling after your ${checkIn.mealType}? Log your energy now!`,
+          user.fcmTokens || []
+        );
+
+        await docSnap.ref.update({ notified: true, updatedAt: now });
+        console.log(`[EnergyReminder] Success for doc ${docSnap.id}`);
+
+      } catch (err) {
+        console.error(`[EnergyReminder] Error processing doc ${docSnap.id}:`, err);
+      }
+    });
+
+    await Promise.all(promises);
+  } catch (globalErr) {
+    console.error("[EnergyReminder] Global function error:", globalErr);
+  }
 });
 
 async function sendMealReminder(mealType, reminderLocalHour, reminderLocalMinute, messages) {
