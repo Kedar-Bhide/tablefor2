@@ -1,16 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db, auth } from "../firebase";
+import { motion, AnimatePresence } from "framer-motion";
+import { Camera, Users, TrendingUp, Target } from "lucide-react";
 
 function OnboardingPopup({ onDismiss }) {
-  const [show, setShow] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    // Small delay to trigger the animation naturally on mount
-    const timer = setTimeout(() => setShow(true), 100);
-    return () => clearTimeout(timer);
-  }, []);
+  const [show, setShow] = useState(true);
 
   const handleDismiss = async () => {
     if (saving) return;
@@ -32,54 +28,56 @@ function OnboardingPopup({ onDismiss }) {
   };
 
   const features = [
-    { emoji: "📸", title: "Log meals", desc: "Snap a photo of your food" },
-    { emoji: "💑", title: "Stay in sync", desc: "Link with your partner" },
-    { emoji: "📊", title: "Track progress", desc: "Streaks & macros weekly" },
-    { emoji: "🎯", title: "Reach your goals", desc: "Personalized AI insights" }
+    { icon: <Camera size={24} color="#ffb347" />, title: "Log meals", desc: "Snap a photo of your food" },
+    { icon: <Users size={24} color="#ff6b6b" />, title: "Stay in sync", desc: "Link with your partner" },
+    { icon: <TrendingUp size={24} color="#7ec8a4" />, title: "Track progress", desc: "Streaks & macros weekly" },
+    { icon: <Target size={24} color="#a78bfa" />, title: "Reach your goals", desc: "Personalized AI insights" }
   ];
 
   return (
-    <div style={styles.overlay}>
-      <div style={{
-        ...styles.popup,
-        transform: show ? "scale(1)" : "scale(0.8)",
-        opacity: show ? 1 : 0,
-      }}>
-        <h2 style={styles.title}>Welcome to TableFor2! 🍽️</h2>
+    <AnimatePresence>
+      {show && (
+        <motion.div 
+          style={styles.overlay}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <motion.div 
+            style={styles.popup}
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.8, opacity: 0 }}
+            transition={{ type: "spring", bounce: 0.4 }}
+          >
+            <h2 style={styles.title}>Welcome to TableFor2! <span style={{fontSize: "1.2rem"}}>🍽️</span></h2>
         <p style={styles.subtitle}>Here is what you can do:</p>
         
-        <div style={styles.grid}>
-          {features.map((f, i) => (
-            <div key={i} style={styles.card}>
-              <span style={styles.emoji}>{f.emoji}</span>
+          <div style={styles.grid}>
+            {features.map((f, i) => (
+              <div key={i} style={styles.card}>
+                <span style={styles.emoji}>{f.icon}</span>
               <p style={styles.cardTitle}>{f.title}</p>
               <p style={styles.cardDesc}>{f.desc}</p>
             </div>
           ))}
         </div>
 
-        <p style={styles.hint}>
-          💡 Head to <strong>Profile</strong> to link with your partner and unlock Couple Mode!
-        </p>
+            <p style={styles.hint}>
+              💡 Head to <strong>Profile</strong> to link with your partner and unlock Couple Mode!
+            </p>
 
-        <button 
-          style={styles.button}
-          onClick={handleDismiss}
-          disabled={saving}
-        >
-          Let's go! 🚀
-        </button>
-      </div>
-      
-      <style>
-        {`
-          @keyframes bloomIn {
-            0% { transform: scale(0.8); opacity: 0; }
-            100% { transform: scale(1); opacity: 1; }
-          }
-        `}
-      </style>
-    </div>
+            <button 
+              style={styles.button}
+              onClick={handleDismiss}
+              disabled={saving}
+            >
+              Let's go! 🚀
+            </button>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 

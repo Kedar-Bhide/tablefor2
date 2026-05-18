@@ -6,6 +6,8 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import { compressImage } from "../utils/compressImage";
 import { formatLocalDateKey, formatLocalTimeHHMM, getCurrentTimezone } from "../utils/dateTime";
 import MealNutritionCard from "../components/MealNutritionCard";
+import { motion } from "framer-motion";
+import { Camera, Image as ImageIcon } from "lucide-react";
 
 function getMealTypeByTime() {
   const hour = new Date().getHours();
@@ -345,13 +347,19 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
   };
 
   return (
-    <div style={styles.container}>
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      transition={{ duration: 0.3 }}
+      style={styles.container}
+    >
       <button style={styles.back} onClick={() => setCurrentPage("today")}>
         <span style={{ transform: "translateX(-1px)" }}>←</span>
       </button>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
         <h2 style={{ ...styles.title, marginBottom: 0 }}>
-          Log a <span style={{ color: "#ff6b6b" }}>Meal</span>
+          Log a <span style={{ color: "var(--primary)" }}>Meal</span>
         </h2>
         <button
           style={{
@@ -389,12 +397,12 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
         {photoPreviews.length === 0 ? (
           <div style={styles.dashedPhotoBox}>
             <div style={styles.photoOption} onClick={() => document.getElementById("photoInput").click()}>
-              <div style={styles.photoIconCircle}>📸</div>
+              <div style={styles.photoIconCircle}><Camera size={32} strokeWidth={1.5} color="var(--text-secondary)" /></div>
               <p style={styles.photoOptionLabel}>Take Photo</p>
             </div>
             <div style={styles.photoDivider} />
             <div style={styles.photoOption} onClick={() => document.getElementById("galleryInput").click()}>
-              <div style={styles.photoIconCircle}>🖼️</div>
+              <div style={styles.photoIconCircle}><ImageIcon size={32} strokeWidth={1.5} color="var(--text-secondary)" /></div>
               <p style={styles.photoOptionLabel}>From Library</p>
             </div>
           </div>
@@ -674,7 +682,7 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
       >
         {saving ? "Saving..." : "Save Meal"}
       </button>
-    </div>
+    </motion.div>
   );
 }
 

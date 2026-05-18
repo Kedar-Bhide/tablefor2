@@ -3,6 +3,8 @@ import { auth, db } from "../firebase";
 import { collection, query, where, getDocs, doc, getDoc, updateDoc } from "firebase/firestore";
 import { PieChart, Pie, Cell } from "recharts";
 import { formatLocalDateKey, getMealLocalDateKey } from "../utils/dateTime";
+import { motion } from "framer-motion";
+import { Flame, Heart, BarChart2, Calendar, FileText, ChevronLeft, ChevronRight } from "lucide-react";
 
 function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserData, globalPartnerData }) {
   const user = auth.currentUser;
@@ -402,32 +404,50 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
     }
   };
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: { staggerChildren: 0.1 }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 15 },
+    show: { opacity: 1, y: 0, transition: { type: "spring", bounce: 0.2 } }
+  };
+
   return (
     <>
-      <div style={styles.container}>
+      <motion.div 
+        style={styles.container}
+        variants={containerVariants}
+        initial="hidden"
+        animate="show"
+      >
         <h2 style={styles.title}>Stats</h2>
 
         {/* Streak Banners */}
         <div style={styles.streakRow}>
-          <div style={styles.streakCard}>
-            <span style={styles.streakEmoji}>🔥</span>
+          <motion.div variants={itemVariants} style={styles.streakCard}>
+            <span style={styles.streakEmoji}><Flame color="#ffb347" /></span>
             <p style={styles.streakNumber}>{streakCount}</p>
             <p style={styles.streakSub}>Days with 3+ meals{"\n"}in a row</p>
-          </div>
+          </motion.div>
           {/* Couple Streak */}
           {partnerUid && (
-            <div style={styles.streakCard}>
-              <span style={styles.streakEmoji}>💑</span>
+            <motion.div variants={itemVariants} style={styles.streakCard}>
+               <span style={styles.streakEmoji}><Heart color="#ff6b6b" /></span>
               <p style={styles.streakNumber}>{coupleStreakCount}</p>
               <p style={styles.streakSub}>with {partnerName ? partnerName.split(" ")[0] : "partner"}</p>
-            </div>
+            </motion.div>
           )}
         </div>
 
         {/* Weekly Macro Trend */}
         {weeklyNutrition?.some((d) => d.hasMeals && d.calories > 0) && (
-          <div style={{ ...styles.card, animation: "slideUpFade 0.4s ease both" }}>
-            <p style={styles.cardTitle}>📊 Weekly Macros</p>
+          <motion.div variants={itemVariants} style={styles.card}>
+            <p style={styles.cardTitle}><BarChart2 size={18} /> Weekly Macros</p>
             <div style={styles.macroTable}>
               {/* Header row */}
               <div style={styles.macroTableRow}>
@@ -469,15 +489,15 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                 </div>
               ))}
             </div>
-          </div>
+          </motion.div>
         )}
 
         {/* Monthly Calendar */}
-        <div style={styles.card}>
+        <motion.div variants={itemVariants} style={styles.card}>
           <div style={styles.monthNav}>
-            <button style={styles.navButton} onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1))}>‹</button>
+            <button style={styles.navButton} onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1))}><ChevronLeft /></button>
             <p style={styles.cardTitle}>{monthName}</p>
-            <button style={styles.navButton} onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1))}>›</button>
+            <button style={styles.navButton} onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1))}><ChevronRight /></button>
           </div>
 
           {/* Day Labels */}
@@ -507,10 +527,10 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
               </>
             )}
           </div>
-        </div>
+        </motion.div>
 
         {/* Monthly Summary */}
-        <div style={styles.card}>
+        <motion.div variants={itemVariants} style={styles.card}>
           <p style={styles.cardTitle}>Monthly Summary</p>
           <div style={styles.summaryRow}>
             <div style={styles.summaryItem}>
@@ -533,12 +553,12 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
               </>
             )}
           </div>
-        </div>
+        </motion.div>
 
         {/* Monthly Macro Overview */}
         {monthlyNutrition && (
-          <div style={{ ...styles.card, animation: "slideUpFade 0.5s ease both" }}>
-            <p style={styles.cardTitle}>🗓️ {monthName} Nutrition</p>
+          <motion.div variants={itemVariants} style={styles.card}>
+            <p style={styles.cardTitle}><Calendar size={18} /> {monthName} Nutrition</p>
 
             {/* Calorie headline */}
             <div style={{ ...styles.monthCalorieRow, marginTop: "1rem" }}>
@@ -569,11 +589,11 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                 </div>
               ))}
             </div>
-          </div>
+          </motion.div>
         )}
 
         {/* Meal Type Split */}
-        <div style={styles.card}>
+        <motion.div variants={itemVariants} style={styles.card}>
           <p style={styles.cardTitle}>{partnerUid ? `Meal Split — ${monthName}` : `Your Meals — ${monthName}`}</p>
           <div style={{ ...styles.cardTitle, marginTop: "1rem" }}></div>
           <div style={styles.splitRow}>
@@ -652,7 +672,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
               </>
             )}
           </div>
-        </div>
+        </motion.div>
 
         {/* Insight Revisit Buttons - Now inside the container */}
         {!showInsightPopup && filteredMonthly.map((ins) => (
@@ -664,7 +684,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
               setShowInsightPopup(true);
             }}
           >
-            📋 View {ins.month} insights
+            <FileText size={16} /> View {ins.month} insights
           </button>
         ))}
 
@@ -679,7 +699,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
             ✨ View insights · {filteredWeight.date}
           </button>
         )}
-      </div>
+      </motion.div>
       {/* Day Nutrition Popup - Moved outside container for perfect centering */}
       {selectedCalendarDay && (
         <div
