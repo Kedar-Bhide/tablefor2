@@ -9,6 +9,8 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import { deleteField } from "firebase/firestore";
 import Cropper from "react-easy-crop";
 import { getCroppedImg } from "../utils/cropImage";
+import { motion } from "framer-motion";
+import { Edit2, LogOut, HeartCrack, Info } from "lucide-react";
 
 function Profile({ user, globalUserData, globalPartnerData }) {
   const [photoURL, setPhotoURL] = useState(globalUserData?.photoURL || user?.photoURL);
@@ -338,16 +340,34 @@ function Profile({ user, globalUserData, globalPartnerData }) {
     setTimeout(() => setLinkCopied(false), 2000);
   };
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: { staggerChildren: 0.1 }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 15 },
+    show: { opacity: 1, y: 0, transition: { type: "spring", bounce: 0.2 } }
+  };
+
   return (
-    <div style={styles.container}>
+    <motion.div 
+      style={styles.container}
+      variants={containerVariants}
+      initial="hidden"
+      animate="show"
+    >
       {/* Profile completion banner */}
       {!profileComplete && (
-        <div style={styles.completionBanner}>
+        <motion.div variants={itemVariants} style={styles.completionBanner}>
           <p style={styles.completionBannerTitle}>Complete your profile ✨</p>
           <p style={styles.completionBannerSub}>
             Add your age, height and weight below for personalized nutrition insights
           </p>
-        </div>
+        </motion.div>
       )}
       <div style={styles.headerRow}>
         <h2 style={styles.title}>My Profile</h2>
@@ -373,14 +393,14 @@ function Profile({ user, globalUserData, globalPartnerData }) {
                   style={styles.dropdownItem}
                   onClick={() => setShowUnlinkConfirm(true)}
                 >
-                  💔 Unlink Partner
+                  <HeartCrack size={16} /> Unlink Partner
                 </button>
               )}
               <button
                 style={{ ...styles.dropdownItem, borderBottom: "none" }}
                 onClick={handleSignOut}
               >
-                🚪 Sign Out
+                <LogOut size={16} /> Sign Out
               </button>
             </div>
           )}
@@ -401,17 +421,17 @@ function Profile({ user, globalUserData, globalPartnerData }) {
         </div>
       )}
 
-      <div style={styles.card}>
+      <motion.div variants={itemVariants} style={styles.card}>
         <div style={styles.avatarWrapper}>
           <img src={photoURL} alt="avatar" style={styles.avatar} referrerPolicy="no-referrer" />
           <div style={styles.editBadge} onClick={() => document.getElementById("profilePhotoInput").click()}>
-            ✏️
+            <Edit2 size={12} color="white" />
           </div>
         </div>
         <input id="profilePhotoInput" type="file" accept="image/*" style={{ display: "none" }} onChange={handleProfilePhoto} />
         <p style={styles.name}>{user.displayName}</p>
         <p style={styles.email}>{user.email}</p>
-      </div>
+      </motion.div>
 
       {/* Cropper Modal */}
       {imageToCrop && (
@@ -450,11 +470,11 @@ function Profile({ user, globalUserData, globalPartnerData }) {
           </div>
         </div>
       )}
-      <div
-        style={partnerName ? { ...styles.card, cursor: "pointer", transition: "transform 0.2s" } : styles.card}
+      <motion.div
+        variants={itemVariants}
+        style={partnerName ? { ...styles.card, cursor: "pointer" } : styles.card}
         onClick={() => partnerName && setShowPartnerProfile(true)}
-        onMouseEnter={(e) => partnerName && (e.currentTarget.style.transform = "translateY(-2px)")}
-        onMouseLeave={(e) => partnerName && (e.currentTarget.style.transform = "translateY(0)")}
+        whileHover={partnerName ? { y: -2, boxShadow: "var(--shadow-md)" } : {}}
       >
         {partnerName ? (
           <div style={{ textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
@@ -535,11 +555,11 @@ function Profile({ user, globalUserData, globalPartnerData }) {
             )}
           </>
         )}
-      </div>
+      </motion.div>
 
       {/* Wallet Card - Only show for whitelisted users */}
       {WHITELISTED_WALLET_UIDS.includes(user.uid) && (
-        <div style={styles.walletFront} onClick={() => setShowRewardsModal(true)}>
+        <motion.div variants={itemVariants} style={styles.walletFront} onClick={() => setShowRewardsModal(true)}>
           <div style={styles.walletHeader}>
             <p style={styles.badgeTitle}>💰 My Wallet</p>
             <select
@@ -601,7 +621,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
           )}
 
           <p style={styles.flipHint}>Tap for rewards overview</p>
-        </div>
+        </motion.div>
       )}
 
       {/* Rewards Modal */}
@@ -676,8 +696,8 @@ function Profile({ user, globalUserData, globalPartnerData }) {
         </div>
       )}
       {/* Personal Info */}
-      <div style={styles.card}>
-        <p style={styles.badgeTitle}>📋 Personal Info</p>
+      <motion.div variants={itemVariants} style={styles.card}>
+        <p style={styles.badgeTitle}><Info size={18} /> Personal Info</p>
         <p style={styles.personalInfoSubtitle}>
           Used to personalize your nutrition insights.
         </p>
@@ -847,7 +867,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
             </div>
           )}
         </div>
-      </div>
+        </motion.div>
       {/* Partner Profile Modal */}
       {showPartnerProfile && globalPartnerData && (
         <div style={styles.overlay} onClick={() => setShowPartnerProfile(false)}>
@@ -906,7 +926,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
             ))}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 

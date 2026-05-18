@@ -1,6 +1,8 @@
 import React from "react";
 import { auth, provider } from "../firebase";
 import { signInWithPopup } from "firebase/auth";
+import { motion } from "framer-motion";
+import { Camera, UtensilsCrossed, Users, BarChart3, Target, Gift } from "lucide-react";
 
 function LandingPage() {
   const handleLogin = () => {
@@ -13,70 +15,101 @@ function LandingPage() {
     {
       title: "Voice & Photo Logging",
       description: "Just speak or snap a photo. Our AI handles the rest, populating your meal info in seconds.",
-      icon: "📸",
+      icon: Camera,
       color: "#FFF9C4"
     },
     {
       title: "Cuisine-Aware AI",
       description: "Our engine understands regional dishes and niche ingredients for precise tracking.",
-      icon: "🍛",
+      icon: UtensilsCrossed,
       color: "#FFF4E5"
     },
     {
       title: "Better Together",
       description: "Track your journey solo or sync with a partner to stay motivated and healthy as a pair.",
-      icon: "👥",
+      icon: Users,
       color: "#FFEAEA"
     },
     {
       title: "Insights & Trends",
       description: "Beautiful weekly charts and detailed statistics that make your nutrition patterns crystal clear.",
-      icon: "📊",
+      icon: BarChart3,
       color: "#E8F5E9"
     },
     {
       title: "Goal Driven",
       description: "Personalized weight goals and macro targets that adapt to your body and your progress.",
-      icon: "🎯",
+      icon: Target,
       color: "#E3F2FD"
     },
     {
       title: "Fun Rewards",
       description: "Celebrate your consistency with personal milestones and rewards that feel like a fun gift to yourself.",
-      icon: "🎁",
+      icon: Gift,
       color: "#F3E5F5"
     }
   ];
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: { staggerChildren: 0.1, delayChildren: 0.3 }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    show: { opacity: 1, y: 0, transition: { type: "spring", bounce: 0.4 } }
+  };
+
   return (
     <div style={styles.container}>
       {/* Hero Section */}
-      <div style={styles.hero}>
-        <h1 style={styles.brand}>🍽️ TableFor2</h1>
+      <motion.div 
+        style={styles.hero}
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
+      >
+        <h1 style={styles.brand}>TableFor2</h1>
         <p style={styles.subtitle}>Share your meals, conquer your goals.</p>
 
-        <button style={styles.loginBtn} onClick={handleLogin}>
+        <motion.button 
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          style={styles.loginBtn} 
+          onClick={handleLogin}
+        >
           <img
             src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
             alt="Google"
             style={styles.googleIcon}
           />
           Sign in with Google
-        </button>
-      </div>
+        </motion.button>
+      </motion.div>
 
       {/* Feature Grid */}
-      <div style={styles.featureGrid}>
-        {features.map((f, i) => (
-          <div key={i} style={styles.card}>
-            <div style={{ ...styles.iconCircle, backgroundColor: f.color }}>
-              {f.icon}
-            </div>
-            <h3 style={styles.cardTitle}>{f.title}</h3>
-            <p style={styles.cardText}>{f.description}</p>
-          </div>
-        ))}
-      </div>
+      <motion.div 
+        style={styles.featureGrid}
+        variants={containerVariants}
+        initial="hidden"
+        animate="show"
+      >
+        {features.map((f, i) => {
+          const Icon = f.icon;
+          return (
+            <motion.div key={i} style={styles.card} variants={itemVariants} whileHover={{ y: -5, boxShadow: "var(--shadow-xl)" }}>
+              <div style={{ ...styles.iconCircle, backgroundColor: f.color }}>
+                <Icon size={24} color="#333" strokeWidth={1.5} />
+              </div>
+              <h3 style={styles.cardTitle}>{f.title}</h3>
+              <p style={styles.cardText}>{f.description}</p>
+            </motion.div>
+          );
+        })}
+      </motion.div>
     </div>
   );
 }
@@ -84,51 +117,50 @@ function LandingPage() {
 const styles = {
   container: {
     minHeight: "100vh",
-    backgroundColor: "#fffaf5",
+    backgroundColor: "var(--bg-color)",
     padding: "2rem 1.5rem",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    fontFamily: "'Outfit', sans-serif",
   },
   hero: {
     textAlign: "center",
-    marginTop: "4rem",
+    marginTop: "6rem",
     marginBottom: "4rem",
     maxWidth: "600px",
   },
   brand: {
-    fontSize: "3.5rem",
+    fontSize: "4rem",
     fontFamily: "'Instrument Serif', serif",
-    color: "#333",
+    color: "var(--text-primary)",
     margin: "0 0 1rem 0",
     letterSpacing: "-0.02em",
   },
   subtitle: {
     fontSize: "1.25rem",
-    color: "#666",
+    color: "var(--text-secondary)",
     margin: "0 0 2.5rem 0",
     lineHeight: "1.6",
+    fontFamily: "'Outfit', sans-serif",
   },
   loginBtn: {
     display: "flex",
     alignItems: "center",
     gap: "12px",
-    padding: "0.8rem 1.5rem",
-    fontSize: "1rem",
+    padding: "1rem 2rem",
+    fontSize: "1.1rem",
     fontWeight: "600",
-    backgroundColor: "white",
-    color: "#333",
-    border: "1px solid #EAEAEA",
-    borderRadius: "12px",
+    backgroundColor: "var(--surface)",
+    color: "var(--text-primary)",
+    border: "1px solid rgba(0,0,0,0.05)",
+    borderRadius: "var(--radius-full)",
     cursor: "pointer",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-    transition: "all 0.2s ease",
+    boxShadow: "var(--shadow-md)",
     margin: "0 auto",
   },
   googleIcon: {
-    width: "18px",
-    height: "18px",
+    width: "20px",
+    height: "20px",
   },
   featureGrid: {
     display: "grid",
@@ -140,32 +172,30 @@ const styles = {
     paddingBottom: "4rem",
   },
   card: {
-    backgroundColor: "white",
+    backgroundColor: "var(--surface)",
     padding: "2rem",
-    borderRadius: "24px",
-    border: "1px solid #EAEAEA",
-    boxShadow: "0 2px 10px rgba(0,0,0,0.03)",
-    transition: "transform 0.2s ease",
+    borderRadius: "var(--radius-xl)",
+    border: "1px solid rgba(0,0,0,0.03)",
+    boxShadow: "var(--shadow-sm)",
   },
   iconCircle: {
-    width: "50px",
-    height: "50px",
-    borderRadius: "16px",
+    width: "56px",
+    height: "56px",
+    borderRadius: "var(--radius-lg)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: "1.5rem",
     marginBottom: "1.5rem",
   },
   cardTitle: {
     fontSize: "1.25rem",
-    color: "#333",
+    color: "var(--text-primary)",
     margin: "0 0 0.75rem 0",
     fontWeight: "700",
   },
   cardText: {
     fontSize: "0.95rem",
-    color: "#666",
+    color: "var(--text-secondary)",
     lineHeight: "1.6",
     margin: 0,
   }

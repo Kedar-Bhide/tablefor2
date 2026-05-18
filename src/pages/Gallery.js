@@ -6,6 +6,7 @@ import { getMealLocalDateKey } from "../utils/dateTime";
 import PhotoCarousel from "../components/PhotoCarousel";
 import MealNutritionCard from "../components/MealNutritionCard";
 import PartnerResponseCard from "../components/PartnerResponseCard";
+import { motion } from "framer-motion";
 
 function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, globalPartnerData }) {
   const user = auth.currentUser;
@@ -172,12 +173,28 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
         Object.entries(groupedMeals).map(([dateKey, group]) => (
           <div key={dateKey} style={styles.dateGroup} ref={(el) => (scrollRefs.current[dateKey] = el)}>
             <p style={styles.dateLabel}>{group.label}</p>
-            <div style={styles.grid}>
+            <motion.div 
+              style={styles.grid}
+              initial="hidden"
+              animate="show"
+              variants={{
+                hidden: { opacity: 0 },
+                show: {
+                  opacity: 1,
+                  transition: { staggerChildren: 0.05 }
+                }
+              }}
+            >
               {group.meals.map((meal) => (
-                <div
+                <motion.div
                   key={`${meal.id}_${meal._photoIndex}`}
                   className="clickable-card"
                   style={styles.photoWrapper}
+                  variants={{
+                    hidden: { opacity: 0, scale: 0.8 },
+                    show: { opacity: 1, scale: 1, transition: { type: "spring", bounce: 0.3 } }
+                  }}
+                  whileHover={{ scale: 0.98 }}
                   onClick={async () => {
                     setViewMeal(meal);
                     setComment(meal.comments?.[user.uid] || "");
@@ -189,9 +206,9 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
                     style={styles.photo}
                     loading="lazy"
                   />
-                </div>
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
           </div>
         ))
       )}

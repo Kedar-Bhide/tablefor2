@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { auth, db } from "./firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, setDoc, getDoc, onSnapshot } from "firebase/firestore";
+import { AnimatePresence, motion } from "framer-motion";
 import LandingPage from "./pages/LandingPage";
 import Profile from "./pages/Profile";
 import NavBar from "./components/NavBar";
@@ -88,7 +89,6 @@ function App() {
       const timezone = getCurrentTimezone();
       const utcOffsetMinutes = -now.getTimezoneOffset();
 
-      // Only update if something actually changed to save on writes
       if (
         globalUserData && (
           globalUserData.timezone !== timezone ||
@@ -108,12 +108,10 @@ function App() {
       }
     };
 
-    // Initial check on mount/user change
     if (globalUserData) {
       syncTimezone();
     }
 
-    // Listen for visibility changes (app resume from background)
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         syncTimezone();
@@ -145,33 +143,47 @@ function App() {
 
   if (!user) return <LandingPage />;
 
+  const pageVariants = {
+    initial: { opacity: 0, y: 15, scale: 0.99 },
+    in: { opacity: 1, y: 0, scale: 1 },
+    out: { opacity: 0, y: -15, scale: 0.99 }
+  };
+
+  const pageTransition = {
+    type: "tween",
+    ease: "easeOut",
+    duration: 0.3
+  };
+
   return (
-    <div style={{ paddingBottom: "70px" }}>
-      {currentPage === "today" && (
-        <div className="page-transition">
-          <Today setCurrentPage={setCurrentPage} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />
-        </div>
-      )}
-      {currentPage === "logMeal" && (
-        <div className="page-transition">
-          <LogMeal setCurrentPage={setCurrentPage} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />
-        </div>
-      )}
-      {currentPage === "weekly" && (
-        <div className="page-transition">
-          <Weekly setCurrentPage={setCurrentPage} setGalleryDate={setGalleryDate} setGalleryFilter={setGalleryFilter} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />
-        </div>
-      )}
-      {currentPage === "gallery" && (
-        <div className="page-transition">
-          <Gallery galleryDate={galleryDate} setGalleryDate={setGalleryDate} galleryFilter={galleryFilter} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />
-        </div>
-      )}
-      {currentPage === "profile" && (
-        <div className="page-transition">
-          <Profile user={user} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />
-        </div>
-      )}
+    <div style={{ paddingBottom: "70px", overflowX: "hidden" }}>
+      <AnimatePresence mode="wait">
+        {currentPage === "today" && (
+          <motion.div key="today" initial="initial" animate="in" exit="out" variants={pageVariants} transition={pageTransition}>
+            <Today setCurrentPage={setCurrentPage} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />
+          </motion.div>
+        )}
+        {currentPage === "logMeal" && (
+          <motion.div key="logMeal" initial="initial" animate="in" exit="out" variants={pageVariants} transition={pageTransition}>
+            <LogMeal setCurrentPage={setCurrentPage} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />
+          </motion.div>
+        )}
+        {currentPage === "weekly" && (
+          <motion.div key="weekly" initial="initial" animate="in" exit="out" variants={pageVariants} transition={pageTransition}>
+            <Weekly setCurrentPage={setCurrentPage} setGalleryDate={setGalleryDate} setGalleryFilter={setGalleryFilter} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />
+          </motion.div>
+        )}
+        {currentPage === "gallery" && (
+          <motion.div key="gallery" initial="initial" animate="in" exit="out" variants={pageVariants} transition={pageTransition}>
+            <Gallery galleryDate={galleryDate} setGalleryDate={setGalleryDate} galleryFilter={galleryFilter} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />
+          </motion.div>
+        )}
+        {currentPage === "profile" && (
+          <motion.div key="profile" initial="initial" animate="in" exit="out" variants={pageVariants} transition={pageTransition}>
+            <Profile user={user} globalUserData={globalUserData} globalPartnerData={globalPartnerData} />
+          </motion.div>
+        )}
+      </AnimatePresence>
       {currentPage !== "logMeal" && <NavBar currentPage={currentPage} setCurrentPage={setCurrentPage} />}
     </div>
   );

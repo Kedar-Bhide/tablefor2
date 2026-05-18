@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 // React.memo: prevents re-renders when the same photos/initialIndex are passed
 export default React.memo(function PhotoCarousel({ photos, initialIndex = 0 }) {
@@ -41,30 +43,31 @@ export default React.memo(function PhotoCarousel({ photos, initialIndex = 0 }) {
           setSwipeStartX(null);
         }}
       >
-        <img
-          key={carouselIndex}
-          src={photos[carouselIndex]}
-          alt="meal"
-          loading="lazy"
-          style={{
-            ...styles.sheetPhoto,
-            // Uses carousel-slide-* keyframes defined in index.css
-            animation: `${swipeDirection === "left"
-              ? "carousel-slide-in-right"
-              : "carousel-slide-in-left"} 0.25s cubic-bezier(0.34, 1.2, 0.64, 1) both`,
-          }}
-        />
+        <AnimatePresence mode="popLayout" custom={swipeDirection}>
+          <motion.img
+            key={carouselIndex}
+            src={photos[carouselIndex]}
+            alt="meal"
+            loading="lazy"
+            custom={swipeDirection}
+            initial={{ x: swipeDirection === "left" ? 100 : -100, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: swipeDirection === "left" ? -100 : 100, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            style={styles.sheetPhoto}
+          />
+        </AnimatePresence>
         {carouselIndex > 0 && (
           <button
             style={{ ...styles.carouselArrow, left: "8px" }}
             onClick={() => { setSwipeDirection("right"); setCarouselIndex((i) => i - 1); }}
-          >‹</button>
+          ><ChevronLeft size={20} /></button>
         )}
         {carouselIndex < photos.length - 1 && (
           <button
             style={{ ...styles.carouselArrow, right: "8px" }}
             onClick={() => { setSwipeDirection("left"); setCarouselIndex((i) => i + 1); }}
-          >›</button>
+          ><ChevronRight size={20} /></button>
         )}
       </div>
       <div style={styles.carouselDots}>

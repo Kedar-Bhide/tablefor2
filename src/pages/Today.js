@@ -7,6 +7,8 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getPhotos } from "../utils/getPhotos";
 import { getLocalDateKeyInTz, getMealCreatedAtDate, getMealLocalDateKey } from "../utils/dateTime";
 import { shouldShowWeightCheckIn } from "../utils/shouldShowWeightCheckIn";
+import { motion, AnimatePresence } from "framer-motion";
+import { Sparkles, AlertCircle } from "lucide-react";
 import OnboardingPopup from "../components/OnboardingPopup";
 import PhotoCarousel from "../components/PhotoCarousel";
 import MealNutritionCard from "../components/MealNutritionCard";
@@ -941,6 +943,39 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
           </div>
         )}
 
+        {/* Insight Banner */}
+        {insightBanner && (
+          <div style={{ width: "100%" }}>
+            {insightBanner === "generating" && (
+              <div style={styles.revisitInsightButton}>
+                <div className="spinner-small" style={{ borderTopColor: "#ffb347", width: "14px", height: "14px", marginRight: "6px" }} />
+                <span>Generating your insights...</span>
+              </div>
+            )}
+            {insightBanner === "ready" && (
+              <button 
+                style={styles.weightInsightButton} 
+                onClick={() => setInsightBanner("open")}
+              >
+                <Sparkles size={16} />
+                <span>View your latest insights</span>
+              </button>
+            )}
+            {insightBanner === "insufficient" && (
+              <div style={{ ...styles.revisitInsightButton, color: "#999" }}>
+                <AlertCircle size={16} />
+                <span>Not enough meal data yet for insights</span>
+              </div>
+            )}
+            {insightBanner === "error" && (
+              <div style={{ ...styles.revisitInsightButton, color: "#d93025", borderColor: "#fecaca" }}>
+                <AlertCircle size={16} />
+                <span>Couldn't generate insights — try again later</span>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Nutrient Goals Card */}
         {nutrientGoals ? (
           <div style={styles.goalsCard}>
@@ -1196,6 +1231,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         {mealCount === 0 && (
           <p style={styles.empty}>No meals logged yet today. Add your first one!</p>
         )}
+        <AnimatePresence>
         {displayMeals.map((meal) => {
           // For shared meals, we want to show the current user's specific version (portion/macros)
           // while still treating it as the "main" card for that shared event.
@@ -1208,7 +1244,15 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
           const isPartnerMeal = meal.uid !== user.uid;
 
           return (
-            <div key={meal.id} className="clickable-card" style={styles.mealCard} onClick={() => {
+            <motion.div 
+              key={meal.id} 
+              className="clickable-card" 
+              style={styles.mealCard} 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
+              onClick={() => {
               if (isPartnerMeal && !myVersion) {
                 const pendingTask = getPendingTaskForMeal(meal);
                 if (pendingTask) {
@@ -1329,9 +1373,10 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                 )}
                 <p style={styles.ownerName}>{meal.isShared ? "Shared" : personName}</p>
               </div>
-            </div>
+            </motion.div>
           );
         })}
+        </AnimatePresence>
       </div>
       {/* Bottom Sheet - Moved outside container for perfect centering */}
       {selectedMeal && (
@@ -1886,34 +1931,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         </div>
       )}
 
-      {/* Insight Banner */}
-      {insightBanner && (
-        <div
-          style={{
-            ...styles.insightBanner,
-            cursor: insightBanner === "ready" ? "pointer" : "default",
-          }}
-          onClick={() => {
-            if (insightBanner === "ready" && (weightInsight || monthlyInsight)) {
-              setInsightBanner("open");
-            }
-          }}
-        >
-          {insightBanner === "generating" && (
-            <p style={styles.insightBannerText}>✨ Generating your insights...</p>
-          )}
-          {insightBanner === "ready" && (
-            <p style={styles.insightBannerText}>✨ Your insights are ready — tap to view</p>
-          )}
-          {insightBanner === "insufficient" && (
-            <p style={styles.insightBannerText}>📊 Not enough meal data yet for insights</p>
-          )}
-          {insightBanner === "error" && (
-            <p style={styles.insightBannerText}>⚠️ Couldn't generate insights — try again later</p>
-          )}
 
-        </div>
-      )}
 
       {/* Insight Popup */}
       {insightBanner === "open" && (weightInsight || monthlyInsight) && (
@@ -2866,19 +2884,37 @@ const styles = {
     fontSize: "0.82rem",
     cursor: "pointer",
   },
-  insightBanner: {
+  revisitInsightButton: {
     backgroundColor: "#fffaf5",
-    border: "1px solid #ffddcc",
-    borderRadius: "12px",
+    color: "#ffb347",
+    border: "1px solid #ffefe0",
     padding: "0.8rem 1rem",
+    borderRadius: "12px",
+    fontSize: "0.85rem",
+    fontWeight: "bold",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
+    width: "100%",
     marginBottom: "1rem",
-    animation: "slideUpFade 0.4s ease both",
   },
-  insightBannerText: {
-    fontSize: "0.88rem",
+  weightInsightButton: {
+    backgroundColor: "#fff5f5",
     color: "#ff6b6b",
-    margin: 0,
-    fontWeight: "500",
+    border: "1px solid #ffe5e5",
+    padding: "0.8rem 1rem",
+    borderRadius: "12px",
+    fontSize: "0.85rem",
+    fontWeight: "bold",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
+    width: "100%",
+    marginBottom: "1rem",
   },
   insightPopup: {
     backgroundColor: "white",

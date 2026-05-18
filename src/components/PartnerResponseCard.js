@@ -1,15 +1,21 @@
 import React from "react";
+import { motion } from "framer-motion";
 
 export default function PartnerResponseCard({ comment, authorName }) {
   if (!comment) return null;
 
   return (
-    <div style={styles.partnerResponseCard}>
+    <motion.div 
+      style={styles.partnerResponseCard}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+    >
       <div style={styles.partnerResponseContent}>
         <p style={styles.partnerResponseComment}>"{comment}"</p>
         <p style={styles.partnerResponseName}>— {authorName}</p>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
