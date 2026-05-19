@@ -29,3 +29,7 @@ yarn-error.log*
 # legacy redirect
 /legacy-redirect/
 /firebase-redirect.json
+
+# Firebase debug logs
+firebase-debug.log*
+ui-debug.log*
