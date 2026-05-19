@@ -5,12 +5,12 @@ import { getStorage } from "firebase/storage";
 import { getMessaging, getToken, isSupported, onMessage } from "firebase/messaging";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCSpoEd5sDeR1I_TIcsSJXTZwdNBZzUK5M",
-  authDomain: "meals-a2f8e.firebaseapp.com",
-  projectId: "meals-a2f8e",
-  storageBucket: "meals-a2f8e.firebasestorage.app",
-  messagingSenderId: "64615165505",
-  appId: "1:64615165505:web:78504917c73f4b75ffa0c0"
+  apiKey: "AIzaSyCP_lNulhO_ofoIRy3mqjCGSA0l-sKV5I0",
+  authDomain: "trytablefor2.firebaseapp.com",
+  projectId: "trytablefor2",
+  storageBucket: "trytablefor2.firebasestorage.app",
+  messagingSenderId: "1004615054636",
+  appId: "1:1004615054636:web:83a1ddd1fbbe214c2ba889"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -31,5 +31,5 @@ if (typeof window !== "undefined") {
       messaging = null;
     });
 }
-export const VAPID_KEY = "BHU0AtlA4YLdmo2ua6XF7jXzgGMZuey6myQvmQLq2wgGFzqbScib9q058cB65bfecS9Mb4gwo2wbzhiKLF99m0Q";
+export const VAPID_KEY = "BDOOci-IG6aXEO37dUgyEMk6uV-R_V00SfNmNVSj84QSuAUBAAiOhMKouEyHBA87nornIr5ymx1HtUGpNK8sVs8";
 export { getToken, onMessage };

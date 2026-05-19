@@ -335,7 +335,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
     profileFields.weight_kg;
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText("https://meals-a2f8e.web.app/");
+    navigator.clipboard.writeText("https://trytablefor2.web.app/");
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2000);
   };
@@ -354,7 +354,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
   };
 
   return (
-    <motion.div 
+    <motion.div
       style={styles.container}
       variants={containerVariants}
       initial="hidden"
@@ -543,7 +543,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
                   Share the link to sign up today and link with you!
                 </p>
                 <div style={styles.inviteLinkRow}>
-                  <p style={styles.inviteLinkUrl}>meals-a2f8e.web.app</p>
+                  <p style={styles.inviteLinkUrl}>trytablefor2.web.app</p>
                   <button
                     style={styles.copyLinkButton}
                     onClick={handleCopyLink}
@@ -867,25 +867,25 @@ function Profile({ user, globalUserData, globalPartnerData }) {
             </div>
           )}
         </div>
-        </motion.div>
+      </motion.div>
       {/* Partner Profile Modal */}
       {showPartnerProfile && globalPartnerData && (
         <div style={styles.overlay} onClick={() => setShowPartnerProfile(false)}>
           <div style={styles.partnerModal} onClick={(e) => e.stopPropagation()}>
             <button style={styles.modalCloseButton} onClick={() => setShowPartnerProfile(false)}>✕</button>
-            
+
             <div style={styles.partnerModalBody}>
               <div style={styles.partnerLargeAvatarWrapper}>
-                <img 
-                  src={globalPartnerData.photoURL} 
-                  alt={partnerName} 
-                  style={styles.partnerLargeAvatar} 
+                <img
+                  src={globalPartnerData.photoURL}
+                  alt={partnerName}
+                  style={styles.partnerLargeAvatar}
                   referrerPolicy="no-referrer"
                 />
               </div>
               <h2 style={styles.partnerModalName}>{partnerName}</h2>
               <p style={styles.partnerModalEmail}>{globalPartnerData.email}</p>
-              
+
               <div style={styles.partnerStatusTag}>
                 <span style={styles.partnerHeart}>💖</span> Partner Since {(() => {
                   const linkDate = globalUserData.partnerLinkedAt || globalUserData.createdAt || null;
