@@ -1064,9 +1064,24 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         )}
 
         {/* Goal Setup Popup */}
-        {goalSetupStep && (
-          <div style={styles.overlay} onClick={() => setGoalSetupStep(null)}>
-            <div style={styles.sheet} onClick={(e) => e.stopPropagation()}>
+        <AnimatePresence>
+          {goalSetupStep && (
+            <motion.div
+              style={styles.overlay}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setGoalSetupStep(null)}
+            >
+              <motion.div
+                style={styles.sheet}
+                initial={{ y: "50px", opacity: 0, scale: 0.95 }}
+                animate={{ y: 0, opacity: 1, scale: 1 }}
+                exit={{ y: "50px", opacity: 0, scale: 0.95 }}
+                transition={{ type: "spring", damping: 25, stiffness: 350 }}
+                onClick={(e) => e.stopPropagation()}
+              >
               {/* Step 1: Choose method */}
               {goalSetupStep === "choose" && (
                 <>
@@ -1222,9 +1237,10 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                   <p style={styles.sheetMeta}>Analyzing your profile data</p>
                 </div>
               )}
-            </div>
-          </div>
-        )}
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Meals Feed */}
         <h3 style={styles.sectionTitle}>Meals Today</h3>
@@ -1379,9 +1395,24 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         </AnimatePresence>
       </div>
       {/* Bottom Sheet - Moved outside container for perfect centering */}
-      {selectedMeal && (
-        <div style={styles.overlay} onClick={() => { setSelectedMeal(null); setEditMode(false); }}>
-          <div style={styles.sheet} onClick={(e) => e.stopPropagation()}>
+      <AnimatePresence>
+        {selectedMeal && (
+          <motion.div
+            style={styles.overlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => { setSelectedMeal(null); setEditMode(false); }}
+          >
+            <motion.div
+              style={styles.sheet}
+              initial={{ y: "50px", opacity: 0, scale: 0.95 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: "50px", opacity: 0, scale: 0.95 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              onClick={(e) => e.stopPropagation()}
+            >
             {!editMode ? (
               <>
                 {/* Photo carousel */}
@@ -1708,22 +1739,32 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                 </button>
               </>
             )}
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Partner Meal Viewer */}
-      {viewMeal && (
-        <div
-          style={styles.overlay}
-          onClick={() => setViewMeal(null)}
-        >
-          <div
-            style={{
-              ...styles.sheet,
-              paddingBottom: "2rem",
-            }}
-            onClick={(e) => e.stopPropagation()}
+      <AnimatePresence>
+        {viewMeal && (
+          <motion.div
+            style={styles.overlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setViewMeal(null)}
           >
+            <motion.div
+              style={{
+                ...styles.sheet,
+                paddingBottom: "2rem",
+              }}
+              initial={{ y: "50px", opacity: 0, scale: 0.95 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: "50px", opacity: 0, scale: 0.95 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              onClick={(e) => e.stopPropagation()}
+            >
 
             {/* Photo */}
             {(() => {
@@ -1836,13 +1877,29 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
               </button>
             </div>
 
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Reaction Picker */}
-      {reactionMeal && (
-        <div style={styles.overlay} onClick={() => setReactionMeal(null)}>
-          <div style={styles.sheet} onClick={(e) => e.stopPropagation()}>
+      <AnimatePresence>
+        {reactionMeal && (
+          <motion.div
+            style={styles.overlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setReactionMeal(null)}
+          >
+            <motion.div
+              style={styles.sheet}
+              initial={{ y: "50px", opacity: 0, scale: 0.95 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: "50px", opacity: 0, scale: 0.95 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              onClick={(e) => e.stopPropagation()}
+            >
             <p style={styles.sheetTitle}>{reactionMeal.name}</p>
             <p style={styles.sheetMeta}>React to {partnerName ? partnerName.split(" ")[0] : "partner"}'s meal</p>
             <div style={styles.reactionRow}>
@@ -1869,9 +1926,10 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
             <button style={styles.cancelButton} onClick={() => setReactionMeal(null)}>
               Cancel
             </button>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <button style={styles.fab} onClick={() => setCurrentPage("logMeal")}>
         +
       </button>
@@ -2342,7 +2400,7 @@ const styles = {
   cardRow: {
     display: "flex",
     alignItems: "center",
-    marginBottom: "1rem",
+    marginBottom: 0,
   },
   avatar: {
     width: "48px",
@@ -2455,7 +2513,6 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     padding: "1.5rem",
-    animation: "fadeInOverlay 0.3s ease both",
     backdropFilter: "blur(4px)",
   },
   sheet: {
@@ -2466,7 +2523,6 @@ const styles = {
     maxWidth: "380px",
     maxHeight: "85vh",
     overflowY: "auto",
-    animation: "bloomOpen 0.4s cubic-bezier(0.22, 1, 0.36, 1) both",
     boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
   },
   sheetTitle: {
