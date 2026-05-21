@@ -6,7 +6,7 @@ import { getMealLocalDateKey } from "../utils/dateTime";
 import PhotoCarousel from "../components/PhotoCarousel";
 import MealNutritionCard from "../components/MealNutritionCard";
 import PartnerResponseCard from "../components/PartnerResponseCard";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
 function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, globalPartnerData }) {
   const user = auth.currentUser;
@@ -214,13 +214,22 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
       )}
     </div>
     {/* Meal Viewer - Moved outside container for perfect centering */}
-    {viewMeal && (
-      <div
-        style={styles.overlay}
-        onClick={() => setViewMeal(null)}
-      >
-          <div
+    <AnimatePresence>
+      {viewMeal && (
+        <motion.div
+          style={styles.overlay}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          onClick={() => setViewMeal(null)}
+        >
+          <motion.div
             style={styles.sheet}
+            initial={{ y: "50px", opacity: 0, scale: 0.95 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            exit={{ y: "50px", opacity: 0, scale: 0.95 }}
+            transition={{ type: "spring", damping: 25, stiffness: 350 }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Photo */}
@@ -374,9 +383,10 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
               </button>
             </div>
 
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+    </AnimatePresence>
     </>
   );
 }
@@ -447,7 +457,6 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     padding: "1.5rem",
-    animation: "fadeInOverlay 0.3s ease both",
     backdropFilter: "blur(4px)",
   },
   sheet: {
@@ -458,7 +467,6 @@ const styles = {
     maxWidth: "380px",
     maxHeight: "85vh",
     overflowY: "auto",
-    animation: "bloomOpen 0.4s cubic-bezier(0.22, 1, 0.36, 1) both",
     boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
   },
   viewHeader: {
