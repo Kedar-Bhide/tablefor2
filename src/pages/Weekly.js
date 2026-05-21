@@ -3,7 +3,7 @@ import { auth, db } from "../firebase";
 import { collection, query, where, getDocs, doc, getDoc, updateDoc } from "firebase/firestore";
 import { PieChart, Pie, Cell } from "recharts";
 import { formatLocalDateKey, getMealLocalDateKey } from "../utils/dateTime";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Flame, Heart, BarChart2, Calendar, FileText, ChevronLeft, ChevronRight } from "lucide-react";
 
 function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserData, globalPartnerData }) {
@@ -701,206 +701,216 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
         )}
       </motion.div>
       {/* Day Nutrition Popup - Moved outside container for perfect centering */}
-      {selectedCalendarDay && (
-        <div
-          style={styles.overlayCenter}
-          onClick={() => setSelectedCalendarDay(null)}
-        >
-          <div
-            style={styles.bloomSheet}
-            onClick={(e) => e.stopPropagation()}
+      <AnimatePresence>
+        {selectedCalendarDay && (
+          <motion.div
+            style={styles.overlayCenter}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setSelectedCalendarDay(null)}
           >
-            {/* Header */}
-            <div style={styles.dayPopupHeader}>
-              <div>
-                <p style={styles.dayPopupDate}>
-                  {new Date(selectedCalendarDay + "T12:00:00").toLocaleDateString("en-US", {
-                    weekday: "long", month: "long", day: "numeric"
-                  })}
-                </p>
-                <p style={styles.dayPopupMealCount}>
-                  {calendarDayMeals.length} meal{calendarDayMeals.length !== 1 ? "s" : ""} logged
-                </p>
+            <motion.div
+              style={styles.bloomSheet}
+              initial={{ y: "50px", opacity: 0, scale: 0.95 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: "50px", opacity: 0, scale: 0.95 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div style={styles.dayPopupHeader}>
+                <div>
+                  <p style={styles.dayPopupDate}>
+                    {new Date(selectedCalendarDay + "T12:00:00").toLocaleDateString("en-US", {
+                      weekday: "long", month: "long", day: "numeric"
+                    })}
+                  </p>
+                  <p style={styles.dayPopupMealCount}>
+                    {calendarDayMeals.length} meal{calendarDayMeals.length !== 1 ? "s" : ""} logged
+                  </p>
+                </div>
               </div>
-            </div>
 
-            {calendarDayMeals.length === 0 ? (
-              <p style={styles.dayPopupEmpty}>No meals logged this day 🍽️</p>
-            ) : getDayNutritionTotals(calendarDayMeals).calories === 0 ? (
-              <>
-                <p style={styles.dayPopupEmpty}>
-                  {calendarDayMeals.length} meal{calendarDayMeals.length !== 1 ? "s" : ""} logged — nutrition data coming soon ✨
-                </p>
-                <div style={styles.dayMealList}>
-                  {calendarDayMeals.map((meal) => (
-                    <div key={meal.id} style={styles.dayMealRow}>
-                      <div style={styles.dayMealLeft}>
-                        {meal.photoURL && (
-                          <img src={meal.photoURL} alt={meal.name} style={styles.dayMealThumb} loading="lazy" />
-                        )}
-                        <div>
-                          <p style={styles.dayMealName}>{meal.name}</p>
-                          <p style={styles.dayMealMeta}>{meal.type}</p>
+              {calendarDayMeals.length === 0 ? (
+                <p style={styles.dayPopupEmpty}>No meals logged this day 🍽️</p>
+              ) : getDayNutritionTotals(calendarDayMeals).calories === 0 ? (
+                <>
+                  <p style={styles.dayPopupEmpty}>
+                    {calendarDayMeals.length} meal{calendarDayMeals.length !== 1 ? "s" : ""} logged — nutrition data coming soon ✨
+                  </p>
+                  <div style={styles.dayMealList}>
+                    {calendarDayMeals.map((meal) => (
+                      <div key={meal.id} style={styles.dayMealRow}>
+                        <div style={styles.dayMealLeft}>
+                          {meal.photoURL && (
+                            <img src={meal.photoURL} alt={meal.name} style={styles.dayMealThumb} loading="lazy" />
+                          )}
+                          <div>
+                            <p style={styles.dayMealName}>{meal.name}</p>
+                            <p style={styles.dayMealMeta}>{meal.type}</p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <>
-                {/* Compute nutrition totals once for the whole popup */}
-                {(() => {
-                  const dayTotals = getDayNutritionTotals(calendarDayMeals);
-                  return (
-                    <>
-                      {/* Calorie headline */}
-                      {dayTotals.calories > 0 && (
-                        <div style={styles.dayCalorieCard}>
-                          <div style={{ textAlign: "left" }}>
-                            <p style={styles.dayCalorieNumber}>
-                              {dayTotals.calories}
-                              {globalUserData?.nutrientGoals && (
-                                <span style={styles.dayPopupCalorieTarget}> / {globalUserData.nutrientGoals.calories}</span>
-                              )}
-                            </p>
-                            <p style={styles.dayCalorieLabel}>kcal consumed</p>
-                          </div>
-                          {globalUserData?.nutrientGoals && (
-                            <div
-                              style={{
-                                textAlign: "right",
-                                marginLeft: "auto",
-                                display: "flex",
-                                flexDirection: "column",
-                                alignItems: "flex-end",
-                              }}
-                            >
-                              <p
-                                style={{
-                                  ...styles.dayPopupCalorieRemaining,
-                                  color:
-                                    (globalUserData.nutrientGoals.calories - dayTotals.calories) >= 0
-                                      ? "#7ec8a4"
-                                      : "#ff6b6b",
-                                }}
-                              >
-                                {Math.abs(
-                                  globalUserData.nutrientGoals.calories - dayTotals.calories
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Compute nutrition totals once for the whole popup */}
+                  {(() => {
+                    const dayTotals = getDayNutritionTotals(calendarDayMeals);
+                    return (
+                      <>
+                        {/* Calorie headline */}
+                        {dayTotals.calories > 0 && (
+                          <div style={styles.dayCalorieCard}>
+                            <div style={{ textAlign: "left" }}>
+                              <p style={styles.dayCalorieNumber}>
+                                {dayTotals.calories}
+                                {globalUserData?.nutrientGoals && (
+                                  <span style={styles.dayPopupCalorieTarget}> / {globalUserData.nutrientGoals.calories}</span>
                                 )}
                               </p>
-
-                              <p
+                              <p style={styles.dayCalorieLabel}>kcal consumed</p>
+                            </div>
+                            {globalUserData?.nutrientGoals && (
+                              <div
                                 style={{
-                                  ...styles.dayCalorieLabel,
-                                  color:
-                                    (globalUserData.nutrientGoals.calories - dayTotals.calories) >= 0
-                                      ? "#7ec8a4"
-                                      : "#ff6b6b",
+                                  textAlign: "right",
+                                  marginLeft: "auto",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  alignItems: "flex-end",
                                 }}
                               >
-                                {(globalUserData.nutrientGoals.calories - dayTotals.calories) >= 0
-                                  ? "under"
-                                  : "over"}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Macro bars */}
-                      {dayTotals.calories > 0 && (
-                        <div style={styles.dayMacroSection}>
-                          <div style={styles.macroGrid}>
-                            {[
-                              { key: "protein_g", label: "Protein", color: "#ff6b6b" },
-                              { key: "carbs_g", label: "Carbs", color: "#ffb347" },
-                              { key: "fat_g", label: "Fat", color: "#7ec8a4" },
-                              { key: "fiber_g", label: "Fiber", color: "#a78bfa" },
-                            ].map((macro) => {
-                              const eaten = dayTotals[macro.key] || 0;
-                              const goal = globalUserData?.nutrientGoals?.[macro.key];
-
-                              return (
-                                <div key={macro.key} style={styles.macroGridItem}>
-                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-                                    <p style={styles.macroGridLabel}>{macro.label}</p>
-                                    <p style={{ ...styles.macroGridValue, color: macro.color }}>
-                                      {eaten}{goal ? `/${goal}` : ""}g
-                                    </p>
-                                  </div>
-                                  {goal && (
-                                    <div style={styles.dayPopupMacroBarTrack}>
-                                      <div style={{
-                                        ...styles.dayPopupMacroBarFill,
-                                        backgroundColor: macro.color,
-                                        width: `${goal > 0 ? Math.min((eaten / goal) * 100, 100) : 0}%`
-                                      }} />
-                                    </div>
+                                <p
+                                  style={{
+                                    ...styles.dayPopupCalorieRemaining,
+                                    color:
+                                      (globalUserData.nutrientGoals.calories - dayTotals.calories) >= 0
+                                        ? "#7ec8a4"
+                                        : "#ff6b6b",
+                                  }}
+                                >
+                                  {Math.abs(
+                                    globalUserData.nutrientGoals.calories - dayTotals.calories
                                   )}
-                                </div>
-                              );
-                            })}
+                                </p>
+
+                                <p
+                                  style={{
+                                    ...styles.dayCalorieLabel,
+                                    color:
+                                      (globalUserData.nutrientGoals.calories - dayTotals.calories) >= 0
+                                        ? "#7ec8a4"
+                                        : "#ff6b6b",
+                                  }}
+                                >
+                                  {(globalUserData.nutrientGoals.calories - dayTotals.calories) >= 0
+                                    ? "under"
+                                    : "over"}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Macro bars */}
+                        {dayTotals.calories > 0 && (
+                          <div style={styles.dayMacroSection}>
+                            <div style={styles.macroGrid}>
+                              {[
+                                { key: "protein_g", label: "Protein", color: "#ff6b6b" },
+                                { key: "carbs_g", label: "Carbs", color: "#ffb347" },
+                                { key: "fat_g", label: "Fat", color: "#7ec8a4" },
+                                { key: "fiber_g", label: "Fiber", color: "#a78bfa" },
+                              ].map((macro) => {
+                                const eaten = dayTotals[macro.key] || 0;
+                                const goal = globalUserData?.nutrientGoals?.[macro.key];
+
+                                return (
+                                  <div key={macro.key} style={styles.macroGridItem}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                                      <p style={styles.macroGridLabel}>{macro.label}</p>
+                                      <p style={{ ...styles.macroGridValue, color: macro.color }}>
+                                        {eaten}{goal ? `/${goal}` : ""}g
+                                      </p>
+                                    </div>
+                                    {goal && (
+                                      <div style={styles.dayPopupMacroBarTrack}>
+                                        <div style={{
+                                          ...styles.dayPopupMacroBarFill,
+                                          backgroundColor: macro.color,
+                                          width: `${goal > 0 ? Math.min((eaten / goal) * 100, 100) : 0}%`
+                                        }} />
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+
+                  {/* Meal breakdown list */}
+                  <div style={styles.dayMealList}>
+                    <p style={styles.dayMealListTitle}>Meals</p>
+                    {calendarDayMeals.map((meal) => (
+                      <div key={meal.id} style={styles.dayMealRow}>
+                        <div style={styles.dayMealLeft}>
+                          {meal.photoURL && (
+                            <img
+                              src={meal.photoURL}
+                              alt={meal.name}
+                              style={styles.dayMealThumb}
+                              loading="lazy"
+                            />
+                          )}
+                          <div>
+                            <p style={styles.dayMealName}>{meal.name}</p>
+                            <p style={styles.dayMealMeta}>{meal.type}</p>
                           </div>
                         </div>
-                      )}
-                    </>
-                  );
-                })()}
-
-                {/* Meal breakdown list */}
-                <div style={styles.dayMealList}>
-                  <p style={styles.dayMealListTitle}>Meals</p>
-                  {calendarDayMeals.map((meal) => (
-                    <div key={meal.id} style={styles.dayMealRow}>
-                      <div style={styles.dayMealLeft}>
-                        {meal.photoURL && (
-                          <img
-                            src={meal.photoURL}
-                            alt={meal.name}
-                            style={styles.dayMealThumb}
-                            loading="lazy"
-                          />
+                        {meal.nutrition && (
+                          <p style={styles.dayMealCalories}>
+                            {meal.nutrition.calories} kcal
+                          </p>
                         )}
-                        <div>
-                          <p style={styles.dayMealName}>{meal.name}</p>
-                          <p style={styles.dayMealMeta}>{meal.type}</p>
-                        </div>
                       </div>
-                      {meal.nutrition && (
-                        <p style={styles.dayMealCalories}>
-                          {meal.nutrition.calories} kcal
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
 
-                {/* View in Gallery button */}
-                <button
-                  style={styles.galleryButton}
-                  onClick={() => {
-                    setSelectedCalendarDay(null);
-                    setGalleryDate(selectedCalendarDay);
-                    setGalleryFilter("mine");
-                    setCurrentPage("gallery");
-                  }}
-                >
-                  View Photos 📷
-                </button>
+                  {/* View in Gallery button */}
+                  <button
+                    style={styles.galleryButton}
+                    onClick={() => {
+                      setSelectedCalendarDay(null);
+                      setGalleryDate(selectedCalendarDay);
+                      setGalleryFilter("mine");
+                      setCurrentPage("gallery");
+                    }}
+                  >
+                    View Photos 📷
+                  </button>
 
-              </>
-            )}
+                </>
+              )}
 
-            <button
-              style={styles.dayPopupBack}
-              onClick={() => setSelectedCalendarDay(null)}
-            >
-              ← Back
-            </button>
-          </div>
-        </div>
-      )}
+              <button
+                style={styles.dayPopupBack}
+                onClick={() => setSelectedCalendarDay(null)}
+              >
+                ← Back
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Monthly Insight Popup */}
       {showInsightPopup && monthlyInsight && (
         <div
@@ -1252,7 +1262,6 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     padding: "1.5rem",
-    animation: "fadeInOverlay 0.3s ease both",
     backdropFilter: "blur(4px)",
   },
   bloomSheet: {
@@ -1263,7 +1272,6 @@ const styles = {
     maxWidth: "380px",
     maxHeight: "85vh",
     overflowY: "auto",
-    animation: "bloomOpen 0.4s cubic-bezier(0.22, 1, 0.36, 1) both",
     boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
   },
   dayPopupHeader: {
@@ -1497,7 +1505,6 @@ const styles = {
     maxWidth: "380px",
     maxHeight: "85vh",
     overflowY: "auto",
-    animation: "bloomOpen 0.4s cubic-bezier(0.22, 1, 0.36, 1) both",
     boxShadow: "0 24px 64px rgba(0,0,0,0.18)",
     position: "relative",
     overflow: "hidden",
