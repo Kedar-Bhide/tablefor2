@@ -9,8 +9,8 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import { deleteField } from "firebase/firestore";
 import Cropper from "react-easy-crop";
 import { getCroppedImg } from "../utils/cropImage";
-import { motion } from "framer-motion";
-import { Edit2, LogOut, HeartCrack, Info } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { LogOut, HeartCrack, Info } from "lucide-react";
 
 function Profile({ user, globalUserData, globalPartnerData }) {
   const [photoURL, setPhotoURL] = useState(globalUserData?.photoURL || user?.photoURL);
@@ -425,7 +425,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
         <div style={styles.avatarWrapper}>
           <img src={photoURL} alt="avatar" style={styles.avatar} referrerPolicy="no-referrer" />
           <div style={styles.editBadge} onClick={() => document.getElementById("profilePhotoInput").click()}>
-            <Edit2 size={12} color="white" />
+            📸
           </div>
         </div>
         <input id="profilePhotoInput" type="file" accept="image/*" style={{ display: "none" }} onChange={handleProfilePhoto} />
@@ -697,7 +697,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
       )}
       {/* Personal Info */}
       <motion.div variants={itemVariants} style={styles.card}>
-        <p style={styles.badgeTitle}><Info size={18} /> Personal Info</p>
+        <p style={styles.personalInfoTitle}><Info size={18} /> Personal Info</p>
         <p style={styles.personalInfoSubtitle}>
           Used to personalize your nutrition insights.
         </p>
@@ -869,34 +869,50 @@ function Profile({ user, globalUserData, globalPartnerData }) {
         </div>
       </motion.div>
       {/* Partner Profile Modal */}
-      {showPartnerProfile && globalPartnerData && (
-        <div style={styles.overlay} onClick={() => setShowPartnerProfile(false)}>
-          <div style={styles.partnerModal} onClick={(e) => e.stopPropagation()}>
-            <button style={styles.modalCloseButton} onClick={() => setShowPartnerProfile(false)}>✕</button>
+      <AnimatePresence>
+        {showPartnerProfile && globalPartnerData && (
+          <motion.div
+            style={styles.overlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setShowPartnerProfile(false)}
+          >
+            <motion.div
+              style={styles.partnerModal}
+              initial={{ y: "50px", opacity: 0, scale: 0.95 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: "50px", opacity: 0, scale: 0.95 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button style={styles.modalCloseButton} onClick={() => setShowPartnerProfile(false)}>✕</button>
 
-            <div style={styles.partnerModalBody}>
-              <div style={styles.partnerLargeAvatarWrapper}>
-                <img
-                  src={globalPartnerData.photoURL}
-                  alt={partnerName}
-                  style={styles.partnerLargeAvatar}
-                  referrerPolicy="no-referrer"
-                />
-              </div>
-              <h2 style={styles.partnerModalName}>{partnerName}</h2>
-              <p style={styles.partnerModalEmail}>{globalPartnerData.email}</p>
+              <div style={styles.partnerModalBody}>
+                <div style={styles.partnerLargeAvatarWrapper}>
+                  <img
+                    src={globalPartnerData.photoURL}
+                    alt={partnerName}
+                    style={styles.partnerLargeAvatar}
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+                <h2 style={styles.partnerModalName}>{partnerName}</h2>
+                <p style={styles.partnerModalEmail}>{globalPartnerData.email}</p>
 
-              <div style={styles.partnerStatusTag}>
-                <span style={styles.partnerHeart}>💖</span> Partner Since {(() => {
-                  const linkDate = globalUserData.partnerLinkedAt || globalUserData.createdAt || null;
-                  const date = linkDate ? (linkDate.toDate ? linkDate.toDate() : new Date(linkDate)) : new Date();
-                  return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
-                })()}
+                <div style={styles.partnerStatusTag}>
+                  <span style={styles.partnerHeart}>💖</span> Partner Since {(() => {
+                    const linkDate = globalUserData.partnerLinkedAt || globalUserData.createdAt || null;
+                    const date = linkDate ? (linkDate.toDate ? linkDate.toDate() : new Date(linkDate)) : new Date();
+                    return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+                  })()}
+                </div>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Badges */}
       <div style={styles.card}>
@@ -1003,7 +1019,6 @@ const styles = {
     justifyContent: "center",
     zIndex: 2000,
     backdropFilter: "blur(4px)",
-    animation: "fadeInOverlay 0.3s ease",
   },
   confirmModal: {
     backgroundColor: "white",
@@ -1179,7 +1194,6 @@ const styles = {
     textAlign: "center",
     position: "relative",
     boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
-    animation: "bloomOpen 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)",
   },
   modalCloseButton: {
     position: "absolute",
@@ -1259,14 +1273,24 @@ const styles = {
     right: 0,
     backgroundColor: "#ffffff",
     borderRadius: "50%",
-    width: "20px",
-    height: "20px",
+    width: "24px",
+    height: "24px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: "0.55rem",
+    fontSize: "0.85rem",
     cursor: "pointer",
-    boxShadow: "0 1px 4px rgba(0,0,0,0.2)",
+    boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+  },
+  personalInfoTitle: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.4rem",
+    fontWeight: "bold",
+    fontSize: "1rem",
+    color: "#333",
+    marginBottom: "1rem",
+    margin: "0 0 1rem 0",
   },
   badgeTitle: {
     fontWeight: "bold",
