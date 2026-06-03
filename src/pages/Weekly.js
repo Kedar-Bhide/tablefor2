@@ -72,7 +72,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
   const [weeklyNutrition, setWeeklyNutrition] = useState([]);
   const [selectedCalendarDay, setSelectedCalendarDay] = useState(null);
   const [selectedSpectrumDay, setSelectedSpectrumDay] = useState(null);
-  const [activeTab, setActiveTab] = useState("spectrum"); // Default to spectrum for the wow factor!
+  const [activeTab, setActiveTab] = useState("classic"); // Default to classic stats
   const [calendarDayMeals, setCalendarDayMeals] = useState([]);
   const [monthlyNutrition, setMonthlyNutrition] = useState(null);
   const [fullDayMap, setFullDayMap] = useState({});
@@ -505,17 +505,6 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
           <button
             style={{
               ...styles.tabButton,
-              backgroundColor: activeTab === "spectrum" ? "#fff" : "transparent",
-              color: activeTab === "spectrum" ? "#ff6b6b" : "#666",
-              boxShadow: activeTab === "spectrum" ? "0 2px 8px rgba(0,0,0,0.06)" : "none",
-            }}
-            onClick={() => setActiveTab("spectrum")}
-          >
-            🎨 Habit Spectrum
-          </button>
-          <button
-            style={{
-              ...styles.tabButton,
               backgroundColor: activeTab === "classic" ? "#fff" : "transparent",
               color: activeTab === "classic" ? "#ff6b6b" : "#666",
               boxShadow: activeTab === "classic" ? "0 2px 8px rgba(0,0,0,0.06)" : "none",
@@ -523,6 +512,17 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
             onClick={() => setActiveTab("classic")}
           >
             📊 Classic Stats
+          </button>
+          <button
+            style={{
+              ...styles.tabButton,
+              backgroundColor: activeTab === "spectrum" ? "#fff" : "transparent",
+              color: activeTab === "spectrum" ? "#ff6b6b" : "#666",
+              boxShadow: activeTab === "spectrum" ? "0 2px 8px rgba(0,0,0,0.06)" : "none",
+            }}
+            onClick={() => setActiveTab("spectrum")}
+          >
+            🎨 Habit Spectrum
           </button>
         </div>
 
