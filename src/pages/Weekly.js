@@ -1,10 +1,65 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { auth, db } from "../firebase";
-import { collection, query, where, getDocs, doc, getDoc, updateDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, onSnapshot } from "firebase/firestore";
 import { PieChart, Pie, Cell } from "recharts";
 import { formatLocalDateKey, getMealLocalDateKey } from "../utils/dateTime";
 import { motion, AnimatePresence } from "framer-motion";
 import { Flame, Heart, BarChart2, Calendar, FileText, ChevronLeft, ChevronRight } from "lucide-react";
+import MealNutritionCard, { getHabitCategories, getAllHabitCategories } from "../components/MealNutritionCard";
+
+// All 6 spectrum categories with their metadata (mirrors MealNutritionCard)
+const SPECTRUM_CATEGORIES = [
+  { id: "strength", label: "Strength", emoji: "💪", color: "#3b82f6", desc: "20g+ Protein OR >30% Protein Cals" },
+  { id: "fuel", label: "Fuel", emoji: "🔋", color: "#d97706", desc: "40g+ Carbs OR >50% Carb Cals" },
+  { id: "balanced", label: "Balanced", emoji: "⚖️", color: "#6366f1", desc: "15g+ Pro, 20g+ Carb, 8g+ Fat, 3g+ Fiber" },
+  { id: "filling", label: "Filling", emoji: "🍽️", color: "#059669", desc: "20g+ Protein OR 8g+ Fiber" },
+  { id: "fiberHero", label: "Fiber Hero", emoji: "🌾", color: "#16a34a", desc: "8g+ Fiber" },
+  { id: "power", label: "Power Meal", emoji: "🚀", color: "#7c3aed", desc: "500+ kcal, 25g+ Pro, 5g+ Fiber" },
+  { id: "lean", label: "Lean Choice", emoji: "🎯", color: "#0ea5e9", desc: "15g+ Protein AND <10g Fat" },
+  { id: "comfort", label: "Comfort", emoji: "🧸", color: "#ef4444", desc: "22g+ Fat OR >40% Fat Cals" },
+  { id: "snack", label: "Snack", emoji: "⚡", color: "#eab308", desc: "Under 250 kcal" },
+  { id: "light", label: "Light", emoji: "🌿", color: "#0891b2", desc: "Under 150 kcal, <4g Fat, <8g Pro" },
+];
+
+// Rule-based Back-of-the-Napkin Habit Reflection Synthesizer
+const generateWeeklyReflection = (weeklyData) => {
+  // Multi-tag: count every tag a meal receives (not just the primary)
+  const counts = {};
+  SPECTRUM_CATEGORIES.forEach(c => { counts[c.id] = 0; });
+
+  let totalMeals = 0;
+
+  weeklyData.forEach(day => {
+    if (day.meals && day.meals.length > 0) {
+      totalMeals += day.meals.length;
+      day.meals.forEach(meal => {
+        // Use getAllHabitCategories (uncapped) so every matched spectrum
+        // is counted even if it didn't make the top-3 on the meal card
+        const cats = getAllHabitCategories(meal.nutrition);
+        cats.forEach(cat => {
+          if (cat.id in counts) {
+            counts[cat.id]++;
+          }
+        });
+      });
+    }
+  });
+
+  if (totalMeals === 0) {
+    return {
+      percentages: null,
+      counts: null,
+      note: "Your canvas is empty! Log some meals this week to paint your Habit Spectrum and see your Weekly Habit Synthesis. 🎨"
+    };
+  }
+
+  const percentages = {};
+  SPECTRUM_CATEGORIES.forEach(c => {
+    percentages[c.id] = Math.round((counts[c.id] / totalMeals) * 100);
+  });
+
+  return { percentages, counts };
+};
 
 function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserData, globalPartnerData }) {
   const user = auth.currentUser;
@@ -16,6 +71,8 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
   const [partnerMonthMeals, setPartnerMonthMeals] = useState([]);
   const [weeklyNutrition, setWeeklyNutrition] = useState([]);
   const [selectedCalendarDay, setSelectedCalendarDay] = useState(null);
+  const [selectedSpectrumDay, setSelectedSpectrumDay] = useState(null);
+  const [activeTab, setActiveTab] = useState("classic"); // Default to classic stats
   const [calendarDayMeals, setCalendarDayMeals] = useState([]);
   const [monthlyNutrition, setMonthlyNutrition] = useState(null);
   const [fullDayMap, setFullDayMap] = useState({});
@@ -24,30 +81,23 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
   const [dismissingInsight, setDismissingInsight] = useState(false);
   const [weightInsight, setWeightInsight] = useState(null);
   const [showWeightInsight, setShowWeightInsight] = useState(false);
+  const [activeNapkinTooltip, setActiveNapkinTooltip] = useState(null);
 
   const [rawMonthlyInsights, setRawMonthlyInsights] = useState([]);
   const [rawWeightInsights, setRawWeightInsights] = useState([]);
 
   useEffect(() => {
-    const fetchInsights = async () => {
-      try {
-        // Fetch collections in parallel
-        const [weightSnap, monthlySnap] = await Promise.all([
-          getDocs(query(collection(db, "users", user.uid, "weightInsights"))),
-          getDocs(query(collection(db, "users", user.uid, "insights")))
-        ]);
+    const unsubWeight = onSnapshot(query(collection(db, "users", user.uid, "weightInsights")), (weightSnap) => {
+      setRawWeightInsights(weightSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    const unsubMonthly = onSnapshot(query(collection(db, "users", user.uid, "insights")), (monthlySnap) => {
+      setRawMonthlyInsights(monthlySnap.docs.map(d => ({ id: d.id, ...d.data(), key: d.id })));
+    });
 
-        if (!weightSnap.empty) {
-          setRawWeightInsights(weightSnap.docs.map(d => ({ ...d.data(), id: d.id })));
-        }
-        if (!monthlySnap.empty) {
-          setRawMonthlyInsights(monthlySnap.docs.map(d => ({ ...d.data(), id: d.id, key: d.id })));
-        }
-      } catch (e) {
-        console.error("Failed to fetch insights:", e);
-      }
+    return () => {
+      unsubWeight();
+      unsubMonthly();
     };
-    fetchInsights();
   }, [user.uid]);
 
   // Derived state for insights (filters dismissed ones)
@@ -88,22 +138,14 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
   }, [autoShowMonthly, showInsightPopup]);
 
   useEffect(() => {
-    const fetchWeekMeals = async () => {
-      // Fetch own meals AND partner meals in parallel for faster load
-      const allMealsQ = query(
-        collection(db, "meals"),
-        where("uid", "==", user.uid)
-      );
+    const allMealsQ = query(collection(db, "meals"), where("uid", "==", user.uid));
+    const partnerQ = partnerUid ? query(collection(db, "meals"), where("uid", "==", partnerUid)) : null;
 
-      const [allMealsSnap, partnerSnap] = await Promise.all([
-        getDocs(allMealsQ),
-        partnerUid
-          ? getDocs(query(collection(db, "meals"), where("uid", "==", partnerUid)))
-          : Promise.resolve(null),
-      ]);
+    let myMeals = [];
+    let pMeals = [];
 
-      const ownMeals = allMealsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      const allMeals = [...ownMeals];
+    const processMeals = () => {
+      const allMeals = [...myMeals];
 
       // Build dayMap from ALL meals for streak
       const dayMap = {};
@@ -121,9 +163,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
         d.setDate(d.getDate() - i);
         const dateStr = formatLocalDateKey(d);
         const dayMeals = allMeals.filter(
-          (m) => m.uid === user.uid &&
-            (getMealLocalDateKey(m) === dateStr) &&
-            m.nutrition
+          (m) => (getMealLocalDateKey(m) === dateStr) && m.nutrition
         );
         const totalsRaw = dayMeals.reduce((acc, m) => ({
           calories: acc.calories + (m.nutrition.calories || 0),
@@ -145,16 +185,15 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
           label: d.toLocaleDateString("en-US", { weekday: "short" }),
           ...totals,
           hasMeals: dayMeals.length > 0,
+          meals: dayMeals
         });
       }
       setWeeklyNutrition(last7);
 
-      // Couple streak from parallel partner fetch result
-      if (partnerUid && partnerSnap) {
-        const partnerOwnMeals = partnerSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-
+      // Couple streak
+      if (partnerUid) {
         const partnerDayMap = {};
-        partnerOwnMeals.forEach((m) => {
+        pMeals.forEach((m) => {
           const dateStr = getMealLocalDateKey(m);
           if (!partnerDayMap[dateStr]) partnerDayMap[dateStr] = 0;
           partnerDayMap[dateStr]++;
@@ -178,7 +217,21 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
         setCoupleStreakCount(coupleStreak);
       }
     };
-    fetchWeekMeals();
+
+    const unsubMy = onSnapshot(allMealsQ, (snap) => {
+      myMeals = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      processMeals();
+    });
+
+    const unsubPartner = partnerQ ? onSnapshot(partnerQ, (snap) => {
+      pMeals = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      processMeals();
+    }) : null;
+
+    return () => {
+      unsubMy();
+      if (unsubPartner) unsubPartner();
+    };
   }, [user.uid, partnerUid]);
 
   const fetchMonthMeals = useCallback(async () => {
@@ -419,11 +472,14 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
 
   return (
     <>
-      <motion.div 
+      <motion.div
         style={styles.container}
         variants={containerVariants}
         initial="hidden"
         animate="show"
+        onClick={() => {
+          if (activeNapkinTooltip) setActiveNapkinTooltip(null);
+        }}
       >
         <h2 style={styles.title}>Stats</h2>
 
@@ -437,214 +493,205 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
           {/* Couple Streak */}
           {partnerUid && (
             <motion.div variants={itemVariants} style={styles.streakCard}>
-               <span style={styles.streakEmoji}><Heart color="#ff6b6b" /></span>
+              <span style={styles.streakEmoji}><Heart color="#ff6b6b" /></span>
               <p style={styles.streakNumber}>{coupleStreakCount}</p>
               <p style={styles.streakSub}>with {partnerName ? partnerName.split(" ")[0] : "partner"}</p>
             </motion.div>
           )}
         </div>
 
-        {/* Weekly Macro Trend */}
-        {weeklyNutrition?.some((d) => d.hasMeals && d.calories > 0) && (
-          <motion.div variants={itemVariants} style={styles.card}>
-            <p style={styles.cardTitle}><BarChart2 size={18} /> Weekly Macros</p>
-            <div style={styles.macroTable}>
-              {/* Header row */}
-              <div style={styles.macroTableRow}>
-                <div style={styles.macroTableLabelCell} />
-                {weeklyNutrition.map((day) => (
-                  <div key={day.date} style={styles.macroTableHeaderCell}>
-                    {day.label}
-                  </div>
-                ))}
-              </div>
-              {/* Macro rows */}
-              {[
-                { key: "protein_g", label: "Protein", color: "#ff6b6b" },
-                { key: "carbs_g", label: "Carbs", color: "#ffb347" },
-                { key: "fat_g", label: "Fat", color: "#7ec8a4" },
-                { key: "fiber_g", label: "Fiber", color: "#a78bfa" },
-              ].map((macro, rowIdx) => (
-                <div
-                  key={macro.key}
-                  style={{
-                    ...styles.macroTableRow,
-                    backgroundColor: rowIdx % 2 === 0 ? "#fafafa" : "white",
-                    borderRadius: "6px",
-                  }}
-                >
-                  <div style={{ ...styles.macroTableLabelCell, color: macro.color }}>
-                    {macro.label}
-                  </div>
-                  {weeklyNutrition.map((day) => (
-                    <div key={day.date} style={styles.macroTableCell}>
-                      {day.hasMeals && day[macro.key] > 0
-                        ? <span style={{ color: macro.color, fontWeight: "600" }}>
-                          {day[macro.key]}g
-                        </span>
-                        : <span style={styles.macroTableEmpty}>—</span>
-                      }
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
+        {/* Tab Switcher */}
+        <div style={styles.tabContainer}>
+          <button
+            style={{
+              ...styles.tabButton,
+              backgroundColor: activeTab === "classic" ? "#fff" : "transparent",
+              color: activeTab === "classic" ? "#ff6b6b" : "#666",
+              boxShadow: activeTab === "classic" ? "0 2px 8px rgba(0,0,0,0.06)" : "none",
+            }}
+            onClick={() => setActiveTab("classic")}
+          >
+            📊 Classic Stats
+          </button>
+          <button
+            style={{
+              ...styles.tabButton,
+              backgroundColor: activeTab === "spectrum" ? "#fff" : "transparent",
+              color: activeTab === "spectrum" ? "#ff6b6b" : "#666",
+              boxShadow: activeTab === "spectrum" ? "0 2px 8px rgba(0,0,0,0.06)" : "none",
+            }}
+            onClick={() => setActiveTab("spectrum")}
+          >
+            🎨 Habit Spectrum
+          </button>
+        </div>
 
-        {/* Monthly Calendar */}
-        <motion.div variants={itemVariants} style={styles.card}>
-          <div style={styles.monthNav}>
-            <button style={styles.navButton} onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1))}><ChevronLeft /></button>
-            <p style={styles.cardTitle}>{monthName}</p>
-            <button style={styles.navButton} onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1))}><ChevronRight /></button>
-          </div>
-
-          {/* Day Labels */}
-          <div style={styles.calGrid}>
-            {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
-              <div key={d} style={styles.calHeader}>{d}</div>
-            ))}
-            {renderCalendar()}
-          </div>
-
-          {/* Legend */}
-          <div style={styles.legend}>
-            <div style={styles.legendItem}>
-              <div style={{ ...styles.legendDot, backgroundColor: "#ffb347" }} />
-              <span>You 3+</span>
-            </div>
-            {partnerUid && (
-              <>
-                <div style={styles.legendItem}>
-                  <div style={{ ...styles.legendDot, backgroundColor: "#ffb6c1" }} />
-                  <span>{partnerName ? partnerName.split(" ")[0] : "Partner"} 3+</span>
-                </div>
-                <div style={styles.legendItem}>
-                  <div style={{ ...styles.legendDot, backgroundColor: "#ff6b6b" }} />
-                  <span>Both 3+</span>
-                </div>
-              </>
-            )}
-          </div>
-        </motion.div>
-
-        {/* Monthly Summary */}
-        <motion.div variants={itemVariants} style={styles.card}>
-          <p style={styles.cardTitle}>Monthly Summary</p>
-          <div style={styles.summaryRow}>
-            <div style={styles.summaryItem}>
-              <p style={styles.summaryNumber}>{totalMeals}</p>
-              <p style={styles.summarySub}>Total meals</p>
-            </div>
-            <div style={styles.summaryDivider} />
-            <div style={styles.summaryItem}>
-              <p style={styles.summaryNumber}>{daysHit}</p>
-              <p style={styles.summarySub}>Days with 3+</p>
-            </div>
-            <div style={styles.summaryDivider} />
-            {partnerUid && (
-              <>
-                <div style={styles.summaryDivider} />
-                <div style={styles.summaryItem}>
-                  <p style={styles.summaryNumber}>{coupleStreakCount}</p>
-                  <p style={styles.summarySub}>Couple streak</p>
-                </div>
-              </>
-            )}
-          </div>
-        </motion.div>
-
-        {/* Monthly Macro Overview */}
-        {monthlyNutrition && (
-          <motion.div variants={itemVariants} style={styles.card}>
-            <p style={styles.cardTitle}><Calendar size={18} /> {monthName} Nutrition</p>
-
-            {/* Calorie headline */}
-            <div style={{ ...styles.monthCalorieRow, marginTop: "1rem" }}>
-              <div style={styles.monthCalorieCard}>
-                <p style={styles.monthCalorieNumber}>{monthlyNutrition.avgCalories}</p>
-                <p style={styles.monthCalorieLabel}>avg kcal/day</p>
-              </div>
-              <div style={styles.monthCalorieCard}>
-                <p style={styles.monthCalorieNumber}>{monthlyNutrition.totalMeals}</p>
-                <p style={styles.monthCalorieLabel}>meals tracked</p>
-              </div>
-            </div>
-
-            {/* Macro averages grid */}
-            <div style={styles.monthMacroGrid}>
-              {[
-                { key: "avgProtein", label: "Protein", color: "#ff6b6b" },
-                { key: "avgCarbs", label: "Carbs", color: "#ffb347" },
-                { key: "avgFat", label: "Fat", color: "#7ec8a4" },
-                { key: "avgFiber", label: "Fiber", color: "#a78bfa" },
-              ].map((macro) => (
-                <div key={macro.key} style={styles.monthMacroCard}>
-                  <p style={styles.monthMacroLabel}>{macro.label}</p>
-                  <p style={{ ...styles.monthMacroValue, color: macro.color }}>
-                    {monthlyNutrition[macro.key] || 0}g
-                  </p>
-                  <p style={styles.monthMacroSub}>daily avg</p>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-
-        {/* Meal Type Split */}
-        <motion.div variants={itemVariants} style={styles.card}>
-          <p style={styles.cardTitle}>{partnerUid ? `Meal Split — ${monthName}` : `Your Meals — ${monthName}`}</p>
-          <div style={{ ...styles.cardTitle, marginTop: "1rem" }}></div>
-          <div style={styles.splitRow}>
-
-            {/* Mine */}
-            <div style={styles.splitSide}>
-              <p style={styles.splitName}>You</p>
-              {mySplit.length === 0 ? (
-                <p style={styles.splitEmpty}>No meals</p>
-              ) : (
-                <>
-                  <PieChart width={130} height={130}>
-                    <Pie
-                      data={mySplit}
-                      cx={60}
-                      cy={60}
-                      innerRadius={35}
-                      outerRadius={55}
-                      paddingAngle={3}
-                      dataKey="value"
-                    >
-                      {mySplit.map((entry, index) => (
-                        <Cell key={index} fill={entry.color} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                  <div style={styles.splitLegend}>
-                    {mySplit.map((entry) => (
-                      <div key={entry.name} style={styles.splitLegendItem}>
-                        <div style={{ ...styles.splitDot, backgroundColor: entry.color }} />
-                        <span style={styles.splitLabel}>{entry.name}</span>
-                        <span style={styles.splitCount}>{entry.value}</span>
+        {activeTab === "classic" ? (
+          <>
+            {/* Weekly Macro Trend */}
+            {weeklyNutrition?.some((d) => d.hasMeals && d.calories > 0) && (
+              <motion.div variants={itemVariants} style={styles.card}>
+                <p style={styles.cardTitle}><BarChart2 size={18} /> Weekly Macros</p>
+                <div style={styles.macroTable}>
+                  {/* Header row */}
+                  <div style={styles.macroTableRow}>
+                    <div style={styles.macroTableLabelCell} />
+                    {weeklyNutrition.map((day) => (
+                      <div key={day.date} style={styles.macroTableHeaderCell}>
+                        {day.label}
                       </div>
                     ))}
                   </div>
-                </>
-              )}
-            </div>
+                  {/* Macro rows */}
+                  {[
+                    { key: "protein_g", label: "Protein", color: "#ff6b6b" },
+                    { key: "carbs_g", label: "Carbs", color: "#ffb347" },
+                    { key: "fat_g", label: "Fat", color: "#7ec8a4" },
+                    { key: "fiber_g", label: "Fiber", color: "#a78bfa" },
+                  ].map((macro, rowIdx) => (
+                    <div
+                      key={macro.key}
+                      style={{
+                        ...styles.macroTableRow,
+                        backgroundColor: rowIdx % 2 === 0 ? "#fafafa" : "white",
+                        borderRadius: "6px",
+                      }}
+                    >
+                      <div style={{ ...styles.macroTableLabelCell, color: macro.color }}>
+                        {macro.label}
+                      </div>
+                      {weeklyNutrition.map((day) => (
+                        <div key={day.date} style={styles.macroTableCell}>
+                          {day.hasMeals && day[macro.key] > 0
+                            ? <span style={{ color: macro.color, fontWeight: "600" }}>
+                              {day[macro.key]}g
+                            </span>
+                            : <span style={styles.macroTableEmpty}>—</span>
+                          }
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
 
-            {partnerUid && (
-              <>
-                <div style={styles.splitDivider} />
+            {/* Monthly Calendar */}
+            <motion.div variants={itemVariants} style={styles.card}>
+              <div style={styles.monthNav}>
+                <button style={styles.navButton} onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1))}><ChevronLeft /></button>
+                <p style={styles.cardTitle}>{monthName}</p>
+                <button style={styles.navButton} onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1))}><ChevronRight /></button>
+              </div>
+
+              {/* Day Labels */}
+              <div style={styles.calGrid}>
+                {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
+                  <div key={d} style={styles.calHeader}>{d}</div>
+                ))}
+                {renderCalendar()}
+              </div>
+
+              {/* Legend */}
+              <div style={styles.legend}>
+                <div style={styles.legendItem}>
+                  <div style={{ ...styles.legendDot, backgroundColor: "#ffb347" }} />
+                  <span>You 3+</span>
+                </div>
+                {partnerUid && (
+                  <>
+                    <div style={styles.legendItem}>
+                      <div style={{ ...styles.legendDot, backgroundColor: "#ffb6c1" }} />
+                      <span>{partnerName ? partnerName.split(" ")[0] : "Partner"} 3+</span>
+                    </div>
+                    <div style={styles.legendItem}>
+                      <div style={{ ...styles.legendDot, backgroundColor: "#ff6b6b" }} />
+                      <span>Both 3+</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            </motion.div>
+
+            {/* Monthly Summary */}
+            <motion.div variants={itemVariants} style={styles.card}>
+              <p style={styles.cardTitle}>Monthly Summary</p>
+              <div style={styles.summaryRow}>
+                <div style={styles.summaryItem}>
+                  <p style={styles.summaryNumber}>{totalMeals}</p>
+                  <p style={styles.summarySub}>Total meals</p>
+                </div>
+                <div style={styles.summaryDivider} />
+                <div style={styles.summaryItem}>
+                  <p style={styles.summaryNumber}>{daysHit}</p>
+                  <p style={styles.summarySub}>Days with 3+</p>
+                </div>
+                <div style={styles.summaryDivider} />
+                {partnerUid && (
+                  <>
+                    <div style={styles.summaryDivider} />
+                    <div style={styles.summaryItem}>
+                      <p style={styles.summaryNumber}>{coupleStreakCount}</p>
+                      <p style={styles.summarySub}>Couple streak</p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </motion.div>
+
+            {/* Monthly Macro Overview */}
+            {monthlyNutrition && (
+              <motion.div variants={itemVariants} style={styles.card}>
+                <p style={styles.cardTitle}><Calendar size={18} /> {monthName} Nutrition</p>
+
+                {/* Calorie headline */}
+                <div style={{ ...styles.monthCalorieRow, marginTop: "1rem" }}>
+                  <div style={styles.monthCalorieCard}>
+                    <p style={styles.monthCalorieNumber}>{monthlyNutrition.avgCalories}</p>
+                    <p style={styles.monthCalorieLabel}>avg kcal/day</p>
+                  </div>
+                  <div style={styles.monthCalorieCard}>
+                    <p style={styles.monthCalorieNumber}>{monthlyNutrition.totalMeals}</p>
+                    <p style={styles.monthCalorieLabel}>meals tracked</p>
+                  </div>
+                </div>
+
+                {/* Macro averages grid */}
+                <div style={styles.monthMacroGrid}>
+                  {[
+                    { key: "avgProtein", label: "Protein", color: "#ff6b6b" },
+                    { key: "avgCarbs", label: "Carbs", color: "#ffb347" },
+                    { key: "avgFat", label: "Fat", color: "#7ec8a4" },
+                    { key: "avgFiber", label: "Fiber", color: "#a78bfa" },
+                  ].map((macro) => (
+                    <div key={macro.key} style={styles.monthMacroCard}>
+                      <p style={styles.monthMacroLabel}>{macro.label}</p>
+                      <p style={{ ...styles.monthMacroValue, color: macro.color }}>
+                        {monthlyNutrition[macro.key] || 0}g
+                      </p>
+                      <p style={styles.monthMacroSub}>daily avg</p>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+
+            {/* Meal Type Split */}
+            <motion.div variants={itemVariants} style={styles.card}>
+              <p style={styles.cardTitle}>{partnerUid ? `Meal Split — ${monthName}` : `Your Meals — ${monthName}`}</p>
+              <div style={{ ...styles.cardTitle, marginTop: "1rem" }}></div>
+              <div style={styles.splitRow}>
+
+                {/* Mine */}
                 <div style={styles.splitSide}>
-                  <p style={styles.splitName}>{partnerName ? partnerName.split(" ")[0] : "Partner"}</p>
-                  {partnerSplit.length === 0 ? (
+                  <p style={styles.splitName}>You</p>
+                  {mySplit.length === 0 ? (
                     <p style={styles.splitEmpty}>No meals</p>
                   ) : (
                     <>
                       <PieChart width={130} height={130}>
                         <Pie
-                          data={partnerSplit}
+                          data={mySplit}
                           cx={60}
                           cy={60}
                           innerRadius={35}
@@ -652,13 +699,13 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                           paddingAngle={3}
                           dataKey="value"
                         >
-                          {partnerSplit.map((entry, index) => (
+                          {mySplit.map((entry, index) => (
                             <Cell key={index} fill={entry.color} />
                           ))}
                         </Pie>
                       </PieChart>
                       <div style={styles.splitLegend}>
-                        {partnerSplit.map((entry) => (
+                        {mySplit.map((entry) => (
                           <div key={entry.name} style={styles.splitLegendItem}>
                             <div style={{ ...styles.splitDot, backgroundColor: entry.color }} />
                             <span style={styles.splitLabel}>{entry.name}</span>
@@ -669,10 +716,190 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                     </>
                   )}
                 </div>
-              </>
-            )}
-          </div>
-        </motion.div>
+
+                {partnerUid && (
+                  <>
+                    <div style={styles.splitDivider} />
+                    <div style={styles.splitSide}>
+                      <p style={styles.splitName}>{partnerName ? partnerName.split(" ")[0] : "Partner"}</p>
+                      {partnerSplit.length === 0 ? (
+                        <p style={styles.splitEmpty}>No meals</p>
+                      ) : (
+                        <>
+                          <PieChart width={130} height={130}>
+                            <Pie
+                              data={partnerSplit}
+                              cx={60}
+                              cy={60}
+                              innerRadius={35}
+                              outerRadius={55}
+                              paddingAngle={3}
+                              dataKey="value"
+                            >
+                              {partnerSplit.map((entry, index) => (
+                                <Cell key={index} fill={entry.color} />
+                              ))}
+                            </Pie>
+                          </PieChart>
+                          <div style={styles.splitLegend}>
+                            {partnerSplit.map((entry) => (
+                              <div key={entry.name} style={styles.splitLegendItem}>
+                                <div style={{ ...styles.splitDot, backgroundColor: entry.color }} />
+                                <span style={styles.splitLabel}>{entry.name}</span>
+                                <span style={styles.splitCount}>{entry.value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </>
+        ) : (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            style={styles.card}
+          >
+            <p style={styles.cardTitle}>
+              🎨 Weekly Habit Canvas
+            </p>
+            <p style={{ fontSize: "0.82rem", color: "#888", marginBottom: "1rem", lineHeight: "1.45" }}>
+              Visualizing the balance of your foods this week. Tap a day to view details.
+            </p>
+
+            <div style={styles.canvasGrid}>
+              {weeklyNutrition.map((day) => {
+                const dayMeals = day.meals || [];
+                // Collect all unique categories across all meals for gradient blending
+                const allCats = [];
+                const seenIds = new Set();
+                dayMeals.forEach(m => {
+                  getHabitCategories(m.nutrition).forEach(cat => {
+                    if (!seenIds.has(cat.id)) {
+                      seenIds.add(cat.id);
+                      allCats.push(cat);
+                    }
+                  });
+                });
+
+                let backgroundStyle = "#f5f5f5";
+                let borderStyle = "2px dashed #d1d5db";
+
+                if (allCats.length === 1) {
+                  backgroundStyle = allCats[0].bg;
+                  borderStyle = `2px solid ${allCats[0].color}`;
+                } else if (allCats.length > 1) {
+                  backgroundStyle = `linear-gradient(135deg, ${allCats.map(c => c.bg).join(", ")})`;
+                  borderStyle = `2px solid ${allCats[0].color}`;
+                }
+
+                // Show primary emoji per meal (up to 3 slots)
+                return (
+                  <div
+                    key={day.date}
+                    onClick={() => {
+                      if (dayMeals.length > 0) {
+                        setSelectedSpectrumDay(day);
+                      }
+                    }}
+                    style={{
+                      ...styles.canvasDayBlock,
+                      background: backgroundStyle,
+                      border: borderStyle,
+                      cursor: dayMeals.length > 0 ? "pointer" : "default"
+                    }}
+                    className={dayMeals.length > 0 ? "clickable-card" : ""}
+                  >
+                    <p style={styles.canvasDayLabel}>{day.label}</p>
+                    <div style={styles.canvasEmojiRow}>
+                      {dayMeals.slice(0, 3).map((meal, idx) => {
+                        const cats = getHabitCategories(meal.nutrition);
+                        const primaryEmoji = cats.length > 0 ? cats[0].emoji : "🍽️";
+                        return (
+                          <span key={meal.id || idx} style={{ fontSize: "0.95rem", lineHeight: 1 }}>
+                            {primaryEmoji}
+                          </span>
+                        );
+                      })}
+                    </div>
+                    {dayMeals.length > 3 ? (
+                      <span style={styles.canvasMoreCount}>+{dayMeals.length - 3}</span>
+                    ) : dayMeals.length === 0 ? (
+                      <span style={{ fontSize: "0.6rem", color: "#aaa" }}>empty</span>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Weekly Habit Synthesis Card */}
+            {(() => {
+              const reflection = generateWeeklyReflection(weeklyNutrition);
+              return (
+                <div style={styles.napkinCard}>
+                  <div style={styles.napkinLines}>
+                    <p style={styles.napkinTitle}>✨ Weekly Habit Synthesis</p>
+                    {reflection.percentages ? (
+                      <div style={styles.napkinBarsContainer}>
+                        {SPECTRUM_CATEGORIES.map((item) => {
+                          const pct = reflection.percentages[item.id] ?? 0;
+                          return (
+                            <div key={item.id} style={{ ...styles.napkinBarRow, position: "relative" }}>
+                              <div 
+                                style={{ ...styles.napkinBarLabel, cursor: "pointer", position: "relative" }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveNapkinTooltip(activeNapkinTooltip === item.id ? null : item.id);
+                                }}
+                              >
+                                {item.emoji} {item.label}
+                                
+                                <AnimatePresence>
+                                  {activeNapkinTooltip === item.id && (
+                                    <motion.div 
+                                      initial={{ opacity: 0, y: 5 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      exit={{ opacity: 0, y: 5 }}
+                                      style={styles.napkinTooltip}
+                                    >
+                                      {item.desc}
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              </div>
+                              <div style={styles.napkinBarTrack}>
+                                <div style={{
+                                  ...styles.napkinBarFill,
+                                  width: `${pct}%`,
+                                  backgroundColor: pct > 0 ? item.color : "transparent"
+                                }} />
+                              </div>
+                              <span style={{
+                                ...styles.napkinBarValue,
+                                color: pct > 0 ? "#374151" : "#d1d5db"
+                              }}>
+                                {pct}%
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p style={styles.napkinReflectionTextEmpty}>
+                        {reflection.note}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+          </motion.div>
+        )}
 
         {/* Insight Revisit Buttons - Now inside the container */}
         {!showInsightPopup && filteredMonthly.map((ins) => (
@@ -700,6 +927,98 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
           </button>
         )}
       </motion.div>
+      {/* Spectrum Day Bloom Detail Modal */}
+      <AnimatePresence>
+        {selectedSpectrumDay && (
+          <motion.div
+            style={styles.overlayCenter}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setSelectedSpectrumDay(null)}
+          >
+            <motion.div
+              style={styles.bloomSheet}
+              initial={{ y: "50px", opacity: 0, scale: 0.95 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: "50px", opacity: 0, scale: 0.95 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div style={styles.dayPopupHeader}>
+                <div>
+                  <p style={styles.dayPopupDate}>
+                    {new Date(selectedSpectrumDay.date + "T12:00:00").toLocaleDateString("en-US", {
+                      weekday: "long", month: "long", day: "numeric"
+                    })}
+                  </p>
+                  <p style={styles.dayPopupMealCount}>
+                    {selectedSpectrumDay.meals.length} meal{selectedSpectrumDay.meals.length !== 1 ? "s" : ""} logged
+                  </p>
+                </div>
+              </div>
+
+              {/* Meal List with category pills */}
+              <div style={{ ...styles.dayMealList, maxHeight: "380px", overflowY: "auto", paddingRight: "4px" }}>
+                {selectedSpectrumDay.meals.map((meal) => {
+                  const cats = getHabitCategories(meal.nutrition);
+                  const primaryCat = cats[0] || null;
+                  return (
+                    <div key={meal.id} style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      borderLeft: primaryCat ? `4px solid ${primaryCat.color}` : "4px solid transparent",
+                      padding: "12px",
+                      marginBottom: "16px",
+                      borderRadius: "0 12px 12px 0",
+                      backgroundColor: "#fafafa",
+                      gap: "8px"
+                    }}>
+                      <div style={styles.dayMealLeft}>
+                        {meal.photoURL && (
+                          <img src={meal.photoURL} alt={meal.name} style={styles.dayMealThumb} loading="lazy" />
+                        )}
+                        <div style={{ flex: 1 }}>
+                          <p style={styles.dayMealName}>{meal.name}</p>
+                          <p style={styles.dayMealMeta}>{meal.type} · {meal.localTime}</p>
+                        </div>
+                      </div>
+
+                      {/* Nested Micro Nutrition Card */}
+                      {meal.nutrition && (
+                        <div style={{ transformOrigin: "left top" }}>
+                          <MealNutritionCard nutrition={meal.nutrition} editable={false} />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <button
+                style={{
+                  width: "100%",
+                  padding: "0.85rem",
+                  backgroundColor: "#f9fafb",
+                  color: "#4b5563",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "12px",
+                  fontSize: "0.95rem",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  marginTop: "1rem"
+                }}
+                onClick={() => setSelectedSpectrumDay(null)}
+              >
+                Close Canvas
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Day Nutrition Popup - Moved outside container for perfect centering */}
       <AnimatePresence>
         {selectedCalendarDay && (
@@ -1692,6 +2011,160 @@ const styles = {
     borderRadius: "999px",
     transition: "width 0.4s ease",
   },
+  tabContainer: {
+    display: "flex",
+    backgroundColor: "#f3f4f6",
+    padding: "4px",
+    borderRadius: "12px",
+    marginBottom: "1.5rem",
+    gap: "4px"
+  },
+  tabButton: {
+    flex: 1,
+    border: "none",
+    padding: "8px 16px",
+    borderRadius: "8px",
+    fontSize: "0.82rem",
+    fontWeight: "700",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "6px"
+  },
+  canvasGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(7, 1fr)",
+    gap: "6px",
+    marginBottom: "1.5rem",
+  },
+  canvasDayBlock: {
+    minWidth: 0,
+    height: "100px",
+    borderRadius: "12px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    padding: "8px 4px",
+    gap: "6px",
+    transition: "transform 0.2s ease, box-shadow 0.2s ease",
+    boxSizing: "border-box"
+  },
+  canvasDayLabel: {
+    fontSize: "0.6rem",
+    fontWeight: "700",
+    color: "#4b5563",
+    margin: 0,
+    textTransform: "uppercase",
+    letterSpacing: "0.02em"
+  },
+  canvasEmojiRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: "1px",
+    width: "100%"
+  },
+  canvasMoreCount: {
+    fontSize: "0.6rem",
+    fontWeight: "800",
+    color: "#6b7280",
+    backgroundColor: "#e5e7eb",
+    padding: "1px 4px",
+    borderRadius: "6px"
+  },
+  napkinCard: {
+    backgroundColor: "#ffffff",
+    border: "1px solid #f3f4f6",
+    borderRadius: "16px",
+    padding: "0",
+    boxShadow: "0 4px 20px rgba(243, 244, 246, 0.8)",
+    overflow: "hidden"
+  },
+  napkinLines: {
+    backgroundImage: "linear-gradient(transparent calc(24px - 1px), #f3f4f6 calc(24px - 1px))",
+    backgroundSize: "100% 24px",
+    padding: "24px 18px",
+  },
+  napkinTitle: {
+    fontSize: "0.88rem",
+    fontWeight: "700",
+    color: "#78350f",
+    margin: "0 0 24px 0",
+    lineHeight: "24px",
+    letterSpacing: "0.01em"
+  },
+  napkinBarsContainer: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "0",
+  },
+  napkinBarRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    height: "24px",
+  },
+  napkinBarLabel: {
+    width: "100px",
+    fontSize: "0.72rem",
+    fontWeight: "700",
+    color: "#4b5563",
+    whiteSpace: "nowrap"
+  },
+  napkinTooltip: {
+    position: "absolute",
+    left: "0",
+    top: "100%",
+    marginTop: "6px",
+    backgroundColor: "#1f2937",
+    color: "#f9fafb",
+    fontSize: "0.68rem",
+    fontWeight: "normal",
+    padding: "6px 10px",
+    borderRadius: "8px",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+    zIndex: 10,
+    width: "max-content",
+    pointerEvents: "none",
+    letterSpacing: "0.01em"
+  },
+  napkinBarTrack: {
+    flex: 1,
+    height: "6px",
+    backgroundColor: "#e5e7eb",
+    borderRadius: "3px",
+    overflow: "hidden"
+  },
+  napkinBarFill: {
+    height: "100%",
+    borderRadius: "3px"
+  },
+  napkinBarValue: {
+    fontSize: "0.72rem",
+    fontWeight: "800",
+    color: "#374151",
+    width: "30px",
+    textAlign: "right"
+  },
+  napkinReflectionText: {
+    fontSize: "0.85rem",
+    fontStyle: "italic",
+    fontFamily: "'Georgia', serif",
+    color: "#451a03",
+    margin: 0,
+    lineHeight: "24px"
+  },
+  napkinReflectionTextEmpty: {
+    fontSize: "0.85rem",
+    color: "#9a3412",
+    margin: 0,
+    lineHeight: "24px",
+    fontStyle: "italic",
+    fontFamily: "'Georgia', serif"
+  }
 };
 
 export default Weekly;
