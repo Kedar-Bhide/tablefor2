@@ -190,6 +190,37 @@ export const getHabitCategory = (nutrition) => {
   return cats && cats.length > 0 ? cats[0] : null;
 };
 
+// Returns ALL matched categories (no top-3 cap) — used for stats/synthesis page
+// so every spectrum bucket gets scored even if it didn't make the card
+export const getAllHabitCategories = (nutrition) => {
+  if (!nutrition || !nutrition.calories || nutrition.calories <= 0) return [];
+  const { calories, protein_g, carbs_g, fat_g, fiber_g } = nutrition;
+  const categories = [];
+
+  const proteinCals = protein_g * 4;
+  const carbCals = carbs_g * 4;
+  const fatCals = fat_g * 9;
+  const proteinPct = calories > 0 ? proteinCals / calories : 0;
+  const carbPct = calories > 0 ? carbCals / calories : 0;
+  const fatPct = calories > 0 ? fatCals / calories : 0;
+
+  if (protein_g >= 20 || proteinPct >= 0.30) categories.push({ id: "strength" });
+  if (carbs_g >= 40 || carbPct >= 0.50) categories.push({ id: "fuel" });
+  if (protein_g >= 15 && carbs_g >= 20 && fat_g >= 8 && fiber_g >= 3) categories.push({ id: "balanced" });
+  if (protein_g >= 20 || fiber_g >= 8) categories.push({ id: "filling" });
+  if (fiber_g >= 8) categories.push({ id: "fiberHero" });
+  if (calories >= 500 && protein_g >= 25 && fiber_g >= 5) categories.push({ id: "power" });
+  if (protein_g >= 15 && fat_g <= 10) categories.push({ id: "lean" });
+  if (fat_g >= 22 || fatPct >= 0.40) categories.push({ id: "comfort" });
+  if (calories < 250) categories.push({ id: "snack" });
+  if (calories < 150 && fat_g < 4 && protein_g < 8) categories.push({ id: "light" });
+
+  // Fallback
+  if (categories.length === 0) categories.push({ id: "balanced" });
+
+  return categories; // NO slice — full list
+};
+
 // Returns a descriptive 2-line explanation WHY a category was assigned (for the tap-to-explain UX)
 export const getWhyText = (cat, nutrition) => {
   if (!cat || !nutrition) return "";
