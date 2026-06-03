@@ -5,6 +5,78 @@ import { PieChart, Pie, Cell } from "recharts";
 import { formatLocalDateKey, getMealLocalDateKey } from "../utils/dateTime";
 import { motion, AnimatePresence } from "framer-motion";
 import { Flame, Heart, BarChart2, Calendar, FileText, ChevronLeft, ChevronRight } from "lucide-react";
+import MealNutritionCard, { getHabitCategories } from "../components/MealNutritionCard";
+
+// All 6 spectrum categories with their metadata (mirrors MealNutritionCard)
+const SPECTRUM_CATEGORIES = [
+  { id: "vitality", label: "Vitality", emoji: "🍃", color: "#10b981" },
+  { id: "strength", label: "Strength", emoji: "💪", color: "#3b82f6" },
+  { id: "energy",   label: "Fuel",     emoji: "🔋", color: "#d97706" },
+  { id: "focus",    label: "Focus",    emoji: "🧠", color: "#ea580c" },
+  { id: "comfort",  label: "Comfort",  emoji: "🧸", color: "#ef4444" },
+  { id: "nurture",  label: "Light",    emoji: "🌿", color: "#0891b2" },
+];
+
+// Rule-based Back-of-the-Napkin Habit Reflection Synthesizer
+const generateWeeklyReflection = (weeklyData) => {
+  // Multi-tag: count every tag a meal receives (not just the primary)
+  const counts = { vitality: 0, strength: 0, energy: 0, focus: 0, comfort: 0, nurture: 0 };
+  let total = 0;
+
+  weeklyData.forEach(day => {
+    if (day.meals) {
+      day.meals.forEach(meal => {
+        const cats = getHabitCategories(meal.nutrition);
+        cats.forEach(cat => {
+          if (cat.id in counts) {
+            counts[cat.id]++;
+            total++;
+          }
+        });
+      });
+    }
+  });
+
+  if (total === 0) {
+    return {
+      percentages: null,
+      note: "Your napkin is empty! Log some meals this week to paint your Habit Spectrum and see your Back-of-the-Napkin Reflection. 🎨"
+    };
+  }
+
+  const percentages = {
+    vitality: Math.round((counts.vitality / total) * 100),
+    strength: Math.round((counts.strength / total) * 100),
+    energy:   Math.round((counts.energy   / total) * 100),
+    focus:    Math.round((counts.focus    / total) * 100),
+    comfort:  Math.round((counts.comfort  / total) * 100),
+    nurture:  Math.round((counts.nurture  / total) * 100),
+  };
+
+  // Find dominant categories
+  const sorted = Object.entries(percentages).sort((a, b) => b[1] - a[1]);
+  const primary = sorted[0];
+  const secondary = sorted[1];
+
+  let note = "";
+  if (primary[0] === "vitality" && primary[1] > 35) {
+    note = `Incredible work! Your spectrum is dominated by Vitality (${primary[1]}%). You're flooding your body with fibre and micronutrients — the cornerstone of longevity. For next week, try layering in a Strength 💪 boost at lunch to sustain this clean energy even longer! 🍃`;
+  } else if (primary[0] === "strength" && primary[1] > 35) {
+    note = `Solid effort! Your week was driven by Strength (${primary[1]}%), perfect for rebuilding muscle and staying full. To balance the protein load, add a Vitality 🍃 side — think leafy greens, roasted veg, or a handful of seeds! 💪`;
+  } else if (primary[0] === "energy" && primary[1] > 35) {
+    note = `High octane! Your palette is powered by Fuel (${primary[1]}%), giving you plenty of glycogen. To keep your blood sugar steady, pair your next carb-rich meal with a Strength 💪 protein source. Small shift, big difference! 🔋`;
+  } else if (primary[0] === "focus" && primary[1] > 30) {
+    note = `Brain food week! Focus (${primary[1]}%) is your star — healthy fats and lipids are powering your mind. Balance it out with some Vitality 🍃 fibre to support digestion and gut-brain harmony! 🧠`;
+  } else if (primary[0] === "comfort" && primary[1] > 30) {
+    note = `A cozy, indulgent week! Comfort (${primary[1]}%) was your canvas. Enjoying food is a beautiful part of life — for next week, try swapping one comfort side for a Vitality 🍃 whole food plate. You've totally got this! 🧸`;
+  } else if (primary[0] === "nurture" && primary[1] > 25) {
+    note = `Light and clean! Hydrate (${primary[1]}%) led your week — your digestive system is getting wonderful rest. Try sprinkling in some Strength 💪 and Fuel 🔋 to keep your energy levels topped up! 💧`;
+  } else {
+    note = `Beautifully balanced! Your spectrum is diverse this week, led by ${SPECTRUM_CATEGORIES.find(c => c.id === primary[0])?.label || primary[0]} (${primary[1]}%) and ${SPECTRUM_CATEGORIES.find(c => c.id === secondary[0])?.label || secondary[0]} (${secondary[1]}%). This mixed palette is the golden standard of intuitive eating. Keep it up! 🎨`;
+  }
+
+  return { percentages, note };
+};
 
 function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserData, globalPartnerData }) {
   const user = auth.currentUser;
@@ -16,6 +88,8 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
   const [partnerMonthMeals, setPartnerMonthMeals] = useState([]);
   const [weeklyNutrition, setWeeklyNutrition] = useState([]);
   const [selectedCalendarDay, setSelectedCalendarDay] = useState(null);
+  const [selectedSpectrumDay, setSelectedSpectrumDay] = useState(null);
+  const [activeTab, setActiveTab] = useState("spectrum"); // Default to spectrum for the wow factor!
   const [calendarDayMeals, setCalendarDayMeals] = useState([]);
   const [monthlyNutrition, setMonthlyNutrition] = useState(null);
   const [fullDayMap, setFullDayMap] = useState({});
@@ -145,6 +219,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
           label: d.toLocaleDateString("en-US", { weekday: "short" }),
           ...totals,
           hasMeals: dayMeals.length > 0,
+          meals: dayMeals
         });
       }
       setWeeklyNutrition(last7);
@@ -444,10 +519,38 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
           )}
         </div>
 
-        {/* Weekly Macro Trend */}
-        {weeklyNutrition?.some((d) => d.hasMeals && d.calories > 0) && (
-          <motion.div variants={itemVariants} style={styles.card}>
-            <p style={styles.cardTitle}><BarChart2 size={18} /> Weekly Macros</p>
+        {/* Tab Switcher */}
+        <div style={styles.tabContainer}>
+          <button
+            style={{
+              ...styles.tabButton,
+              backgroundColor: activeTab === "spectrum" ? "#fff" : "transparent",
+              color: activeTab === "spectrum" ? "#ff6b6b" : "#666",
+              boxShadow: activeTab === "spectrum" ? "0 2px 8px rgba(0,0,0,0.06)" : "none",
+            }}
+            onClick={() => setActiveTab("spectrum")}
+          >
+            🎨 Habit Spectrum
+          </button>
+          <button
+            style={{
+              ...styles.tabButton,
+              backgroundColor: activeTab === "classic" ? "#fff" : "transparent",
+              color: activeTab === "classic" ? "#ff6b6b" : "#666",
+              boxShadow: activeTab === "classic" ? "0 2px 8px rgba(0,0,0,0.06)" : "none",
+            }}
+            onClick={() => setActiveTab("classic")}
+          >
+            📊 Classic Stats
+          </button>
+        </div>
+
+        {activeTab === "classic" ? (
+          <>
+            {/* Weekly Macro Trend */}
+            {weeklyNutrition?.some((d) => d.hasMeals && d.calories > 0) && (
+              <motion.div variants={itemVariants} style={styles.card}>
+                <p style={styles.cardTitle}><BarChart2 size={18} /> Weekly Macros</p>
             <div style={styles.macroTable}>
               {/* Header row */}
               <div style={styles.macroTableRow}>
@@ -673,6 +776,129 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
             )}
           </div>
         </motion.div>
+      </>
+    ) : (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            style={styles.card}
+          >
+            <p style={styles.cardTitle}>
+              🎨 Weekly Habit Canvas
+            </p>
+            <p style={{ fontSize: "0.82rem", color: "#666", marginBottom: "1.2rem", marginTop: "-0.5rem", lineHeight: "1.4" }}>
+              Visualizing the balance of your foods this week. Tap a day block to view details.
+            </p>
+            
+            <div style={styles.canvasGrid}>
+              {weeklyNutrition.map((day) => {
+                const dayMeals = day.meals || [];
+                // Collect all unique categories across all meals for gradient blending
+                const allCats = [];
+                const seenIds = new Set();
+                dayMeals.forEach(m => {
+                  getHabitCategories(m.nutrition).forEach(cat => {
+                    if (!seenIds.has(cat.id)) {
+                      seenIds.add(cat.id);
+                      allCats.push(cat);
+                    }
+                  });
+                });
+
+                let backgroundStyle = "#f5f5f5";
+                let borderStyle = "2px dashed #d1d5db";
+
+                if (allCats.length === 1) {
+                  backgroundStyle = allCats[0].bg;
+                  borderStyle = `2px solid ${allCats[0].color}`;
+                } else if (allCats.length > 1) {
+                  backgroundStyle = `linear-gradient(135deg, ${allCats.map(c => c.bg).join(", ")})`;
+                  borderStyle = `2px solid ${allCats[0].color}`;
+                }
+
+                // Show primary emoji per meal (up to 3 slots)
+                return (
+                  <div
+                    key={day.date}
+                    onClick={() => {
+                      if (dayMeals.length > 0) {
+                        setSelectedSpectrumDay(day);
+                      }
+                    }}
+                    style={{
+                      ...styles.canvasDayBlock,
+                      background: backgroundStyle,
+                      border: borderStyle,
+                      cursor: dayMeals.length > 0 ? "pointer" : "default"
+                    }}
+                    className={dayMeals.length > 0 ? "clickable-card" : ""}
+                  >
+                    <p style={styles.canvasDayLabel}>{day.label}</p>
+                    <div style={styles.canvasEmojiRow}>
+                      {dayMeals.slice(0, 3).map((meal, idx) => {
+                        const cats = getHabitCategories(meal.nutrition);
+                        const primaryEmoji = cats.length > 0 ? cats[0].emoji : "🍽️";
+                        return (
+                          <span key={meal.id || idx} style={{ fontSize: "1.1rem" }}>
+                            {primaryEmoji}
+                          </span>
+                        );
+                      })}
+                    </div>
+                    {dayMeals.length > 3 ? (
+                      <span style={styles.canvasMoreCount}>+{dayMeals.length - 3}</span>
+                    ) : dayMeals.length === 0 ? (
+                      <span style={{ fontSize: "0.6rem", color: "#aaa" }}>empty</span>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Back-of-the-Napkin Synthesis Card */}
+            {(() => {
+              const reflection = generateWeeklyReflection(weeklyNutrition);
+              return (
+                <div style={styles.napkinCard}>
+                  <div style={styles.napkinLines}>
+                    <p style={styles.napkinTitle}>✏️ Back-of-the-Napkin Synthesis</p>
+                    {reflection.percentages ? (
+                      <>
+                        <div style={styles.napkinBarsContainer}>
+                          {SPECTRUM_CATEGORIES.map((item) => {
+                            const pct = reflection.percentages[item.id] || 0;
+                            if (pct === 0) return null;
+                            return (
+                              <div key={item.id} style={styles.napkinBarRow}>
+                                <span style={styles.napkinBarLabel}>{item.emoji} {item.label}</span>
+                                <div style={styles.napkinBarTrack}>
+                                  <div style={{
+                                    ...styles.napkinBarFill,
+                                    width: `${pct}%`,
+                                    backgroundColor: item.color
+                                  }} />
+                                </div>
+                                <span style={styles.napkinBarValue}>{pct}%</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <p style={styles.napkinReflectionText}>
+                          {reflection.note}
+                        </p>
+                      </>
+                    ) : (
+                      <p style={styles.napkinReflectionTextEmpty}>
+                        {reflection.note}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+          </motion.div>
+        )}
 
         {/* Insight Revisit Buttons - Now inside the container */}
         {!showInsightPopup && filteredMonthly.map((ins) => (
@@ -700,6 +926,105 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
           </button>
         )}
       </motion.div>
+      {/* Spectrum Day Bloom Detail Modal */}
+      <AnimatePresence>
+        {selectedSpectrumDay && (
+          <motion.div
+            style={styles.overlayCenter}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setSelectedSpectrumDay(null)}
+          >
+            <motion.div
+              style={styles.bloomSheet}
+              initial={{ y: "50px", opacity: 0, scale: 0.95 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: "50px", opacity: 0, scale: 0.95 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div style={styles.dayPopupHeader}>
+                <div>
+                  <p style={styles.dayPopupDate}>
+                    {new Date(selectedSpectrumDay.date + "T12:00:00").toLocaleDateString("en-US", {
+                      weekday: "long", month: "long", day: "numeric"
+                    })}
+                  </p>
+                  <p style={styles.dayPopupMealCount}>
+                    {selectedSpectrumDay.meals.length} meal{selectedSpectrumDay.meals.length !== 1 ? "s" : ""} logged
+                  </p>
+                </div>
+              </div>
+
+              {/* Meal List with category pills */}
+              <div style={{ ...styles.dayMealList, maxHeight: "380px", overflowY: "auto", paddingRight: "4px" }}>
+                {selectedSpectrumDay.meals.map((meal) => {
+                  const cats = getHabitCategories(meal.nutrition);
+                  const primaryCat = cats[0] || null;
+                  return (
+                    <div key={meal.id} style={{
+                      ...styles.dayMealRow,
+                      borderLeft: primaryCat ? `4px solid ${primaryCat.color}` : "4px solid transparent",
+                      paddingLeft: "10px",
+                      marginBottom: "16px",
+                      borderRadius: "0 12px 12px 0",
+                      backgroundColor: "#fafafa"
+                    }}>
+                      <div style={styles.dayMealLeft}>
+                        {meal.photoURL && (
+                          <img src={meal.photoURL} alt={meal.name} style={styles.dayMealThumb} loading="lazy" />
+                        )}
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                            <p style={styles.dayMealName}>{meal.name}</p>
+                            {/* Show all category pills (up to 3) */}
+                            {cats.map(cat => (
+                              <span key={cat.id} style={{
+                                fontSize: "0.6rem",
+                                fontWeight: "800",
+                                color: cat.color,
+                                backgroundColor: cat.bg,
+                                padding: "1px 6px",
+                                borderRadius: "8px",
+                                textTransform: "uppercase"
+                              }}>
+                                {cat.emoji} {cat.name}
+                              </span>
+                            ))}
+                          </div>
+                          <p style={styles.dayMealMeta}>{meal.type} · {meal.localTime}</p>
+                        </div>
+                      </div>
+
+                      {/* Nested Micro Nutrition Card */}
+                      {meal.nutrition && (
+                        <div style={{ marginTop: "8px", transform: "scale(0.95)", transformOrigin: "left top" }}>
+                          <MealNutritionCard nutrition={meal.nutrition} editable={false} />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <button
+                style={{
+                  ...styles.saveButton,
+                  marginTop: "1rem",
+                  backgroundColor: "#374151"
+                }}
+                onClick={() => setSelectedSpectrumDay(null)}
+              >
+                Close Canvas
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Day Nutrition Popup - Moved outside container for perfect centering */}
       <AnimatePresence>
         {selectedCalendarDay && (
@@ -1692,6 +2017,143 @@ const styles = {
     borderRadius: "999px",
     transition: "width 0.4s ease",
   },
+  tabContainer: {
+    display: "flex",
+    backgroundColor: "#f3f4f6",
+    padding: "4px",
+    borderRadius: "12px",
+    marginBottom: "1.5rem",
+    gap: "4px"
+  },
+  tabButton: {
+    flex: 1,
+    border: "none",
+    padding: "8px 16px",
+    borderRadius: "8px",
+    fontSize: "0.82rem",
+    fontWeight: "700",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "6px"
+  },
+  canvasGrid: {
+    display: "flex",
+    gap: "8px",
+    overflowX: "auto",
+    paddingBottom: "10px",
+    marginBottom: "1.5rem",
+    scrollbarWidth: "none"
+  },
+  canvasDayBlock: {
+    flex: "0 0 75px",
+    height: "105px",
+    borderRadius: "16px",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "10px 4px",
+    transition: "transform 0.2s ease, box-shadow 0.2s ease",
+    boxSizing: "border-box"
+  },
+  canvasDayLabel: {
+    fontSize: "0.72rem",
+    fontWeight: "700",
+    color: "#4b5563",
+    margin: 0,
+    textTransform: "uppercase"
+  },
+  canvasEmojiRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: "2px",
+    width: "100%"
+  },
+  canvasMoreCount: {
+    fontSize: "0.6rem",
+    fontWeight: "800",
+    color: "#6b7280",
+    backgroundColor: "#e5e7eb",
+    padding: "1px 4px",
+    borderRadius: "6px"
+  },
+  napkinCard: {
+    backgroundColor: "#fffdf9", 
+    border: "1px solid #f6f1e5",
+    borderRadius: "16px",
+    padding: "1.5rem 1.2rem",
+    boxShadow: "0 4px 20px rgba(246, 241, 229, 0.5)",
+    position: "relative",
+    overflow: "hidden"
+  },
+  napkinLines: {
+    backgroundImage: "linear-gradient(#e1d9c7 1px, transparent 1px)",
+    backgroundSize: "100% 24px",
+    lineHeight: "24px"
+  },
+  napkinTitle: {
+    fontSize: "0.9rem",
+    fontWeight: "850",
+    fontFamily: "'Playfair Display', serif",
+    color: "#78350f",
+    margin: "0 0 1rem 0",
+    lineHeight: "24px"
+  },
+  napkinBarsContainer: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    marginBottom: "1rem"
+  },
+  napkinBarRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    lineHeight: "20px"
+  },
+  napkinBarLabel: {
+    width: "75px",
+    fontSize: "0.72rem",
+    fontWeight: "700",
+    color: "#6b7280"
+  },
+  napkinBarTrack: {
+    flex: 1,
+    height: "6px",
+    backgroundColor: "#e5e7eb",
+    borderRadius: "3px",
+    overflow: "hidden"
+  },
+  napkinBarFill: {
+    height: "100%",
+    borderRadius: "3px"
+  },
+  napkinBarValue: {
+    fontSize: "0.72rem",
+    fontWeight: "800",
+    color: "#374151",
+    width: "30px",
+    textAlign: "right"
+  },
+  napkinReflectionText: {
+    fontSize: "0.85rem",
+    fontStyle: "italic",
+    fontFamily: "'Georgia', serif",
+    color: "#451a03",
+    margin: 0,
+    lineHeight: "24px"
+  },
+  napkinReflectionTextEmpty: {
+    fontSize: "0.82rem",
+    color: "#9a3412",
+    margin: 0,
+    lineHeight: "24px",
+    textAlign: "center"
+  }
 };
 
 export default Weekly;
