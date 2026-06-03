@@ -1,81 +1,64 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { auth, db } from "../firebase";
-import { collection, query, where, getDocs, doc, getDoc, updateDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, onSnapshot } from "firebase/firestore";
 import { PieChart, Pie, Cell } from "recharts";
 import { formatLocalDateKey, getMealLocalDateKey } from "../utils/dateTime";
 import { motion, AnimatePresence } from "framer-motion";
 import { Flame, Heart, BarChart2, Calendar, FileText, ChevronLeft, ChevronRight } from "lucide-react";
-import MealNutritionCard, { getHabitCategories } from "../components/MealNutritionCard";
+import MealNutritionCard, { getHabitCategories, getAllHabitCategories } from "../components/MealNutritionCard";
 
 // All 6 spectrum categories with their metadata (mirrors MealNutritionCard)
 const SPECTRUM_CATEGORIES = [
-  { id: "vitality", label: "Vitality", emoji: "🍃", color: "#10b981" },
-  { id: "strength", label: "Strength", emoji: "💪", color: "#3b82f6" },
-  { id: "energy",   label: "Fuel",     emoji: "🔋", color: "#d97706" },
-  { id: "focus",    label: "Focus",    emoji: "🧠", color: "#ea580c" },
-  { id: "comfort",  label: "Comfort",  emoji: "🧸", color: "#ef4444" },
-  { id: "nurture",  label: "Light",    emoji: "🌿", color: "#0891b2" },
+  { id: "strength", label: "Strength", emoji: "💪", color: "#3b82f6", desc: "20g+ Protein OR >30% Protein Cals" },
+  { id: "fuel", label: "Fuel", emoji: "🔋", color: "#d97706", desc: "40g+ Carbs OR >50% Carb Cals" },
+  { id: "balanced", label: "Balanced", emoji: "⚖️", color: "#6366f1", desc: "15g+ Pro, 20g+ Carb, 8g+ Fat, 3g+ Fiber" },
+  { id: "filling", label: "Filling", emoji: "🍽️", color: "#059669", desc: "20g+ Protein OR 8g+ Fiber" },
+  { id: "fiberHero", label: "Fiber Hero", emoji: "🌾", color: "#16a34a", desc: "8g+ Fiber" },
+  { id: "power", label: "Power Meal", emoji: "🚀", color: "#7c3aed", desc: "500+ kcal, 25g+ Pro, 5g+ Fiber" },
+  { id: "lean", label: "Lean Choice", emoji: "🎯", color: "#0ea5e9", desc: "15g+ Protein AND <10g Fat" },
+  { id: "comfort", label: "Comfort", emoji: "🧸", color: "#ef4444", desc: "22g+ Fat OR >40% Fat Cals" },
+  { id: "snack", label: "Snack", emoji: "⚡", color: "#eab308", desc: "Under 250 kcal" },
+  { id: "light", label: "Light", emoji: "🌿", color: "#0891b2", desc: "Under 150 kcal, <4g Fat, <8g Pro" },
 ];
 
 // Rule-based Back-of-the-Napkin Habit Reflection Synthesizer
 const generateWeeklyReflection = (weeklyData) => {
   // Multi-tag: count every tag a meal receives (not just the primary)
-  const counts = { vitality: 0, strength: 0, energy: 0, focus: 0, comfort: 0, nurture: 0 };
-  let total = 0;
+  const counts = {};
+  SPECTRUM_CATEGORIES.forEach(c => { counts[c.id] = 0; });
+
+  let totalMeals = 0;
 
   weeklyData.forEach(day => {
-    if (day.meals) {
+    if (day.meals && day.meals.length > 0) {
+      totalMeals += day.meals.length;
       day.meals.forEach(meal => {
-        const cats = getHabitCategories(meal.nutrition);
+        // Use getAllHabitCategories (uncapped) so every matched spectrum
+        // is counted even if it didn't make the top-3 on the meal card
+        const cats = getAllHabitCategories(meal.nutrition);
         cats.forEach(cat => {
           if (cat.id in counts) {
             counts[cat.id]++;
-            total++;
           }
         });
       });
     }
   });
 
-  if (total === 0) {
+  if (totalMeals === 0) {
     return {
       percentages: null,
-      note: "Your napkin is empty! Log some meals this week to paint your Habit Spectrum and see your Back-of-the-Napkin Reflection. 🎨"
+      counts: null,
+      note: "Your canvas is empty! Log some meals this week to paint your Habit Spectrum and see your Weekly Habit Synthesis. 🎨"
     };
   }
 
-  const percentages = {
-    vitality: Math.round((counts.vitality / total) * 100),
-    strength: Math.round((counts.strength / total) * 100),
-    energy:   Math.round((counts.energy   / total) * 100),
-    focus:    Math.round((counts.focus    / total) * 100),
-    comfort:  Math.round((counts.comfort  / total) * 100),
-    nurture:  Math.round((counts.nurture  / total) * 100),
-  };
+  const percentages = {};
+  SPECTRUM_CATEGORIES.forEach(c => {
+    percentages[c.id] = Math.round((counts[c.id] / totalMeals) * 100);
+  });
 
-  // Find dominant categories
-  const sorted = Object.entries(percentages).sort((a, b) => b[1] - a[1]);
-  const primary = sorted[0];
-  const secondary = sorted[1];
-
-  let note = "";
-  if (primary[0] === "vitality" && primary[1] > 35) {
-    note = `Incredible work! Your spectrum is dominated by Vitality (${primary[1]}%). You're flooding your body with fibre and micronutrients — the cornerstone of longevity. For next week, try layering in a Strength 💪 boost at lunch to sustain this clean energy even longer! 🍃`;
-  } else if (primary[0] === "strength" && primary[1] > 35) {
-    note = `Solid effort! Your week was driven by Strength (${primary[1]}%), perfect for rebuilding muscle and staying full. To balance the protein load, add a Vitality 🍃 side — think leafy greens, roasted veg, or a handful of seeds! 💪`;
-  } else if (primary[0] === "energy" && primary[1] > 35) {
-    note = `High octane! Your palette is powered by Fuel (${primary[1]}%), giving you plenty of glycogen. To keep your blood sugar steady, pair your next carb-rich meal with a Strength 💪 protein source. Small shift, big difference! 🔋`;
-  } else if (primary[0] === "focus" && primary[1] > 30) {
-    note = `Brain food week! Focus (${primary[1]}%) is your star — healthy fats and lipids are powering your mind. Balance it out with some Vitality 🍃 fibre to support digestion and gut-brain harmony! 🧠`;
-  } else if (primary[0] === "comfort" && primary[1] > 30) {
-    note = `A cozy, indulgent week! Comfort (${primary[1]}%) was your canvas. Enjoying food is a beautiful part of life — for next week, try swapping one comfort side for a Vitality 🍃 whole food plate. You've totally got this! 🧸`;
-  } else if (primary[0] === "nurture" && primary[1] > 25) {
-    note = `Light and clean! Hydrate (${primary[1]}%) led your week — your digestive system is getting wonderful rest. Try sprinkling in some Strength 💪 and Fuel 🔋 to keep your energy levels topped up! 💧`;
-  } else {
-    note = `Beautifully balanced! Your spectrum is diverse this week, led by ${SPECTRUM_CATEGORIES.find(c => c.id === primary[0])?.label || primary[0]} (${primary[1]}%) and ${SPECTRUM_CATEGORIES.find(c => c.id === secondary[0])?.label || secondary[0]} (${secondary[1]}%). This mixed palette is the golden standard of intuitive eating. Keep it up! 🎨`;
-  }
-
-  return { percentages, note };
+  return { percentages, counts };
 };
 
 function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserData, globalPartnerData }) {
@@ -98,30 +81,23 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
   const [dismissingInsight, setDismissingInsight] = useState(false);
   const [weightInsight, setWeightInsight] = useState(null);
   const [showWeightInsight, setShowWeightInsight] = useState(false);
+  const [activeNapkinTooltip, setActiveNapkinTooltip] = useState(null);
 
   const [rawMonthlyInsights, setRawMonthlyInsights] = useState([]);
   const [rawWeightInsights, setRawWeightInsights] = useState([]);
 
   useEffect(() => {
-    const fetchInsights = async () => {
-      try {
-        // Fetch collections in parallel
-        const [weightSnap, monthlySnap] = await Promise.all([
-          getDocs(query(collection(db, "users", user.uid, "weightInsights"))),
-          getDocs(query(collection(db, "users", user.uid, "insights")))
-        ]);
+    const unsubWeight = onSnapshot(query(collection(db, "users", user.uid, "weightInsights")), (weightSnap) => {
+      setRawWeightInsights(weightSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    const unsubMonthly = onSnapshot(query(collection(db, "users", user.uid, "insights")), (monthlySnap) => {
+      setRawMonthlyInsights(monthlySnap.docs.map(d => ({ id: d.id, ...d.data(), key: d.id })));
+    });
 
-        if (!weightSnap.empty) {
-          setRawWeightInsights(weightSnap.docs.map(d => ({ ...d.data(), id: d.id })));
-        }
-        if (!monthlySnap.empty) {
-          setRawMonthlyInsights(monthlySnap.docs.map(d => ({ ...d.data(), id: d.id, key: d.id })));
-        }
-      } catch (e) {
-        console.error("Failed to fetch insights:", e);
-      }
+    return () => {
+      unsubWeight();
+      unsubMonthly();
     };
-    fetchInsights();
   }, [user.uid]);
 
   // Derived state for insights (filters dismissed ones)
@@ -162,22 +138,14 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
   }, [autoShowMonthly, showInsightPopup]);
 
   useEffect(() => {
-    const fetchWeekMeals = async () => {
-      // Fetch own meals AND partner meals in parallel for faster load
-      const allMealsQ = query(
-        collection(db, "meals"),
-        where("uid", "==", user.uid)
-      );
+    const allMealsQ = query(collection(db, "meals"), where("uid", "==", user.uid));
+    const partnerQ = partnerUid ? query(collection(db, "meals"), where("uid", "==", partnerUid)) : null;
 
-      const [allMealsSnap, partnerSnap] = await Promise.all([
-        getDocs(allMealsQ),
-        partnerUid
-          ? getDocs(query(collection(db, "meals"), where("uid", "==", partnerUid)))
-          : Promise.resolve(null),
-      ]);
+    let myMeals = [];
+    let pMeals = [];
 
-      const ownMeals = allMealsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      const allMeals = [...ownMeals];
+    const processMeals = () => {
+      const allMeals = [...myMeals];
 
       // Build dayMap from ALL meals for streak
       const dayMap = {};
@@ -195,9 +163,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
         d.setDate(d.getDate() - i);
         const dateStr = formatLocalDateKey(d);
         const dayMeals = allMeals.filter(
-          (m) => m.uid === user.uid &&
-            (getMealLocalDateKey(m) === dateStr) &&
-            m.nutrition
+          (m) => (getMealLocalDateKey(m) === dateStr) && m.nutrition
         );
         const totalsRaw = dayMeals.reduce((acc, m) => ({
           calories: acc.calories + (m.nutrition.calories || 0),
@@ -224,12 +190,10 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
       }
       setWeeklyNutrition(last7);
 
-      // Couple streak from parallel partner fetch result
-      if (partnerUid && partnerSnap) {
-        const partnerOwnMeals = partnerSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-
+      // Couple streak
+      if (partnerUid) {
         const partnerDayMap = {};
-        partnerOwnMeals.forEach((m) => {
+        pMeals.forEach((m) => {
           const dateStr = getMealLocalDateKey(m);
           if (!partnerDayMap[dateStr]) partnerDayMap[dateStr] = 0;
           partnerDayMap[dateStr]++;
@@ -253,7 +217,21 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
         setCoupleStreakCount(coupleStreak);
       }
     };
-    fetchWeekMeals();
+
+    const unsubMy = onSnapshot(allMealsQ, (snap) => {
+      myMeals = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      processMeals();
+    });
+
+    const unsubPartner = partnerQ ? onSnapshot(partnerQ, (snap) => {
+      pMeals = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      processMeals();
+    }) : null;
+
+    return () => {
+      unsubMy();
+      if (unsubPartner) unsubPartner();
+    };
   }, [user.uid, partnerUid]);
 
   const fetchMonthMeals = useCallback(async () => {
@@ -494,11 +472,14 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
 
   return (
     <>
-      <motion.div 
+      <motion.div
         style={styles.container}
         variants={containerVariants}
         initial="hidden"
         animate="show"
+        onClick={() => {
+          if (activeNapkinTooltip) setActiveNapkinTooltip(null);
+        }}
       >
         <h2 style={styles.title}>Stats</h2>
 
@@ -512,7 +493,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
           {/* Couple Streak */}
           {partnerUid && (
             <motion.div variants={itemVariants} style={styles.streakCard}>
-               <span style={styles.streakEmoji}><Heart color="#ff6b6b" /></span>
+              <span style={styles.streakEmoji}><Heart color="#ff6b6b" /></span>
               <p style={styles.streakNumber}>{coupleStreakCount}</p>
               <p style={styles.streakSub}>with {partnerName ? partnerName.split(" ")[0] : "partner"}</p>
             </motion.div>
@@ -551,203 +532,166 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
             {weeklyNutrition?.some((d) => d.hasMeals && d.calories > 0) && (
               <motion.div variants={itemVariants} style={styles.card}>
                 <p style={styles.cardTitle}><BarChart2 size={18} /> Weekly Macros</p>
-            <div style={styles.macroTable}>
-              {/* Header row */}
-              <div style={styles.macroTableRow}>
-                <div style={styles.macroTableLabelCell} />
-                {weeklyNutrition.map((day) => (
-                  <div key={day.date} style={styles.macroTableHeaderCell}>
-                    {day.label}
-                  </div>
-                ))}
-              </div>
-              {/* Macro rows */}
-              {[
-                { key: "protein_g", label: "Protein", color: "#ff6b6b" },
-                { key: "carbs_g", label: "Carbs", color: "#ffb347" },
-                { key: "fat_g", label: "Fat", color: "#7ec8a4" },
-                { key: "fiber_g", label: "Fiber", color: "#a78bfa" },
-              ].map((macro, rowIdx) => (
-                <div
-                  key={macro.key}
-                  style={{
-                    ...styles.macroTableRow,
-                    backgroundColor: rowIdx % 2 === 0 ? "#fafafa" : "white",
-                    borderRadius: "6px",
-                  }}
-                >
-                  <div style={{ ...styles.macroTableLabelCell, color: macro.color }}>
-                    {macro.label}
-                  </div>
-                  {weeklyNutrition.map((day) => (
-                    <div key={day.date} style={styles.macroTableCell}>
-                      {day.hasMeals && day[macro.key] > 0
-                        ? <span style={{ color: macro.color, fontWeight: "600" }}>
-                          {day[macro.key]}g
-                        </span>
-                        : <span style={styles.macroTableEmpty}>—</span>
-                      }
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-
-        {/* Monthly Calendar */}
-        <motion.div variants={itemVariants} style={styles.card}>
-          <div style={styles.monthNav}>
-            <button style={styles.navButton} onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1))}><ChevronLeft /></button>
-            <p style={styles.cardTitle}>{monthName}</p>
-            <button style={styles.navButton} onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1))}><ChevronRight /></button>
-          </div>
-
-          {/* Day Labels */}
-          <div style={styles.calGrid}>
-            {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
-              <div key={d} style={styles.calHeader}>{d}</div>
-            ))}
-            {renderCalendar()}
-          </div>
-
-          {/* Legend */}
-          <div style={styles.legend}>
-            <div style={styles.legendItem}>
-              <div style={{ ...styles.legendDot, backgroundColor: "#ffb347" }} />
-              <span>You 3+</span>
-            </div>
-            {partnerUid && (
-              <>
-                <div style={styles.legendItem}>
-                  <div style={{ ...styles.legendDot, backgroundColor: "#ffb6c1" }} />
-                  <span>{partnerName ? partnerName.split(" ")[0] : "Partner"} 3+</span>
-                </div>
-                <div style={styles.legendItem}>
-                  <div style={{ ...styles.legendDot, backgroundColor: "#ff6b6b" }} />
-                  <span>Both 3+</span>
-                </div>
-              </>
-            )}
-          </div>
-        </motion.div>
-
-        {/* Monthly Summary */}
-        <motion.div variants={itemVariants} style={styles.card}>
-          <p style={styles.cardTitle}>Monthly Summary</p>
-          <div style={styles.summaryRow}>
-            <div style={styles.summaryItem}>
-              <p style={styles.summaryNumber}>{totalMeals}</p>
-              <p style={styles.summarySub}>Total meals</p>
-            </div>
-            <div style={styles.summaryDivider} />
-            <div style={styles.summaryItem}>
-              <p style={styles.summaryNumber}>{daysHit}</p>
-              <p style={styles.summarySub}>Days with 3+</p>
-            </div>
-            <div style={styles.summaryDivider} />
-            {partnerUid && (
-              <>
-                <div style={styles.summaryDivider} />
-                <div style={styles.summaryItem}>
-                  <p style={styles.summaryNumber}>{coupleStreakCount}</p>
-                  <p style={styles.summarySub}>Couple streak</p>
-                </div>
-              </>
-            )}
-          </div>
-        </motion.div>
-
-        {/* Monthly Macro Overview */}
-        {monthlyNutrition && (
-          <motion.div variants={itemVariants} style={styles.card}>
-            <p style={styles.cardTitle}><Calendar size={18} /> {monthName} Nutrition</p>
-
-            {/* Calorie headline */}
-            <div style={{ ...styles.monthCalorieRow, marginTop: "1rem" }}>
-              <div style={styles.monthCalorieCard}>
-                <p style={styles.monthCalorieNumber}>{monthlyNutrition.avgCalories}</p>
-                <p style={styles.monthCalorieLabel}>avg kcal/day</p>
-              </div>
-              <div style={styles.monthCalorieCard}>
-                <p style={styles.monthCalorieNumber}>{monthlyNutrition.totalMeals}</p>
-                <p style={styles.monthCalorieLabel}>meals tracked</p>
-              </div>
-            </div>
-
-            {/* Macro averages grid */}
-            <div style={styles.monthMacroGrid}>
-              {[
-                { key: "avgProtein", label: "Protein", color: "#ff6b6b" },
-                { key: "avgCarbs", label: "Carbs", color: "#ffb347" },
-                { key: "avgFat", label: "Fat", color: "#7ec8a4" },
-                { key: "avgFiber", label: "Fiber", color: "#a78bfa" },
-              ].map((macro) => (
-                <div key={macro.key} style={styles.monthMacroCard}>
-                  <p style={styles.monthMacroLabel}>{macro.label}</p>
-                  <p style={{ ...styles.monthMacroValue, color: macro.color }}>
-                    {monthlyNutrition[macro.key] || 0}g
-                  </p>
-                  <p style={styles.monthMacroSub}>daily avg</p>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-
-        {/* Meal Type Split */}
-        <motion.div variants={itemVariants} style={styles.card}>
-          <p style={styles.cardTitle}>{partnerUid ? `Meal Split — ${monthName}` : `Your Meals — ${monthName}`}</p>
-          <div style={{ ...styles.cardTitle, marginTop: "1rem" }}></div>
-          <div style={styles.splitRow}>
-
-            {/* Mine */}
-            <div style={styles.splitSide}>
-              <p style={styles.splitName}>You</p>
-              {mySplit.length === 0 ? (
-                <p style={styles.splitEmpty}>No meals</p>
-              ) : (
-                <>
-                  <PieChart width={130} height={130}>
-                    <Pie
-                      data={mySplit}
-                      cx={60}
-                      cy={60}
-                      innerRadius={35}
-                      outerRadius={55}
-                      paddingAngle={3}
-                      dataKey="value"
-                    >
-                      {mySplit.map((entry, index) => (
-                        <Cell key={index} fill={entry.color} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                  <div style={styles.splitLegend}>
-                    {mySplit.map((entry) => (
-                      <div key={entry.name} style={styles.splitLegendItem}>
-                        <div style={{ ...styles.splitDot, backgroundColor: entry.color }} />
-                        <span style={styles.splitLabel}>{entry.name}</span>
-                        <span style={styles.splitCount}>{entry.value}</span>
+                <div style={styles.macroTable}>
+                  {/* Header row */}
+                  <div style={styles.macroTableRow}>
+                    <div style={styles.macroTableLabelCell} />
+                    {weeklyNutrition.map((day) => (
+                      <div key={day.date} style={styles.macroTableHeaderCell}>
+                        {day.label}
                       </div>
                     ))}
                   </div>
-                </>
-              )}
-            </div>
+                  {/* Macro rows */}
+                  {[
+                    { key: "protein_g", label: "Protein", color: "#ff6b6b" },
+                    { key: "carbs_g", label: "Carbs", color: "#ffb347" },
+                    { key: "fat_g", label: "Fat", color: "#7ec8a4" },
+                    { key: "fiber_g", label: "Fiber", color: "#a78bfa" },
+                  ].map((macro, rowIdx) => (
+                    <div
+                      key={macro.key}
+                      style={{
+                        ...styles.macroTableRow,
+                        backgroundColor: rowIdx % 2 === 0 ? "#fafafa" : "white",
+                        borderRadius: "6px",
+                      }}
+                    >
+                      <div style={{ ...styles.macroTableLabelCell, color: macro.color }}>
+                        {macro.label}
+                      </div>
+                      {weeklyNutrition.map((day) => (
+                        <div key={day.date} style={styles.macroTableCell}>
+                          {day.hasMeals && day[macro.key] > 0
+                            ? <span style={{ color: macro.color, fontWeight: "600" }}>
+                              {day[macro.key]}g
+                            </span>
+                            : <span style={styles.macroTableEmpty}>—</span>
+                          }
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
 
-            {partnerUid && (
-              <>
-                <div style={styles.splitDivider} />
+            {/* Monthly Calendar */}
+            <motion.div variants={itemVariants} style={styles.card}>
+              <div style={styles.monthNav}>
+                <button style={styles.navButton} onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1))}><ChevronLeft /></button>
+                <p style={styles.cardTitle}>{monthName}</p>
+                <button style={styles.navButton} onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1))}><ChevronRight /></button>
+              </div>
+
+              {/* Day Labels */}
+              <div style={styles.calGrid}>
+                {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
+                  <div key={d} style={styles.calHeader}>{d}</div>
+                ))}
+                {renderCalendar()}
+              </div>
+
+              {/* Legend */}
+              <div style={styles.legend}>
+                <div style={styles.legendItem}>
+                  <div style={{ ...styles.legendDot, backgroundColor: "#ffb347" }} />
+                  <span>You 3+</span>
+                </div>
+                {partnerUid && (
+                  <>
+                    <div style={styles.legendItem}>
+                      <div style={{ ...styles.legendDot, backgroundColor: "#ffb6c1" }} />
+                      <span>{partnerName ? partnerName.split(" ")[0] : "Partner"} 3+</span>
+                    </div>
+                    <div style={styles.legendItem}>
+                      <div style={{ ...styles.legendDot, backgroundColor: "#ff6b6b" }} />
+                      <span>Both 3+</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            </motion.div>
+
+            {/* Monthly Summary */}
+            <motion.div variants={itemVariants} style={styles.card}>
+              <p style={styles.cardTitle}>Monthly Summary</p>
+              <div style={styles.summaryRow}>
+                <div style={styles.summaryItem}>
+                  <p style={styles.summaryNumber}>{totalMeals}</p>
+                  <p style={styles.summarySub}>Total meals</p>
+                </div>
+                <div style={styles.summaryDivider} />
+                <div style={styles.summaryItem}>
+                  <p style={styles.summaryNumber}>{daysHit}</p>
+                  <p style={styles.summarySub}>Days with 3+</p>
+                </div>
+                <div style={styles.summaryDivider} />
+                {partnerUid && (
+                  <>
+                    <div style={styles.summaryDivider} />
+                    <div style={styles.summaryItem}>
+                      <p style={styles.summaryNumber}>{coupleStreakCount}</p>
+                      <p style={styles.summarySub}>Couple streak</p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </motion.div>
+
+            {/* Monthly Macro Overview */}
+            {monthlyNutrition && (
+              <motion.div variants={itemVariants} style={styles.card}>
+                <p style={styles.cardTitle}><Calendar size={18} /> {monthName} Nutrition</p>
+
+                {/* Calorie headline */}
+                <div style={{ ...styles.monthCalorieRow, marginTop: "1rem" }}>
+                  <div style={styles.monthCalorieCard}>
+                    <p style={styles.monthCalorieNumber}>{monthlyNutrition.avgCalories}</p>
+                    <p style={styles.monthCalorieLabel}>avg kcal/day</p>
+                  </div>
+                  <div style={styles.monthCalorieCard}>
+                    <p style={styles.monthCalorieNumber}>{monthlyNutrition.totalMeals}</p>
+                    <p style={styles.monthCalorieLabel}>meals tracked</p>
+                  </div>
+                </div>
+
+                {/* Macro averages grid */}
+                <div style={styles.monthMacroGrid}>
+                  {[
+                    { key: "avgProtein", label: "Protein", color: "#ff6b6b" },
+                    { key: "avgCarbs", label: "Carbs", color: "#ffb347" },
+                    { key: "avgFat", label: "Fat", color: "#7ec8a4" },
+                    { key: "avgFiber", label: "Fiber", color: "#a78bfa" },
+                  ].map((macro) => (
+                    <div key={macro.key} style={styles.monthMacroCard}>
+                      <p style={styles.monthMacroLabel}>{macro.label}</p>
+                      <p style={{ ...styles.monthMacroValue, color: macro.color }}>
+                        {monthlyNutrition[macro.key] || 0}g
+                      </p>
+                      <p style={styles.monthMacroSub}>daily avg</p>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+
+            {/* Meal Type Split */}
+            <motion.div variants={itemVariants} style={styles.card}>
+              <p style={styles.cardTitle}>{partnerUid ? `Meal Split — ${monthName}` : `Your Meals — ${monthName}`}</p>
+              <div style={{ ...styles.cardTitle, marginTop: "1rem" }}></div>
+              <div style={styles.splitRow}>
+
+                {/* Mine */}
                 <div style={styles.splitSide}>
-                  <p style={styles.splitName}>{partnerName ? partnerName.split(" ")[0] : "Partner"}</p>
-                  {partnerSplit.length === 0 ? (
+                  <p style={styles.splitName}>You</p>
+                  {mySplit.length === 0 ? (
                     <p style={styles.splitEmpty}>No meals</p>
                   ) : (
                     <>
                       <PieChart width={130} height={130}>
                         <Pie
-                          data={partnerSplit}
+                          data={mySplit}
                           cx={60}
                           cy={60}
                           innerRadius={35}
@@ -755,13 +699,13 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                           paddingAngle={3}
                           dataKey="value"
                         >
-                          {partnerSplit.map((entry, index) => (
+                          {mySplit.map((entry, index) => (
                             <Cell key={index} fill={entry.color} />
                           ))}
                         </Pie>
                       </PieChart>
                       <div style={styles.splitLegend}>
-                        {partnerSplit.map((entry) => (
+                        {mySplit.map((entry) => (
                           <div key={entry.name} style={styles.splitLegendItem}>
                             <div style={{ ...styles.splitDot, backgroundColor: entry.color }} />
                             <span style={styles.splitLabel}>{entry.name}</span>
@@ -772,12 +716,49 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                     </>
                   )}
                 </div>
-              </>
-            )}
-          </div>
-        </motion.div>
-      </>
-    ) : (
+
+                {partnerUid && (
+                  <>
+                    <div style={styles.splitDivider} />
+                    <div style={styles.splitSide}>
+                      <p style={styles.splitName}>{partnerName ? partnerName.split(" ")[0] : "Partner"}</p>
+                      {partnerSplit.length === 0 ? (
+                        <p style={styles.splitEmpty}>No meals</p>
+                      ) : (
+                        <>
+                          <PieChart width={130} height={130}>
+                            <Pie
+                              data={partnerSplit}
+                              cx={60}
+                              cy={60}
+                              innerRadius={35}
+                              outerRadius={55}
+                              paddingAngle={3}
+                              dataKey="value"
+                            >
+                              {partnerSplit.map((entry, index) => (
+                                <Cell key={index} fill={entry.color} />
+                              ))}
+                            </Pie>
+                          </PieChart>
+                          <div style={styles.splitLegend}>
+                            {partnerSplit.map((entry) => (
+                              <div key={entry.name} style={styles.splitLegendItem}>
+                                <div style={{ ...styles.splitDot, backgroundColor: entry.color }} />
+                                <span style={styles.splitLabel}>{entry.name}</span>
+                                <span style={styles.splitCount}>{entry.value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </>
+        ) : (
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
@@ -787,10 +768,10 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
             <p style={styles.cardTitle}>
               🎨 Weekly Habit Canvas
             </p>
-            <p style={{ fontSize: "0.82rem", color: "#666", marginBottom: "1.2rem", marginTop: "-0.5rem", lineHeight: "1.4" }}>
-              Visualizing the balance of your foods this week. Tap a day block to view details.
+            <p style={{ fontSize: "0.82rem", color: "#888", marginBottom: "1rem", lineHeight: "1.45" }}>
+              Visualizing the balance of your foods this week. Tap a day to view details.
             </p>
-            
+
             <div style={styles.canvasGrid}>
               {weeklyNutrition.map((day) => {
                 const dayMeals = day.meals || [];
@@ -840,7 +821,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                         const cats = getHabitCategories(meal.nutrition);
                         const primaryEmoji = cats.length > 0 ? cats[0].emoji : "🍽️";
                         return (
-                          <span key={meal.id || idx} style={{ fontSize: "1.1rem" }}>
+                          <span key={meal.id || idx} style={{ fontSize: "0.95rem", lineHeight: 1 }}>
                             {primaryEmoji}
                           </span>
                         );
@@ -856,38 +837,58 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
               })}
             </div>
 
-            {/* Back-of-the-Napkin Synthesis Card */}
+            {/* Weekly Habit Synthesis Card */}
             {(() => {
               const reflection = generateWeeklyReflection(weeklyNutrition);
               return (
                 <div style={styles.napkinCard}>
                   <div style={styles.napkinLines}>
-                    <p style={styles.napkinTitle}>✏️ Back-of-the-Napkin Synthesis</p>
+                    <p style={styles.napkinTitle}>✨ Weekly Habit Synthesis</p>
                     {reflection.percentages ? (
-                      <>
-                        <div style={styles.napkinBarsContainer}>
-                          {SPECTRUM_CATEGORIES.map((item) => {
-                            const pct = reflection.percentages[item.id] || 0;
-                            if (pct === 0) return null;
-                            return (
-                              <div key={item.id} style={styles.napkinBarRow}>
-                                <span style={styles.napkinBarLabel}>{item.emoji} {item.label}</span>
-                                <div style={styles.napkinBarTrack}>
-                                  <div style={{
-                                    ...styles.napkinBarFill,
-                                    width: `${pct}%`,
-                                    backgroundColor: item.color
-                                  }} />
-                                </div>
-                                <span style={styles.napkinBarValue}>{pct}%</span>
+                      <div style={styles.napkinBarsContainer}>
+                        {SPECTRUM_CATEGORIES.map((item) => {
+                          const pct = reflection.percentages[item.id] ?? 0;
+                          return (
+                            <div key={item.id} style={{ ...styles.napkinBarRow, position: "relative" }}>
+                              <div 
+                                style={{ ...styles.napkinBarLabel, cursor: "pointer", position: "relative" }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveNapkinTooltip(activeNapkinTooltip === item.id ? null : item.id);
+                                }}
+                              >
+                                {item.emoji} {item.label}
+                                
+                                <AnimatePresence>
+                                  {activeNapkinTooltip === item.id && (
+                                    <motion.div 
+                                      initial={{ opacity: 0, y: 5 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      exit={{ opacity: 0, y: 5 }}
+                                      style={styles.napkinTooltip}
+                                    >
+                                      {item.desc}
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
                               </div>
-                            );
-                          })}
-                        </div>
-                        <p style={styles.napkinReflectionText}>
-                          {reflection.note}
-                        </p>
-                      </>
+                              <div style={styles.napkinBarTrack}>
+                                <div style={{
+                                  ...styles.napkinBarFill,
+                                  width: `${pct}%`,
+                                  backgroundColor: pct > 0 ? item.color : "transparent"
+                                }} />
+                              </div>
+                              <span style={{
+                                ...styles.napkinBarValue,
+                                color: pct > 0 ? "#374151" : "#d1d5db"
+                              }}>
+                                {pct}%
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     ) : (
                       <p style={styles.napkinReflectionTextEmpty}>
                         {reflection.note}
@@ -966,42 +967,28 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                   const primaryCat = cats[0] || null;
                   return (
                     <div key={meal.id} style={{
-                      ...styles.dayMealRow,
+                      display: "flex",
+                      flexDirection: "column",
                       borderLeft: primaryCat ? `4px solid ${primaryCat.color}` : "4px solid transparent",
-                      paddingLeft: "10px",
+                      padding: "12px",
                       marginBottom: "16px",
                       borderRadius: "0 12px 12px 0",
-                      backgroundColor: "#fafafa"
+                      backgroundColor: "#fafafa",
+                      gap: "8px"
                     }}>
                       <div style={styles.dayMealLeft}>
                         {meal.photoURL && (
                           <img src={meal.photoURL} alt={meal.name} style={styles.dayMealThumb} loading="lazy" />
                         )}
                         <div style={{ flex: 1 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-                            <p style={styles.dayMealName}>{meal.name}</p>
-                            {/* Show all category pills (up to 3) */}
-                            {cats.map(cat => (
-                              <span key={cat.id} style={{
-                                fontSize: "0.6rem",
-                                fontWeight: "800",
-                                color: cat.color,
-                                backgroundColor: cat.bg,
-                                padding: "1px 6px",
-                                borderRadius: "8px",
-                                textTransform: "uppercase"
-                              }}>
-                                {cat.emoji} {cat.name}
-                              </span>
-                            ))}
-                          </div>
+                          <p style={styles.dayMealName}>{meal.name}</p>
                           <p style={styles.dayMealMeta}>{meal.type} · {meal.localTime}</p>
                         </div>
                       </div>
 
                       {/* Nested Micro Nutrition Card */}
                       {meal.nutrition && (
-                        <div style={{ marginTop: "8px", transform: "scale(0.95)", transformOrigin: "left top" }}>
+                        <div style={{ transformOrigin: "left top" }}>
                           <MealNutritionCard nutrition={meal.nutrition} editable={false} />
                         </div>
                       )}
@@ -1012,9 +999,16 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
 
               <button
                 style={{
-                  ...styles.saveButton,
-                  marginTop: "1rem",
-                  backgroundColor: "#374151"
+                  width: "100%",
+                  padding: "0.85rem",
+                  backgroundColor: "#f9fafb",
+                  color: "#4b5563",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "12px",
+                  fontSize: "0.95rem",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  marginTop: "1rem"
                 }}
                 onClick={() => setSelectedSpectrumDay(null)}
               >
@@ -2040,37 +2034,37 @@ const styles = {
     gap: "6px"
   },
   canvasGrid: {
-    display: "flex",
-    gap: "8px",
-    overflowX: "auto",
-    paddingBottom: "10px",
+    display: "grid",
+    gridTemplateColumns: "repeat(7, 1fr)",
+    gap: "6px",
     marginBottom: "1.5rem",
-    scrollbarWidth: "none"
   },
   canvasDayBlock: {
-    flex: "0 0 75px",
-    height: "105px",
-    borderRadius: "16px",
+    minWidth: 0,
+    height: "100px",
+    borderRadius: "12px",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    justifyContent: "space-between",
-    padding: "10px 4px",
+    justifyContent: "flex-start",
+    padding: "8px 4px",
+    gap: "6px",
     transition: "transform 0.2s ease, box-shadow 0.2s ease",
     boxSizing: "border-box"
   },
   canvasDayLabel: {
-    fontSize: "0.72rem",
+    fontSize: "0.6rem",
     fontWeight: "700",
     color: "#4b5563",
     margin: 0,
-    textTransform: "uppercase"
+    textTransform: "uppercase",
+    letterSpacing: "0.02em"
   },
   canvasEmojiRow: {
     display: "flex",
     flexWrap: "wrap",
     justifyContent: "center",
-    gap: "2px",
+    gap: "1px",
     width: "100%"
   },
   canvasMoreCount: {
@@ -2082,44 +2076,60 @@ const styles = {
     borderRadius: "6px"
   },
   napkinCard: {
-    backgroundColor: "#fffdf9", 
-    border: "1px solid #f6f1e5",
+    backgroundColor: "#ffffff",
+    border: "1px solid #f3f4f6",
     borderRadius: "16px",
-    padding: "1.5rem 1.2rem",
-    boxShadow: "0 4px 20px rgba(246, 241, 229, 0.5)",
-    position: "relative",
+    padding: "0",
+    boxShadow: "0 4px 20px rgba(243, 244, 246, 0.8)",
     overflow: "hidden"
   },
   napkinLines: {
-    backgroundImage: "linear-gradient(#e1d9c7 1px, transparent 1px)",
+    backgroundImage: "linear-gradient(transparent calc(24px - 1px), #f3f4f6 calc(24px - 1px))",
     backgroundSize: "100% 24px",
-    lineHeight: "24px"
+    padding: "24px 18px",
   },
   napkinTitle: {
-    fontSize: "0.9rem",
-    fontWeight: "850",
-    fontFamily: "'Playfair Display', serif",
+    fontSize: "0.88rem",
+    fontWeight: "700",
     color: "#78350f",
-    margin: "0 0 1rem 0",
-    lineHeight: "24px"
+    margin: "0 0 24px 0",
+    lineHeight: "24px",
+    letterSpacing: "0.01em"
   },
   napkinBarsContainer: {
     display: "flex",
     flexDirection: "column",
-    gap: "8px",
-    marginBottom: "1rem"
+    gap: "0",
   },
   napkinBarRow: {
     display: "flex",
     alignItems: "center",
     gap: "8px",
-    lineHeight: "20px"
+    height: "24px",
   },
   napkinBarLabel: {
-    width: "75px",
+    width: "100px",
     fontSize: "0.72rem",
     fontWeight: "700",
-    color: "#6b7280"
+    color: "#4b5563",
+    whiteSpace: "nowrap"
+  },
+  napkinTooltip: {
+    position: "absolute",
+    left: "0",
+    top: "100%",
+    marginTop: "6px",
+    backgroundColor: "#1f2937",
+    color: "#f9fafb",
+    fontSize: "0.68rem",
+    fontWeight: "normal",
+    padding: "6px 10px",
+    borderRadius: "8px",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+    zIndex: 10,
+    width: "max-content",
+    pointerEvents: "none",
+    letterSpacing: "0.01em"
   },
   napkinBarTrack: {
     flex: 1,
@@ -2148,11 +2158,12 @@ const styles = {
     lineHeight: "24px"
   },
   napkinReflectionTextEmpty: {
-    fontSize: "0.82rem",
+    fontSize: "0.85rem",
     color: "#9a3412",
     margin: 0,
     lineHeight: "24px",
-    textAlign: "center"
+    fontStyle: "italic",
+    fontFamily: "'Georgia', serif"
   }
 };
 
