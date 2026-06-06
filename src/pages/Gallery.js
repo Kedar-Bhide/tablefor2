@@ -47,6 +47,7 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
 
   useEffect(() => {
     oldestDateRef.current = null;
+    loadingRef.current = false;
     setHasMore(true);
     setGroupedMeals({});
     setLoadingGallery(false);
@@ -63,8 +64,9 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
 
   const PAGE_DAYS = 10;
   const oldestDateRef = useRef(null);
+  const loadingRef = useRef(false);
   const [loadingGallery, setLoadingGallery] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
 
   const groupMeals = (meals) => {
     const filtered = meals.filter((m) => getPhotos(m).length > 0);
@@ -104,11 +106,17 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
 
   const fetchMeals = useCallback(async (append = false) => {
     const uid = filter === "mine" ? user.uid : partnerUid;
-    if (!uid || loadingGallery) return;
+    if (!uid || loadingRef.current) return;
 
+    loadingRef.current = true;
     setLoadingGallery(true);
     try {
       const endDate = append ? oldestDateRef.current : new Date();
+      if (!endDate) {
+        setHasMore(false);
+        return;
+      }
+
       const startDate = new Date(endDate.getTime() - PAGE_DAYS * 24 * 60 * 60 * 1000);
 
       const q = query(
@@ -122,6 +130,12 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
       const snap = await getDocs(q);
       const meals = snap.docs.map((d) => ({ id: d.id, ...d.data() })).reverse();
       oldestDateRef.current = startDate;
+
+      if (meals.length === 0) {
+        if (!append) setGroupedMeals({});
+        setHasMore(false);
+        return;
+      }
 
       if (append) {
         setGroupedMeals((prev) => {
@@ -140,13 +154,15 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
         setGroupedMeals(groupMeals(meals));
       }
 
-      setHasMore(snap.docs.length >= 1);
+      setHasMore(true);
     } catch (e) {
       console.error("Gallery fetch failed:", e);
       if (!append) setHasMore(false);
+    } finally {
+      loadingRef.current = false;
+      setLoadingGallery(false);
     }
-    setLoadingGallery(false);
-  }, [filter, partnerUid, user.uid, loadingGallery]);
+  }, [filter, partnerUid, user.uid]);
 
   const loadMore = () => fetchMeals(true);
 
@@ -285,7 +301,7 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
           </div>
         ))
       )}
-      {hasMore && (
+      {hasMore && Object.keys(groupedMeals).length > 0 && (
         <div style={{ textAlign: "center", padding: "2rem" }}>
           <button
             onClick={loadMore}
