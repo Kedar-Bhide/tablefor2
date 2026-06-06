@@ -64,9 +64,7 @@
         }
       ],
       "density": "SPARSE_ALL"
-    }
-  ],
-    ,
+    },
     {
       "collectionGroup": "meals",
       "queryScope": "COLLECTION",
@@ -81,6 +79,17 @@
         },
         {
           "fieldPath": "localDate",
+          "order": "ASCENDING"
+        }
+      ],
+      "density": "SPARSE_ALL"
+    },
+    {
+      "collectionGroup": "energy_checkins",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "uid",
           "order": "ASCENDING"
         }
       ],
