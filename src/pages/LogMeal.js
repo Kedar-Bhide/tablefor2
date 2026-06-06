@@ -1095,7 +1095,7 @@ const styles = {
     border: "1px solid #eee",
     borderRadius: "8px",
     padding: "0.5rem",
-    fontSize: "0.85rem",
+    fontSize: "16px",
     color: "#333",
     backgroundColor: "#fafafa",
     outline: "none",
