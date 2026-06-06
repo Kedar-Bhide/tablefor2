@@ -274,6 +274,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
       setMessage("Request declined.");
     } catch (e) {
       console.error("Decline request error:", e);
+      setMessage("❌ Something went wrong. Please try again.");
     }
   };
 
@@ -313,20 +314,28 @@ function Profile({ user, globalUserData, globalPartnerData }) {
   };
 
   const handleWalletReset = async () => {
-    const userRef = doc(db, "users", user.uid);
-    await updateDoc(userRef, { walletResetAt: new Date() });
-    const walletData = await calculateWallet(user.uid);
-    setWallet(walletData);
-    setShowResetConfirm(false);
+    try {
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, { walletResetAt: new Date() });
+      const walletData = await calculateWallet(user.uid);
+      setWallet(walletData);
+      setShowResetConfirm(false);
+    } catch (e) {
+      console.error("Wallet reset failed:", e);
+    }
   };
 
 
   const handleFieldSave = async (key) => {
     if (editingField !== key) return;
-    const value = fieldDraft.trim();
-    await updateDoc(doc(db, "users", user.uid), { [key]: value });
-    setEditingField(null);
-    setFieldDraft("");
+    try {
+      const value = fieldDraft.trim();
+      await updateDoc(doc(db, "users", user.uid), { [key]: value });
+      setEditingField(null);
+      setFieldDraft("");
+    } catch (e) {
+      console.error("Failed to save field:", e);
+    }
   };
 
   const profileComplete = profileFields.age &&
