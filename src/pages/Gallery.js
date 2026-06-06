@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { auth, db } from "../firebase";
-import { collection, query, where, getDocs, updateDoc, doc } from "firebase/firestore";
+import { collection, query, where, orderBy, limit, startAfter, getDocs, updateDoc, doc } from "firebase/firestore";
 import { getPhotos } from "../utils/getPhotos";
 import { getMealLocalDateKey } from "../utils/dateTime";
 import PhotoCarousel from "../components/PhotoCarousel";
@@ -54,30 +54,14 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
     }
   }, [galleryDate, groupedMeals, setGalleryDate]);
 
-  const fetchMeals = useCallback(async () => {
-    let meals = [];
+  const PAGE_SIZE = 20;
+  const lastDocRef = useRef({ mine: null, hers: null });
+  const [hasMore, setHasMore] = useState(true);
 
-    if (filter === "mine") {
-      const q = query(
-        collection(db, "meals"),
-        where("uid", "==", user.uid)
-      );
-      const snap = await getDocs(q);
-      meals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-
-    } else if (filter === "hers" && partnerUid) {
-      const q = query(
-        collection(db, "meals"),
-        where("uid", "==", partnerUid)
-      );
-      const snap = await getDocs(q);
-      meals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    }
-
-    meals = meals.filter((m) => getPhotos(m).length > 0);
-
+  const groupMeals = (meals) => {
+    const filtered = meals.filter((m) => getPhotos(m).length > 0);
     const grouped = {};
-    meals.forEach((meal) => {
+    filtered.forEach((meal) => {
       const dateKey = getMealLocalDateKey(meal);
       const [year, month, day] = dateKey.split("-").map(Number);
       const labelDate = new Date(year, month - 1, day);
@@ -90,13 +74,10 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
       if (!grouped[dateKey]) {
         grouped[dateKey] = { label: dateLabel, meals: [] };
       }
-
-      // Expand multi-photo meals into individual tiles
       const photos = getPhotos(meal);
       if (photos.length <= 1) {
         grouped[dateKey].meals.push({ ...meal, _galleryPhoto: photos[0] || null, _photoIndex: 0 });
       } else {
-        // First photo gets the group badge
         photos.forEach((photoURL, index) => {
           grouped[dateKey].meals.push({
             ...meal,
@@ -108,15 +89,85 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
         });
       }
     });
-
-    const sorted = Object.fromEntries(
-      Object.entries(grouped).sort(
-        (a, b) => b[0].localeCompare(a[0])
-      )
+    return Object.fromEntries(
+      Object.entries(grouped).sort((a, b) => b[0].localeCompare(a[0]))
     );
+  };
 
-    setGroupedMeals(sorted);
+  const fetchMeals = useCallback(async (append = false) => {
+    const uid = filter === "mine" ? user.uid : partnerUid;
+    if (!uid) return;
+
+    const constraints = [where("uid", "==", uid), orderBy("createdAt", "desc"), limit(PAGE_SIZE)];
+    const cursor = lastDocRef.current[filter];
+    if (append && cursor) {
+      constraints.push(startAfter(cursor));
+    }
+
+    const q = query(collection(db, "meals"), ...constraints);
+    const snap = await getDocs(q);
+
+    if (snap.empty) return;
+
+    const meals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    lastDocRef.current[filter] = snap.docs[snap.docs.length - 1];
+
+    if (append) {
+      setGroupedMeals((prev) => {
+        const merged = { ...prev };
+        const newGrouped = groupMeals(meals);
+        for (const [dateKey, group] of Object.entries(newGrouped)) {
+          if (merged[dateKey]) {
+            merged[dateKey] = {
+              ...merged[dateKey],
+              meals: [...merged[dateKey].meals, ...group.meals],
+            };
+          } else {
+            merged[dateKey] = group;
+          }
+        }
+        return merged;
+      });
+    } else {
+      setGroupedMeals(groupMeals(meals));
+    }
+
+    setHasMore(snap.docs.length === PAGE_SIZE);
   }, [filter, partnerUid, user.uid]);
+
+  const loadMore = () => fetchMeals(true);
+
+  const handleNutritionChange = useCallback(async (key, value) => {
+    try {
+      const updatedMeal = {
+        ...viewMeal,
+        nutrition: {
+          ...(viewMeal.nutrition || {}),
+          [key]: value
+        }
+      };
+      setViewMeal(updatedMeal);
+      
+      // Update Firestore
+      const mealRef = doc(db, "meals", viewMeal.id);
+      await updateDoc(mealRef, {
+        [`nutrition.${key}`]: value
+      });
+
+      // Also update groupedMeals so the change persists in the list
+      setGroupedMeals(prev => {
+        const newGrouped = { ...prev };
+        for (const dateKey in newGrouped) {
+          newGrouped[dateKey].meals = newGrouped[dateKey].meals.map(m => 
+            m.id === viewMeal.id ? { ...m, nutrition: updatedMeal.nutrition } : m
+          );
+        }
+        return newGrouped;
+      });
+    } catch (e) {
+      console.error("Failed to update nutrition from gallery", e);
+    }
+  }, [viewMeal]);
 
   useEffect(() => {
     fetchMeals();
@@ -221,11 +272,32 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
           </div>
         ))
       )}
+      {hasMore && (
+        <div style={{ textAlign: "center", padding: "2rem" }}>
+          <button
+            onClick={loadMore}
+            style={{
+              padding: "0.8rem 2rem",
+              backgroundColor: "var(--primary)",
+              color: "white",
+              border: "none",
+              borderRadius: "12px",
+              fontSize: "1rem",
+              cursor: "pointer",
+            }}
+          >
+            Load More
+          </button>
+        </div>
+      )}
     </div>
     {/* Meal Viewer - Moved outside container for perfect centering */}
     <AnimatePresence>
       {viewMeal && (
         <motion.div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Meal details"
           style={styles.overlay}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -293,38 +365,8 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
               isRetrying={retryingMealId === viewMeal.id}
               onRetry={() => handleRetryAnalysis(viewMeal.id)}
               editable={true}
-              onNutritionChange={async (key, value) => {
-                try {
-                  const updatedMeal = {
-                    ...viewMeal,
-                    nutrition: {
-                      ...(viewMeal.nutrition || {}),
-                      [key]: value
-                    }
-                  };
-                  setViewMeal(updatedMeal);
-                  
-                  // Update Firestore
-                  const mealRef = doc(db, "meals", viewMeal.id);
-                  await updateDoc(mealRef, {
-                    [`nutrition.${key}`]: value
-                  });
-
-                  // Also update groupedMeals so the change persists in the list
-                  setGroupedMeals(prev => {
-                    const newGrouped = { ...prev };
-                    for (const dateKey in newGrouped) {
-                      newGrouped[dateKey].meals = newGrouped[dateKey].meals.map(m => 
-                        m.id === viewMeal.id ? { ...m, nutrition: updatedMeal.nutrition } : m
-                      );
-                    }
-                    return newGrouped;
-                  });
-                } catch (e) {
-                  console.error("Failed to update nutrition from gallery", e);
-                }
-              }}
-            />
+              onNutritionChange={handleNutritionChange}
+              />
 
             {/* Comment card */}
             {(() => {
@@ -542,7 +584,7 @@ const styles = {
   commentInput: {
     flex: 1,
     padding: "0.6rem",
-    fontSize: "0.9rem",
+    fontSize: "16px",
     borderRadius: "8px",
     border: "1px solid #eee",
     outline: "none",
