@@ -16,31 +16,23 @@ const WHITELISTED_WALLET_UIDS = [
   "P8Hw72zyZqhJ19oxNZ9LYQTJvLT2"
 ];
 
-async function sendNotification(token, title, body, extraTokens = []) {
+async function sendNotification(token, title, body) {
   if (!token) return;
 
-  // Deduplicate all tokens
-  const allTokens = [...new Set([token, ...extraTokens].filter(Boolean))];
-
-  // Send to all unique tokens
-  const promises = allTokens.map(async (t) => {
-    try {
-      await admin.messaging().send({
-        notification: { title, body },
-        token: t,
-      });
-      console.log("Notification sent to token:", t.slice(-10));
-    } catch (error) {
-      // Token expired/invalid — remove it
-      if (error.code === 'messaging/registration-token-not-registered') {
-        console.log("Removing invalid token:", t.slice(-10));
-      } else {
-        console.error("Error sending notification:", error);
-      }
+  try {
+    await admin.messaging().send({
+      notification: { title, body },
+      token: token,
+    });
+    console.log("Notification sent to token:", token.slice(-10));
+  } catch (error) {
+    // Token expired/invalid — log it
+    if (error.code === 'messaging/registration-token-not-registered') {
+      console.log("Invalid/expired token:", token.slice(-10));
+    } else {
+      console.error("Error sending notification:", error);
     }
-  });
-
-  await Promise.all(promises);
+  }
 }
 
 async function getUser(uid) {
@@ -969,7 +961,7 @@ exports.onMealCreated = onDocumentCreated(
               ];
               body = messages[Math.floor(Math.random() * messages.length)];
             }
-            await sendNotification(partner.fcmToken, "TableFor2", body, partner.fcmTokens || []);
+            await sendNotification(partner.fcmToken, "TableFor2", body);
           }
         }
       }
@@ -1011,7 +1003,7 @@ exports.onBadgeEarned = onDocumentUpdated("users/{uid}", async (event) => {
       `Achievement unlocked: ${badgeName}!`,
     ];
     const body = messages[Math.floor(Math.random() * messages.length)];
-    await sendNotification(token, "TableFor2 🏆", body, after.fcmTokens || []);
+    await sendNotification(token, "TableFor2 🏆", body);
   }
 });
 
@@ -1123,7 +1115,7 @@ exports.onMealUpdated = onDocumentUpdated("meals/{mealId}", async (event) => {
           if (partner.fcmToken && partner.notifSettings?.partnerMeal !== false) {
             const firstName = mealOwner.name ? mealOwner.name.split(" ")[0] : "Your partner";
             const body = `${firstName} shared a ${after.type.toLowerCase()} with you 🍽️ — add your quantities!`;
-            await sendNotification(partner.fcmToken, "TableFor2", body, partner.fcmTokens || []);
+            await sendNotification(partner.fcmToken, "TableFor2", body);
           }
         }
       }
@@ -1186,7 +1178,7 @@ exports.onMealUpdated = onDocumentUpdated("meals/{mealId}", async (event) => {
       }
 
       if (body) {
-        await sendNotification(mealOwner.fcmToken, "TableFor2", body, mealOwner.fcmTokens || []);
+        await sendNotification(mealOwner.fcmToken, "TableFor2", body);
       }
     }
   }
@@ -1194,24 +1186,29 @@ exports.onMealUpdated = onDocumentUpdated("meals/{mealId}", async (event) => {
 
 
 async function hasLoggedToday(uid, mealType) {
-  const userSnap = await db.collection("users").doc(uid).get();
-  const userData = userSnap.exists ? userSnap.data() : {};
-  const { dateStr: localDateStr } = getUserLocalClock(userData);
+  try {
+    const userSnap = await db.collection("users").doc(uid).get();
+    const userData = userSnap.exists ? userSnap.data() : {};
+    const { dateStr: localDateStr } = getUserLocalClock(userData);
 
-  // Check own meals
-  const snap = await db.collection("meals")
-    .where("uid", "==", uid)
-    .where("type", "==", mealType)
-    .where("localDate", "==", localDateStr)
-    .get();
+    // Check own meals
+    const snap = await db.collection("meals")
+      .where("uid", "==", uid)
+      .where("type", "==", mealType)
+      .where("localDate", "==", localDateStr)
+      .get();
 
-  if (!snap.empty) {
-    console.log(`${userData.name} hasLogged ${mealType} on ${localDateStr}: true (own meal)`);
+    if (!snap.empty) {
+      console.log(`${userData.name} hasLogged ${mealType} on ${localDateStr}: true (own meal)`);
+      return true;
+    }
+
+    console.log(`${userData.name} hasLogged ${mealType} on ${localDateStr}: false`);
+    return false;
+  } catch (e) {
+    console.error(`hasLoggedToday failed for ${uid} ${mealType}, failing closed (skipping notification):`, e);
     return true;
   }
-
-  console.log(`${userData.name} hasLogged ${mealType} on ${localDateStr}: false`);
-  return false;
 }
 
 // Runs every 15 mins to check each user's local time accurately across all offsets
@@ -1287,8 +1284,7 @@ exports.energyCheckInReminder = onSchedule("*/5 * * * *", async () => {
         await sendNotification(
           user.fcmToken,
           "Energy Check-in ✨",
-          `How are you feeling after your ${checkIn.mealType}? Log your energy now!`,
-          user.fcmTokens || []
+          `How are you feeling after your ${checkIn.mealType}? Log your energy now!`
         );
 
         await docSnap.ref.update({ notified: true, updatedAt: now });
@@ -1359,7 +1355,7 @@ async function sendMealReminder(mealType, reminderLocalHour, reminderLocalMinute
 
     const body = messages[Math.floor(Math.random() * messages.length)];
     console.log(`Sending ${mealType} reminder to ${user.name}`);
-    await sendNotification(user.fcmToken, "TableFor2 ⏰", body, user.fcmTokens || []);
+    await sendNotification(user.fcmToken, "TableFor2 ⏰", body);
     // Save cooldown timestamp
     await db.collection("users").doc(userDoc.id).update({
       [`lastReminder_${mealType}`]: new Date().toISOString(),
@@ -1404,12 +1400,19 @@ exports.reanalyzeMeal = onCall(
       if (!mealSnap.exists) throw new Error("Meal not found");
 
       const meal = mealSnap.data();
-      await db.collection("meals").doc(mealId).update({ analysisStatus: "analyzing" });
 
-      // Security check — only meal owner can reanalyze
-      if (request.auth?.uid && request.auth.uid !== meal.uid) {
-        throw new Error("Unauthorized");
+      // Security check — only authenticated users who own the meal can reanalyze
+      if (!request.auth?.uid) {
+        throw new Error("Unauthorized: not authenticated");
       }
+      if (request.auth.uid !== meal.uid) {
+        const userDoc = await db.collection("users").doc(meal.uid).get();
+        if (!userDoc.exists || userDoc.data().partnerUid !== request.auth.uid) {
+          throw new Error("Unauthorized: not meal owner or partner");
+        }
+      }
+
+      await db.collection("meals").doc(mealId).update({ analysisStatus: "analyzing" });
 
       const userSnap = await db.collection("users").doc(meal.uid).get();
       const user = userSnap.exists ? userSnap.data() : null;
@@ -1460,8 +1463,11 @@ exports.reanalyzeMeal = onCall(
         console.log(`Reanalyzed meal ${mealId}:`, nutrition);
         return { success: true, nutrition };
       } else {
-        // Keep existing nutrition if reanalysis fails
+        // Keep existing nutrition and revert status if reanalysis fails
         console.log(`Reanalysis returned invalid data for ${mealId}, keeping existing`);
+        await db.collection("meals").doc(mealId).update({
+          analysisStatus: existingNutrition ? "completed" : "failed"
+        });
         return { success: false, nutrition: existingNutrition };
       }
     } catch (e) {
@@ -1747,8 +1753,7 @@ exports.sendPartnerRequestNotification = onCall(async (request) => {
     await sendNotification(
       partner.fcmToken,
       "TableFor2 💑",
-      `${fromName} wants to link accounts with you — check your Profile!`,
-      partner.fcmTokens || []
+      `${fromName} wants to link accounts with you — check your Profile!`
     );
   } catch (e) {
     console.error("sendPartnerRequestNotification error:", e);
@@ -1767,8 +1772,7 @@ exports.sendPartnerAcceptedNotification = onCall(async (request) => {
     await sendNotification(
       partner.fcmToken,
       "TableFor2 🎉",
-      `${fromName} accepted your partner request! You're now linked.`,
-      partner.fcmTokens || []
+      `${fromName} accepted your partner request! You're now linked.`
     );
   } catch (e) {
     console.error("sendPartnerAcceptedNotification error:", e);
