@@ -102,7 +102,7 @@
         }
       ],
       "density": "SPARSE_ALL"
-    },
+    }
   ],
   "fieldOverrides": []
 }
