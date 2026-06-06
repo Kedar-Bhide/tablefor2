@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { auth, db } from "../firebase";
-import { collection, query, where, orderBy, limit, startAfter, getDocs, updateDoc, doc } from "firebase/firestore";
+import { collection, query, where, limit, getDocs, updateDoc, doc } from "firebase/firestore";
 import { getPhotos } from "../utils/getPhotos";
 import { getMealLocalDateKey } from "../utils/dateTime";
 import PhotoCarousel from "../components/PhotoCarousel";
@@ -54,9 +54,7 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
     }
   }, [galleryDate, groupedMeals, setGalleryDate]);
 
-  const PAGE_SIZE = 20;
-  const lastDocRef = useRef({ mine: null, hers: null });
-  const [hasMore, setHasMore] = useState(true);
+  const [loadingGallery, setLoadingGallery] = useState(false);
 
   const groupMeals = (meals) => {
     const filtered = meals.filter((m) => getPhotos(m).length > 0);
@@ -94,53 +92,29 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
     );
   };
 
-  const fetchMeals = useCallback(async (append = false) => {
+  const fetchMeals = useCallback(async () => {
     const uid = filter === "mine" ? user.uid : partnerUid;
-    if (!uid) return;
+    if (!uid || loadingGallery) return;
 
+    setLoadingGallery(true);
     try {
-      const constraints = [where("uid", "==", uid), orderBy("createdAt", "desc"), limit(PAGE_SIZE)];
-      const cursor = lastDocRef.current[filter];
-      if (append && cursor) {
-        constraints.push(startAfter(cursor));
-      }
-
-      const q = query(collection(db, "meals"), ...constraints);
+      const q = query(collection(db, "meals"), where("uid", "==", uid), limit(500));
       const snap = await getDocs(q);
-
-      if (snap.empty) return;
-
       const meals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      lastDocRef.current[filter] = snap.docs[snap.docs.length - 1];
 
-      if (append) {
-        setGroupedMeals((prev) => {
-          const merged = { ...prev };
-          const newGrouped = groupMeals(meals);
-          for (const [dateKey, group] of Object.entries(newGrouped)) {
-            if (merged[dateKey]) {
-              merged[dateKey] = {
-                ...merged[dateKey],
-                meals: [...merged[dateKey].meals, ...group.meals],
-              };
-            } else {
-              merged[dateKey] = group;
-            }
-          }
-          return merged;
-        });
-      } else {
-        setGroupedMeals(groupMeals(meals));
-      }
+      // Sort newest first client-side
+      meals.sort((a, b) => {
+        const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || 0).getTime();
+        const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || 0).getTime();
+        return bTime - aTime;
+      });
 
-      setHasMore(snap.docs.length === PAGE_SIZE);
+      setGroupedMeals(groupMeals(meals));
     } catch (e) {
       console.error("Gallery fetch failed:", e);
-      if (!append) setHasMore(false);
     }
-  }, [filter, partnerUid, user.uid]);
-
-  const loadMore = () => fetchMeals(true);
+    setLoadingGallery(false);
+  }, [filter, partnerUid, user.uid, loadingGallery]);
 
   const handleNutritionChange = useCallback(async (key, value) => {
     try {
@@ -276,24 +250,6 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
             </motion.div>
           </div>
         ))
-      )}
-      {hasMore && (
-        <div style={{ textAlign: "center", padding: "2rem" }}>
-          <button
-            onClick={loadMore}
-            style={{
-              padding: "0.8rem 2rem",
-              backgroundColor: "var(--primary)",
-              color: "white",
-              border: "none",
-              borderRadius: "12px",
-              fontSize: "1rem",
-              cursor: "pointer",
-            }}
-          >
-            Load More
-          </button>
-        </div>
       )}
     </div>
     {/* Meal Viewer - Moved outside container for perfect centering */}
