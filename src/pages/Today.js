@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from "react";
+import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { db, auth, storage } from "../firebase";
 import { collection, query, where, onSnapshot, updateDoc, deleteDoc, doc, getDoc, getDocs, addDoc, deleteField, Timestamp } from "firebase/firestore";
 import { compressImage } from "../utils/compressImage";
@@ -97,6 +97,43 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [mentalLevel, setMentalLevel] = useState(50);
   const [energySaving, setEnergySaving] = useState(false);
   const [rawEnergyCheckIns, setRawEnergyCheckIns] = useState([]);
+
+  const handleSelectedMealNutritionChange = useCallback(async (key, value) => {
+    try {
+      setSelectedMeal((prev) => ({
+        ...prev,
+        nutrition: {
+          ...(prev.nutrition || {}),
+          [key]: value
+        }
+      }));
+      if (selectedMeal?.id) {
+        await updateDoc(doc(db, "meals", selectedMeal.id), {
+          [`nutrition.${key}`]: value
+        });
+      }
+    } catch (e) {
+      console.error("Failed to update nutrition inline", e);
+    }
+  }, [selectedMeal?.id]);
+
+  const handleEditNutritionChange = useCallback((key, value) => {
+    if (key === 'calories') setEditCalories(String(value));
+    if (key === 'protein_g') setEditProtein(String(value));
+    if (key === 'carbs_g') setEditCarbs(String(value));
+    if (key === 'fat_g') setEditFat(String(value));
+    if (key === 'fiber_g') setEditFiber(String(value));
+    setManualMacrosModified(true);
+  }, []);
+
+  const handleTaskNutritionChange = useCallback((key, value) => {
+    setTaskMacrosModified(true);
+    if (key === 'calories') setTaskCalories(String(value));
+    if (key === 'protein_g') setTaskProtein(String(value));
+    if (key === 'carbs_g') setTaskCarbs(String(value));
+    if (key === 'fat_g') setTaskFat(String(value));
+    if (key === 'fiber_g') setTaskFiber(String(value));
+  }, []);
 
   useEffect(() => {
     if (globalUserData?.photoURL) {
@@ -1087,6 +1124,9 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         <AnimatePresence>
           {goalSetupStep && (
             <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Goal setup"
               style={styles.overlay}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1418,6 +1458,9 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       <AnimatePresence>
         {selectedMeal && (
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Meal details"
             style={styles.overlay}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1485,22 +1528,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                   isRetrying={retryingMealId === selectedMeal.id}
                   onRetry={() => handleRetryAnalysis(selectedMeal.id)}
                   editable={true}
-                  onNutritionChange={async (key, value) => {
-                    try {
-                      setSelectedMeal((prev) => ({
-                        ...prev,
-                        nutrition: {
-                          ...(prev.nutrition || {}),
-                          [key]: value
-                        }
-                      }));
-                      await updateDoc(doc(db, "meals", selectedMeal.id), {
-                        [`nutrition.${key}`]: value
-                      });
-                    } catch (e) {
-                      console.error("Failed to update nutrition inline", e);
-                    }
-                  }}
+                  onNutritionChange={handleSelectedMealNutritionChange}
                 />
 
                 {/* Partner's comment */}
@@ -1562,14 +1590,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                     fiber_g: parseInt(editFiber) || 0,
                   } || {}}
                   editable={true}
-                  onNutritionChange={(key, value) => {
-                    if (key === 'calories') setEditCalories(String(value));
-                    if (key === 'protein_g') setEditProtein(String(value));
-                    if (key === 'carbs_g') setEditCarbs(String(value));
-                    if (key === 'fat_g') setEditFat(String(value));
-                    if (key === 'fiber_g') setEditFiber(String(value));
-                    setManualMacrosModified(true);
-                  }}
+                  onNutritionChange={handleEditNutritionChange}
                 />
 
                 <p style={styles.editLabel}>Meal Type</p>
@@ -1722,8 +1743,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                 </div>
                 <input id="editPhotoInput" type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handleAddEditPhoto} />
                 <input id="editGalleryInput" type="file" accept="image/*" style={{ display: "none" }} onChange={handleAddEditPhoto} />
-                {showEditPhotoOptions && (
-                  <div style={styles.overlay} onClick={() => setShowEditPhotoOptions(false)}>
+                  {showEditPhotoOptions && (
+                  <div role="dialog" aria-modal="true" aria-label="Add photo" style={styles.overlay} onClick={() => setShowEditPhotoOptions(false)}>
                     <div style={styles.sheet} onClick={(e) => e.stopPropagation()}>
                       <p style={styles.sheetTitle}>Add Photo</p>
                       <button style={styles.editButton} onClick={async () => {
@@ -1767,6 +1788,9 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       <AnimatePresence>
         {viewMeal && (
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Partner meal"
             style={styles.overlay}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1905,6 +1929,9 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       <AnimatePresence>
         {reactionMeal && (
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="React to meal"
             style={styles.overlay}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1955,7 +1982,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       </button>
       {/* Weight Check-in Popup */}
       {weightCheckIn && (
-        <div style={styles.overlay} onClick={handleWeightSnooze}>
+        <div role="dialog" aria-modal="true" aria-label="Weight check-in" style={styles.overlay} onClick={handleWeightSnooze}>
           <div
             style={styles.weightCheckInSheet}
             onClick={(e) => e.stopPropagation()}
@@ -2014,6 +2041,9 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       {/* Insight Popup */}
       {insightBanner === "open" && (weightInsight || monthlyInsight) && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Insights"
           style={styles.overlay}
           onClick={() => setInsightBanner("ready")}
         >
@@ -2120,7 +2150,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
       {/* Unlinked Popup */}
       {showUnlinkPopup && (
-        <div style={styles.overlay}>
+        <div role="dialog" aria-modal="true" aria-label="Unlinked notice" style={styles.overlay}>
           <div style={{ ...styles.sheet, textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
             {/* <p style={{ fontSize: "2rem", marginBottom: "0.5rem", marginTop: 0 }}>💔</p> */}
             <p style={{ fontWeight: "bold", fontSize: "1.2rem", marginBottom: "0.5rem", color: "#333" }}>
@@ -2235,14 +2265,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                   fiber_g: parseInt(taskFiber) || 0,
                 }}
                 editable={true}
-                onNutritionChange={(key, value) => {
-                  setTaskMacrosModified(true);
-                  if (key === 'calories') setTaskCalories(String(value));
-                  if (key === 'protein_g') setTaskProtein(String(value));
-                  if (key === 'carbs_g') setTaskCarbs(String(value));
-                  if (key === 'fat_g') setTaskFat(String(value));
-                  if (key === 'fiber_g') setTaskFiber(String(value));
-                }}
+                onNutritionChange={handleTaskNutritionChange}
               />
             </div>
 
@@ -2622,7 +2645,7 @@ const styles = {
   editInput: {
     width: "100%",
     padding: "0.6rem",
-    fontSize: "0.85rem",
+    fontSize: "16px",
     borderRadius: "8px",
     border: "1px solid #ddd",
     marginBottom: "0.7rem",
@@ -2706,7 +2729,7 @@ const styles = {
   commentInput: {
     flex: 1,
     padding: "0.6rem",
-    fontSize: "0.9rem",
+    fontSize: "16px",
     borderRadius: "8px",
     border: "1px solid #eee",
     outline: "none",
@@ -3126,7 +3149,7 @@ const styles = {
   taskQuantityInput: {
     width: "100%",
     padding: "0.7rem 1rem",
-    fontSize: "0.9rem",
+    fontSize: "16px",
     borderRadius: "10px",
     border: "1px solid #eee",
     outline: "none",
