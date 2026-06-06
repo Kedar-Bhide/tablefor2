@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { auth, db, storage } from "../firebase";
 import { signOut } from "firebase/auth";
-import { doc, getDoc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, updateDoc, collection, query, where, getDocs, runTransaction } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { calculateBadges } from "../utils/calculateBadges";
 import { calculateWallet, WHITELISTED_WALLET_UIDS } from "../utils/calculateWallet";
@@ -167,23 +167,36 @@ function Profile({ user, globalUserData, globalPartnerData }) {
         return;
       }
 
-      // Save request to partner's document
-      await updateDoc(doc(db, "users", partnerDocUid), {
-        partnerRequest: {
-          fromUid: user.uid,
-          fromName: user.displayName || "Someone",
-          fromEmail: user.email,
-          sentAt: new Date().toISOString(),
-        },
-      });
+      // Use transaction to prevent race conditions on partner linking
+      await runTransaction(db, async (transaction) => {
+        const partnerRef = doc(db, "users", partnerDocUid);
+        const partnerSnap = await transaction.get(partnerRef);
+        if (!partnerSnap.exists()) {
+          throw new Error("Partner account no longer exists");
+        }
+        const partnerData = partnerSnap.data();
+        if (partnerData.partnerUid) {
+          throw new Error("This person is already linked with someone else.");
+        }
+        if (partnerData.partnerRequest) {
+          throw new Error("This person already has a pending request from someone else.");
+        }
 
-      // Save pending request on own document
-      await updateDoc(doc(db, "users", user.uid), {
-        pendingPartnerRequest: {
-          toUid: partnerDocUid,
-          toEmail: partnerEmail,
-          sentAt: new Date().toISOString(),
-        },
+        transaction.update(partnerRef, {
+          partnerRequest: {
+            fromUid: user.uid,
+            fromName: user.displayName || "Someone",
+            fromEmail: user.email,
+            sentAt: new Date().toISOString(),
+          },
+        });
+        transaction.update(doc(db, "users", user.uid), {
+          pendingPartnerRequest: {
+            toUid: partnerDocUid,
+            toEmail: partnerEmail,
+            sentAt: new Date().toISOString(),
+          },
+        });
       });
       // Notify partner of incoming request
       try {
@@ -199,7 +212,12 @@ function Profile({ user, globalUserData, globalPartnerData }) {
       setMessage("✅ Request sent! Waiting for them to accept.");
     } catch (e) {
       console.error("Link partner error:", e);
-      setMessage("❌ Something went wrong. Please try again.");
+      const msg = e.message || "";
+      if (msg.includes("already linked") || msg.includes("already has a pending request")) {
+        setMessage("❌ " + msg);
+      } else {
+        setMessage("❌ Something went wrong. Please try again.");
+      }
     }
     setSaving(false);
   };
@@ -211,32 +229,27 @@ function Profile({ user, globalUserData, globalPartnerData }) {
     try {
       const fromUid = incomingRequest.fromUid;
 
-      // Verify the sender is still unlinked
-      const fromUserRef = doc(db, "users", fromUid);
-      const fromUserSnap = await getDoc(fromUserRef);
-      if (!fromUserSnap.exists() || fromUserSnap.data().partnerUid) {
-        setMessage("❌ This person has already linked with someone else!");
-        // Clean up our stale request
-        await updateDoc(doc(db, "users", user.uid), {
-          partnerRequest: deleteField(),
-        });
-        setSaving(false);
-        return;
-      }
+      // Use transaction to atomically link both accounts
+      await runTransaction(db, async (transaction) => {
+        const fromUserRef = doc(db, "users", fromUid);
+        const fromUserSnap = await transaction.get(fromUserRef);
+        if (!fromUserSnap.exists() || fromUserSnap.data().partnerUid) {
+          throw new Error("This person has already linked with someone else!");
+        }
 
-      // Link both accounts
-      const linkDate = new Date();
-      await updateDoc(doc(db, "users", user.uid), {
-        partnerUid: fromUid,
-        partnerEmail: incomingRequest.fromEmail,
-        partnerRequest: deleteField(),
-        partnerLinkedAt: linkDate,
-      });
-      await updateDoc(doc(db, "users", fromUid), {
-        partnerUid: user.uid,
-        partnerEmail: user.email,
-        pendingPartnerRequest: deleteField(),
-        partnerLinkedAt: linkDate,
+        const linkDate = new Date();
+        transaction.update(doc(db, "users", user.uid), {
+          partnerUid: fromUid,
+          partnerEmail: incomingRequest.fromEmail,
+          partnerRequest: deleteField(),
+          partnerLinkedAt: linkDate,
+        });
+        transaction.update(fromUserRef, {
+          partnerUid: user.uid,
+          partnerEmail: user.email,
+          pendingPartnerRequest: deleteField(),
+          partnerLinkedAt: linkDate,
+        });
       });
 
       // Notify requester that request was accepted
@@ -255,7 +268,15 @@ function Profile({ user, globalUserData, globalPartnerData }) {
       setMessage("🎉 You're now linked with " + incomingRequest.fromName + "!");
     } catch (e) {
       console.error("Accept request error:", e);
-      setMessage("❌ Something went wrong. Please try again.");
+      if (e.message === "This person has already linked with someone else!") {
+        // Clean up stale request on our end
+        await updateDoc(doc(db, "users", user.uid), {
+          partnerRequest: deleteField(),
+        }).catch(() => {});
+        setMessage("❌ " + e.message);
+      } else {
+        setMessage("❌ Something went wrong. Please try again.");
+      }
     }
     setSaving(false);
   };
@@ -274,6 +295,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
       setMessage("Request declined.");
     } catch (e) {
       console.error("Decline request error:", e);
+      setMessage("❌ Something went wrong. Please try again.");
     }
   };
 
@@ -313,20 +335,28 @@ function Profile({ user, globalUserData, globalPartnerData }) {
   };
 
   const handleWalletReset = async () => {
-    const userRef = doc(db, "users", user.uid);
-    await updateDoc(userRef, { walletResetAt: new Date() });
-    const walletData = await calculateWallet(user.uid);
-    setWallet(walletData);
-    setShowResetConfirm(false);
+    try {
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, { walletResetAt: new Date() });
+      const walletData = await calculateWallet(user.uid);
+      setWallet(walletData);
+      setShowResetConfirm(false);
+    } catch (e) {
+      console.error("Wallet reset failed:", e);
+    }
   };
 
 
   const handleFieldSave = async (key) => {
     if (editingField !== key) return;
-    const value = fieldDraft.trim();
-    await updateDoc(doc(db, "users", user.uid), { [key]: value });
-    setEditingField(null);
-    setFieldDraft("");
+    try {
+      const value = fieldDraft.trim();
+      await updateDoc(doc(db, "users", user.uid), { [key]: value });
+      setEditingField(null);
+      setFieldDraft("");
+    } catch (e) {
+      console.error("Failed to save field:", e);
+    }
   };
 
   const profileComplete = profileFields.age &&
@@ -409,7 +439,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
 
       {/* Unlink Confirmation Popup (Global) */}
       {showUnlinkConfirm && (
-        <div style={styles.overlay} onClick={() => setShowUnlinkConfirm(false)}>
+        <div role="dialog" aria-modal="true" aria-label="Unlink confirmation" style={styles.overlay} onClick={() => setShowUnlinkConfirm(false)}>
           <div style={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
             <p style={styles.confirmModalTitle}>Unlink Partner?</p>
             <p style={styles.confirmModalText}>This will remove your shared connection. You can link again later if you want.</p>
@@ -435,7 +465,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
 
       {/* Cropper Modal */}
       {imageToCrop && (
-        <div style={styles.overlay}>
+        <div role="dialog" aria-modal="true" aria-label="Crop photo" style={styles.overlay}>
           <div style={styles.cropperContainer}>
             <div style={styles.cropperWrapper}>
               <Cropper
@@ -872,6 +902,9 @@ function Profile({ user, globalUserData, globalPartnerData }) {
       <AnimatePresence>
         {showPartnerProfile && globalPartnerData && (
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Partner profile"
             style={styles.overlay}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

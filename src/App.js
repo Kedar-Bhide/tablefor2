@@ -95,16 +95,19 @@ function App() {
           globalUserData.utcOffsetMinutes !== utcOffsetMinutes
         )
       ) {
-        console.log("Detecting timezone change... Updating Firestore.");
-        await setDoc(
-          doc(db, "users", user.uid),
-          {
-            timezone: timezone || null,
-            utcOffsetMinutes,
-            utcOffset: utcOffsetMinutes / 60,
-          },
-          { merge: true }
-        );
+        try {
+          await setDoc(
+            doc(db, "users", user.uid),
+            {
+              timezone: timezone || null,
+              utcOffsetMinutes,
+              utcOffset: utcOffsetMinutes / 60,
+            },
+            { merge: true }
+          );
+        } catch (e) {
+          console.error("Failed to sync timezone:", e);
+        }
       }
     };
 

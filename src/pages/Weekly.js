@@ -1231,75 +1231,85 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
         )}
       </AnimatePresence>
       {/* Monthly Insight Popup */}
-      {showInsightPopup && monthlyInsight && (
-        <div
-          style={styles.overlayCenter}
-          onClick={handleDismissInsight}
-        >
-          <div
-            style={styles.insightPopup}
-            onClick={(e) => e.stopPropagation()}
+      <AnimatePresence>
+        {showInsightPopup && monthlyInsight && (
+          <motion.div
+            style={styles.overlayCenter}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={handleDismissInsight}
           >
-            {/* Top decoration */}
-            <div style={styles.insightPopupGlow} />
-
-            {/* Header */}
-            <div style={styles.insightPopupHeader}>
-              <p style={styles.insightPopupEyebrow}>Monthly Recap</p>
-              <p style={styles.insightPopupMonth}>{monthlyInsight.month} {monthlyInsight.year} 🌙</p>
-            </div>
-
-            {/* Nutrition summary */}
-            {monthlyInsight.nutrition && (
-              <div style={styles.insightNutritionRow}>
-                {[
-                  { label: "Calories", value: `${monthlyInsight.nutrition.avgCalories} kcal`, color: "#ff6b6b" },
-                  { label: "Protein", value: `${monthlyInsight.nutrition.avgProtein}g`, color: "#ff6b6b" },
-                  { label: "Carbs", value: `${monthlyInsight.nutrition.avgCarbs}g`, color: "#ffb347" },
-                  { label: "Fat", value: `${monthlyInsight.nutrition.avgFat}g`, color: "#7ec8a4" },
-                ].map((item) => (
-                  <div key={item.label} style={styles.insightNutritionPill}>
-                    <p style={styles.insightNutritionLabel}>{item.label}</p>
-                    <p style={{ ...styles.insightNutritionValue, color: item.color }}>
-                      {item.value}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Divider */}
-            <div style={styles.insightDivider} />
-
-            {/* AI Insight text */}
-            <p style={styles.insightPopupText}>{monthlyInsight.insight}</p>
-
-            {/* Days tracked */}
-            {monthlyInsight.nutrition && (
-              <p style={styles.insightPopupMeta}>
-                Based on {monthlyInsight.nutrition.daysTracked} tracked days · {monthlyInsight.nutrition.totalMeals} meals logged
-              </p>
-            )}
-
-            {/* Dismiss button */}
-            <button
-              style={{
-                ...styles.insightPopupButton,
-                opacity: dismissingInsight ? 0.6 : 1,
-              }}
-              onClick={() => handleDismissInsight(monthlyInsight.key)}
-              disabled={dismissingInsight}
+            <motion.div
+              style={styles.insightPopup}
+              initial={{ y: 50, opacity: 0, scale: 0.95 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 50, opacity: 0, scale: 0.95 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              onClick={(e) => e.stopPropagation()}
             >
-              {dismissingInsight ? "Saving..." : "Got it! 👍"}
-            </button>
+              {/* Top decoration */}
+              <div style={styles.insightPopupGlow} />
 
-            {/* Small disclaimer */}
-            <p style={styles.insightDisclaimer}>
-              AI-generated insights · Not medical advice
-            </p>
-          </div>
-        </div>
-      )}
+              {/* Header */}
+              <div style={styles.insightPopupHeader}>
+                <p style={styles.insightPopupEyebrow}>Monthly Recap</p>
+                <p style={styles.insightPopupMonth}>{monthlyInsight.month} {monthlyInsight.year} 🌙</p>
+              </div>
+
+              {/* Nutrition summary */}
+              {monthlyInsight.nutrition && (
+                <div style={styles.insightNutritionRow}>
+                  {[
+                    { label: "Calories", value: `${monthlyInsight.nutrition.avgCalories} kcal`, color: "#ff6b6b" },
+                    { label: "Protein", value: `${monthlyInsight.nutrition.avgProtein}g`, color: "#ff6b6b" },
+                    { label: "Carbs", value: `${monthlyInsight.nutrition.avgCarbs}g`, color: "#ffb347" },
+                    { label: "Fat", value: `${monthlyInsight.nutrition.avgFat}g`, color: "#7ec8a4" },
+                  ].map((item) => (
+                    <div key={item.label} style={styles.insightNutritionPill}>
+                      <p style={styles.insightNutritionLabel}>{item.label}</p>
+                      <p style={{ ...styles.insightNutritionValue, color: item.color }}>
+                        {item.value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Divider */}
+              <div style={styles.insightDivider} />
+
+              {/* AI Insight text */}
+              <p style={styles.insightPopupText}>{monthlyInsight.insight}</p>
+
+              {/* Days tracked */}
+              {monthlyInsight.nutrition && (
+                <p style={styles.insightPopupMeta}>
+                  Based on {monthlyInsight.nutrition.daysTracked} tracked days · {monthlyInsight.nutrition.totalMeals} meals logged
+                </p>
+              )}
+
+              {/* Dismiss button */}
+              <button
+                style={{
+                  ...styles.insightPopupButton,
+                  opacity: dismissingInsight ? 0.6 : 1,
+                }}
+                onClick={() => handleDismissInsight(monthlyInsight.key)}
+                disabled={dismissingInsight}
+              >
+                {dismissingInsight ? "Saving..." : "Got it! 👍"}
+              </button>
+
+              {/* Small disclaimer */}
+              <p style={styles.insightDisclaimer}>
+                AI-generated insights · Not medical advice
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Insight revisit buttons moved to container */}
 
       {/* Weight Insight Popup */}

@@ -266,15 +266,16 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
     if (!mealName) return;
     setSaving(true);
 
-    // Upload all photos
-    const uploadedURLs = [];
-    for (const photoFile of photos) {
-      const compressed = await compressImage(photoFile);
-      const photoRef = ref(storage, `meals/${user.uid}/${Date.now()}_${Math.random()}`);
-      await uploadBytes(photoRef, compressed);
-      const url = await getDownloadURL(photoRef);
-      uploadedURLs.push(url);
-    }
+    try {
+      // Upload all photos
+      const uploadedURLs = [];
+      for (const photoFile of photos) {
+        const compressed = await compressImage(photoFile);
+        const photoRef = ref(storage, `meals/${user.uid}/${Date.now()}_${Math.random()}`);
+        await uploadBytes(photoRef, compressed);
+        const url = await getDownloadURL(photoRef);
+        uploadedURLs.push(url);
+      }
 
     const now = new Date();
     const createdAt = (() => {
@@ -344,6 +345,10 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
 
     setSaving(false);
     setCurrentPage("today");
+    } catch (e) {
+      console.error("Meal save failed:", e);
+      setSaving(false);
+    }
   };
 
   return (
@@ -1090,7 +1095,7 @@ const styles = {
     border: "1px solid #eee",
     borderRadius: "8px",
     padding: "0.5rem",
-    fontSize: "0.85rem",
+    fontSize: "16px",
     color: "#333",
     backgroundColor: "#fafafa",
     outline: "none",

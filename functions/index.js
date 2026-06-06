@@ -16,36 +16,60 @@ const WHITELISTED_WALLET_UIDS = [
   "P8Hw72zyZqhJ19oxNZ9LYQTJvLT2"
 ];
 
-async function sendNotification(token, title, body, extraTokens = []) {
+async function sendNotification(token, title, body) {
   if (!token) return;
 
-  // Deduplicate all tokens
-  const allTokens = [...new Set([token, ...extraTokens].filter(Boolean))];
-
-  // Send to all unique tokens
-  const promises = allTokens.map(async (t) => {
-    try {
-      await admin.messaging().send({
-        notification: { title, body },
-        token: t,
-      });
-      console.log("Notification sent to token:", t.slice(-10));
-    } catch (error) {
-      // Token expired/invalid — remove it
-      if (error.code === 'messaging/registration-token-not-registered') {
-        console.log("Removing invalid token:", t.slice(-10));
-      } else {
-        console.error("Error sending notification:", error);
-      }
+  try {
+    await admin.messaging().send({
+      notification: { title, body },
+      token: token,
+    });
+    console.log("Notification sent to token:", token.slice(-10));
+  } catch (error) {
+    // Token expired/invalid — log it
+    if (error.code === 'messaging/registration-token-not-registered') {
+      console.log("Invalid/expired token:", token.slice(-10));
+    } else {
+      console.error("Error sending notification:", error);
     }
-  });
-
-  await Promise.all(promises);
+  }
 }
 
 async function getUser(uid) {
   const snap = await db.collection("users").doc(uid).get();
   return snap.exists ? snap.data() : null;
+}
+
+// Simple Firestore-based rate limiter per user per function
+// Allows maxCalls calls per windowMinutes window
+async function checkRateLimit(uid, functionName, maxCalls = 30, windowMinutes = 60) {
+  const docId = `${functionName}_${uid}`;
+  const ref = db.collection("rateLimits").doc(docId);
+
+  await db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(ref);
+    const now = Date.now();
+    const windowStart = now - windowMinutes * 60 * 1000;
+
+    let data = snap.data();
+    if (!data || data.windowStart < windowStart) {
+      // Start a new window
+      transaction.set(ref, {
+        uid,
+        functionName,
+        count: 1,
+        windowStart: now,
+      });
+      return;
+    }
+
+    if (data.count >= maxCalls) {
+      const retryAfter = Math.ceil((data.windowStart + windowMinutes * 60 * 1000 - now) / 1000);
+      throw new Error(`Rate limit exceeded. Retry after ${retryAfter}s`);
+    }
+
+    transaction.update(ref, { count: admin.firestore.FieldValue.increment(1) });
+  });
 }
 
 function getDateKeyFromParts(year, month, day) {
@@ -725,6 +749,10 @@ The descriptor should be a concise 2-4 word food description.
 exports.parseVoiceMeal = onCall(
   { secrets: [ANTHROPIC_API_KEY] },
   async (request) => {
+    if (!request.auth?.uid) {
+      throw new Error("Unauthorized: not authenticated");
+    }
+    await checkRateLimit(request.auth.uid, "parseVoiceMeal", 30, 60);
     const { transcript } = request.data;
     if (!transcript) return { error: "No transcript provided" };
 
@@ -792,7 +820,15 @@ exports.onMealCreated = onDocumentCreated(
   { document: "meals/{mealId}", secrets: [ANTHROPIC_API_KEY] },
   async (event) => {
 
+    if (!event.data) {
+      console.log("Meal data missing (likely deleted before function ran)");
+      return;
+    }
     const meal = event.data.data();
+    if (!meal || !meal.uid) {
+      console.log("Meal data or uid missing");
+      return;
+    }
     const uid = meal.uid;
     const mealId = event.params.mealId;
     const user = await getUser(uid);
@@ -969,7 +1005,7 @@ exports.onMealCreated = onDocumentCreated(
               ];
               body = messages[Math.floor(Math.random() * messages.length)];
             }
-            await sendNotification(partner.fcmToken, "TableFor2", body, partner.fcmTokens || []);
+            await sendNotification(partner.fcmToken, "TableFor2", body);
           }
         }
       }
@@ -1011,7 +1047,7 @@ exports.onBadgeEarned = onDocumentUpdated("users/{uid}", async (event) => {
       `Achievement unlocked: ${badgeName}!`,
     ];
     const body = messages[Math.floor(Math.random() * messages.length)];
-    await sendNotification(token, "TableFor2 🏆", body, after.fcmTokens || []);
+    await sendNotification(token, "TableFor2 🏆", body);
   }
 });
 
@@ -1020,6 +1056,8 @@ exports.onBadgeEarned = onDocumentUpdated("users/{uid}", async (event) => {
 exports.retryAnalysis = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new functions.https.HttpsError("unauthenticated", "User must be logged in");
+
+  await checkRateLimit(uid, "retryAnalysis", 10, 60);
 
   const mealId = request.data.mealId;
   if (!mealId) throw new functions.https.HttpsError("invalid-argument", "Missing mealId");
@@ -1091,14 +1129,13 @@ exports.onMealUpdated = onDocumentUpdated("meals/{mealId}", async (event) => {
     try {
       const partner = await getUser(mealOwner.partnerUid);
       if (partner) {
-        // Check if task already exists for this meal
-        const existingTask = await db.collection("tasks")
-          .where("sourceMealId", "==", mealId)
-          .where("toUid", "==", mealOwner.partnerUid)
-          .get();
+        // Use deterministic ID to prevent duplicate tasks
+        const taskId = `${mealId}_${mealOwner.partnerUid}`;
+        const taskRef = db.collection("tasks").doc(taskId);
+        const taskSnap = await taskRef.get();
 
-        if (existingTask.empty) {
-          await db.collection("tasks").add({
+        if (!taskSnap.exists) {
+          await taskRef.set({
             sourceMealId: mealId,
             fromUid: mealOwnerUid,
             toUid: mealOwner.partnerUid,
@@ -1123,7 +1160,7 @@ exports.onMealUpdated = onDocumentUpdated("meals/{mealId}", async (event) => {
           if (partner.fcmToken && partner.notifSettings?.partnerMeal !== false) {
             const firstName = mealOwner.name ? mealOwner.name.split(" ")[0] : "Your partner";
             const body = `${firstName} shared a ${after.type.toLowerCase()} with you 🍽️ — add your quantities!`;
-            await sendNotification(partner.fcmToken, "TableFor2", body, partner.fcmTokens || []);
+            await sendNotification(partner.fcmToken, "TableFor2", body);
           }
         }
       }
@@ -1135,19 +1172,12 @@ exports.onMealUpdated = onDocumentUpdated("meals/{mealId}", async (event) => {
   // 3. Check for isShared transition (true -> false) to remove incomplete partner tasks
   if (before.isShared && !after.isShared && mealOwner.partnerUid) {
     try {
-      const existingTasks = await db.collection("tasks")
-        .where("sourceMealId", "==", mealId)
-        .where("toUid", "==", mealOwner.partnerUid)
-        .where("completed", "==", false)
-        .get();
-
-      if (!existingTasks.empty) {
-        const batch = db.batch();
-        existingTasks.docs.forEach(doc => {
-          batch.delete(doc.ref);
-        });
-        await batch.commit();
-        console.log(`Incomplete tasks deleted for meal ${mealId} because sharing was disabled`);
+      const taskId = `${mealId}_${mealOwner.partnerUid}`;
+      const taskRef = db.collection("tasks").doc(taskId);
+      const taskSnap = await taskRef.get();
+      if (taskSnap.exists && !taskSnap.data().completed) {
+        await taskRef.delete();
+        console.log(`Incomplete task deleted for meal ${mealId} because sharing was disabled`);
       }
     } catch (err) {
       console.error("Failed to delete tasks during isShared disabled transition:", err);
@@ -1186,7 +1216,7 @@ exports.onMealUpdated = onDocumentUpdated("meals/{mealId}", async (event) => {
       }
 
       if (body) {
-        await sendNotification(mealOwner.fcmToken, "TableFor2", body, mealOwner.fcmTokens || []);
+        await sendNotification(mealOwner.fcmToken, "TableFor2", body);
       }
     }
   }
@@ -1194,24 +1224,29 @@ exports.onMealUpdated = onDocumentUpdated("meals/{mealId}", async (event) => {
 
 
 async function hasLoggedToday(uid, mealType) {
-  const userSnap = await db.collection("users").doc(uid).get();
-  const userData = userSnap.exists ? userSnap.data() : {};
-  const { dateStr: localDateStr } = getUserLocalClock(userData);
+  try {
+    const userSnap = await db.collection("users").doc(uid).get();
+    const userData = userSnap.exists ? userSnap.data() : {};
+    const { dateStr: localDateStr } = getUserLocalClock(userData);
 
-  // Check own meals
-  const snap = await db.collection("meals")
-    .where("uid", "==", uid)
-    .where("type", "==", mealType)
-    .where("localDate", "==", localDateStr)
-    .get();
+    // Check own meals
+    const snap = await db.collection("meals")
+      .where("uid", "==", uid)
+      .where("type", "==", mealType)
+      .where("localDate", "==", localDateStr)
+      .get();
 
-  if (!snap.empty) {
-    console.log(`${userData.name} hasLogged ${mealType} on ${localDateStr}: true (own meal)`);
+    if (!snap.empty) {
+      console.log(`${userData.name} hasLogged ${mealType} on ${localDateStr}: true (own meal)`);
+      return true;
+    }
+
+    console.log(`${userData.name} hasLogged ${mealType} on ${localDateStr}: false`);
+    return false;
+  } catch (e) {
+    console.error(`hasLoggedToday failed for ${uid} ${mealType}, failing closed (skipping notification):`, e);
     return true;
   }
-
-  console.log(`${userData.name} hasLogged ${mealType} on ${localDateStr}: false`);
-  return false;
 }
 
 // Runs every 15 mins to check each user's local time accurately across all offsets
@@ -1287,8 +1322,7 @@ exports.energyCheckInReminder = onSchedule("*/5 * * * *", async () => {
         await sendNotification(
           user.fcmToken,
           "Energy Check-in ✨",
-          `How are you feeling after your ${checkIn.mealType}? Log your energy now!`,
-          user.fcmTokens || []
+          `How are you feeling after your ${checkIn.mealType}? Log your energy now!`
         );
 
         await docSnap.ref.update({ notified: true, updatedAt: now });
@@ -1359,7 +1393,7 @@ async function sendMealReminder(mealType, reminderLocalHour, reminderLocalMinute
 
     const body = messages[Math.floor(Math.random() * messages.length)];
     console.log(`Sending ${mealType} reminder to ${user.name}`);
-    await sendNotification(user.fcmToken, "TableFor2 ⏰", body, user.fcmTokens || []);
+    await sendNotification(user.fcmToken, "TableFor2 ⏰", body);
     // Save cooldown timestamp
     await db.collection("users").doc(userDoc.id).update({
       [`lastReminder_${mealType}`]: new Date().toISOString(),
@@ -1404,12 +1438,21 @@ exports.reanalyzeMeal = onCall(
       if (!mealSnap.exists) throw new Error("Meal not found");
 
       const meal = mealSnap.data();
-      await db.collection("meals").doc(mealId).update({ analysisStatus: "analyzing" });
 
-      // Security check — only meal owner can reanalyze
-      if (request.auth?.uid && request.auth.uid !== meal.uid) {
-        throw new Error("Unauthorized");
+      // Security check — only authenticated users who own the meal can reanalyze
+      if (!request.auth?.uid) {
+        throw new Error("Unauthorized: not authenticated");
       }
+      if (request.auth.uid !== meal.uid) {
+        const userDoc = await db.collection("users").doc(meal.uid).get();
+        if (!userDoc.exists || userDoc.data().partnerUid !== request.auth.uid) {
+          throw new Error("Unauthorized: not meal owner or partner");
+        }
+      }
+
+      await checkRateLimit(request.auth.uid, "reanalyzeMeal", 20, 60);
+
+      await db.collection("meals").doc(mealId).update({ analysisStatus: "analyzing" });
 
       const userSnap = await db.collection("users").doc(meal.uid).get();
       const user = userSnap.exists ? userSnap.data() : null;
@@ -1460,8 +1503,11 @@ exports.reanalyzeMeal = onCall(
         console.log(`Reanalyzed meal ${mealId}:`, nutrition);
         return { success: true, nutrition };
       } else {
-        // Keep existing nutrition if reanalysis fails
+        // Keep existing nutrition and revert status if reanalysis fails
         console.log(`Reanalysis returned invalid data for ${mealId}, keeping existing`);
+        await db.collection("meals").doc(mealId).update({
+          analysisStatus: existingNutrition ? "completed" : "failed"
+        });
         return { success: false, nutrition: existingNutrition };
       }
     } catch (e) {
@@ -1475,6 +1521,9 @@ exports.generateWeightInsight = onCall(
   { secrets: [ANTHROPIC_API_KEY] },
   async (request) => {
     try {
+      if (!request.auth?.uid) {
+        throw new Error("Unauthorized: not authenticated");
+      }
       const {
         uid,
         newWeight,
@@ -1486,6 +1535,11 @@ exports.generateWeightInsight = onCall(
       } = request.data;
 
       if (!uid || !newWeight) throw new Error("Missing required fields");
+      if (request.auth.uid !== uid) {
+        throw new Error("Unauthorized: cannot generate insight for another user");
+      }
+
+      await checkRateLimit(uid, "generateWeightInsight", 5, 60);
       // If no previous weight — use new weight as both (first check-in)
       const effectivePreviousWeight = previousWeight || newWeight;
 
@@ -1738,6 +1792,9 @@ IMPORTANT:
 // Notify partner of incoming link request
 exports.sendPartnerRequestNotification = onCall(async (request) => {
   try {
+    if (!request.auth?.uid) {
+      throw new Error("Unauthorized: not authenticated");
+    }
     const { toUid, fromName } = request.data;
     if (!toUid || !fromName) return;
 
@@ -1747,8 +1804,7 @@ exports.sendPartnerRequestNotification = onCall(async (request) => {
     await sendNotification(
       partner.fcmToken,
       "TableFor2 💑",
-      `${fromName} wants to link accounts with you — check your Profile!`,
-      partner.fcmTokens || []
+      `${fromName} wants to link accounts with you — check your Profile!`
     );
   } catch (e) {
     console.error("sendPartnerRequestNotification error:", e);
@@ -1758,6 +1814,9 @@ exports.sendPartnerRequestNotification = onCall(async (request) => {
 // Notify requester that partner accepted
 exports.sendPartnerAcceptedNotification = onCall(async (request) => {
   try {
+    if (!request.auth?.uid) {
+      throw new Error("Unauthorized: not authenticated");
+    }
     const { toUid, fromName } = request.data;
     if (!toUid || !fromName) return;
 
@@ -1767,8 +1826,7 @@ exports.sendPartnerAcceptedNotification = onCall(async (request) => {
     await sendNotification(
       partner.fcmToken,
       "TableFor2 🎉",
-      `${fromName} accepted your partner request! You're now linked.`,
-      partner.fcmTokens || []
+      `${fromName} accepted your partner request! You're now linked.`
     );
   } catch (e) {
     console.error("sendPartnerAcceptedNotification error:", e);
