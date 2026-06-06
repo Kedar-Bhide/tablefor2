@@ -123,23 +123,32 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
   }, [fetchMeals]);
 
   const handleReaction = async (meal, emoji) => {
-    const mealRef = doc(db, "meals", meal.id);
-    await updateDoc(mealRef, {
-      [`reactions.${user.uid}`]: emoji,
-    });
-    setViewMeal({ ...viewMeal, reactions: { ...viewMeal.reactions, [user.uid]: emoji } });
+    try {
+      const mealRef = doc(db, "meals", meal.id);
+      await updateDoc(mealRef, {
+        [`reactions.${user.uid}`]: emoji,
+      });
+      setViewMeal({ ...viewMeal, reactions: { ...viewMeal.reactions, [user.uid]: emoji } });
+    } catch (e) {
+      console.error("Failed to save reaction:", e);
+    }
   };
 
   const handleComment = async () => {
     if (!comment.trim() || !viewMeal) return;
     setSavingComment(true);
-    const mealRef = doc(db, "meals", viewMeal.id);
-    await updateDoc(mealRef, {
-      [`comments.${user.uid}`]: comment.trim(),
-    });
-    setViewMeal({ ...viewMeal, comments: { ...viewMeal.comments, [user.uid]: comment.trim() } });
-    setSavingComment(false);
-    setComment("");
+    try {
+      const mealRef = doc(db, "meals", viewMeal.id);
+      await updateDoc(mealRef, {
+        [`comments.${user.uid}`]: comment.trim(),
+      });
+      setViewMeal({ ...viewMeal, comments: { ...viewMeal.comments, [user.uid]: comment.trim() } });
+      setComment("");
+    } catch (e) {
+      console.error("Failed to save comment:", e);
+    } finally {
+      setSavingComment(false);
+    }
   };
 
 
