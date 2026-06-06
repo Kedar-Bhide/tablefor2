@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { auth, db } from "../firebase";
-import { collection, query, where, limit, getDocs, updateDoc, doc } from "firebase/firestore";
+import { collection, query, where, orderBy, getDocs, updateDoc, doc } from "firebase/firestore";
 import { getPhotos } from "../utils/getPhotos";
 import { getMealLocalDateKey } from "../utils/dateTime";
 import PhotoCarousel from "../components/PhotoCarousel";
@@ -46,6 +46,13 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
   }, [galleryFilter]);
 
   useEffect(() => {
+    oldestDateRef.current = null;
+    setHasMore(true);
+    setGroupedMeals({});
+    setLoadingGallery(false);
+  }, [filter]);
+
+  useEffect(() => {
     if (galleryDate && scrollRefs.current[galleryDate]) {
       setTimeout(() => {
         scrollRefs.current[galleryDate].scrollIntoView({ behavior: "smooth", block: "start" });
@@ -54,7 +61,10 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
     }
   }, [galleryDate, groupedMeals, setGalleryDate]);
 
+  const PAGE_DAYS = 10;
+  const oldestDateRef = useRef(null);
   const [loadingGallery, setLoadingGallery] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
   const groupMeals = (meals) => {
     const filtered = meals.filter((m) => getPhotos(m).length > 0);
@@ -92,29 +102,53 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
     );
   };
 
-  const fetchMeals = useCallback(async () => {
+  const fetchMeals = useCallback(async (append = false) => {
     const uid = filter === "mine" ? user.uid : partnerUid;
     if (!uid || loadingGallery) return;
 
     setLoadingGallery(true);
     try {
-      const q = query(collection(db, "meals"), where("uid", "==", uid), limit(500));
+      const endDate = append ? oldestDateRef.current : new Date();
+      const startDate = new Date(endDate.getTime() - PAGE_DAYS * 24 * 60 * 60 * 1000);
+
+      const q = query(
+        collection(db, "meals"),
+        where("uid", "==", uid),
+        where("createdAt", ">=", startDate),
+        where("createdAt", "<", endDate),
+        orderBy("createdAt", "asc")
+      );
+
       const snap = await getDocs(q);
-      const meals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const meals = snap.docs.map((d) => ({ id: d.id, ...d.data() })).reverse();
+      oldestDateRef.current = startDate;
 
-      // Sort newest first client-side
-      meals.sort((a, b) => {
-        const aTime = a.createdAt?.toMillis ? a.createdAt.toMillis() : new Date(a.createdAt || 0).getTime();
-        const bTime = b.createdAt?.toMillis ? b.createdAt.toMillis() : new Date(b.createdAt || 0).getTime();
-        return bTime - aTime;
-      });
+      if (append) {
+        setGroupedMeals((prev) => {
+          const merged = { ...prev };
+          const newGrouped = groupMeals(meals);
+          for (const [dateKey, group] of Object.entries(newGrouped)) {
+            if (merged[dateKey]) {
+              merged[dateKey].meals = [...merged[dateKey].meals, ...group.meals];
+            } else {
+              merged[dateKey] = group;
+            }
+          }
+          return merged;
+        });
+      } else {
+        setGroupedMeals(groupMeals(meals));
+      }
 
-      setGroupedMeals(groupMeals(meals));
+      setHasMore(snap.docs.length >= 1);
     } catch (e) {
       console.error("Gallery fetch failed:", e);
+      if (!append) setHasMore(false);
     }
     setLoadingGallery(false);
   }, [filter, partnerUid, user.uid, loadingGallery]);
+
+  const loadMore = () => fetchMeals(true);
 
   const handleNutritionChange = useCallback(async (key, value) => {
     try {
@@ -250,6 +284,25 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
             </motion.div>
           </div>
         ))
+      )}
+      {hasMore && (
+        <div style={{ textAlign: "center", padding: "2rem" }}>
+          <button
+            onClick={loadMore}
+            disabled={loadingGallery}
+            style={{
+              padding: "0.8rem 2rem",
+              backgroundColor: loadingGallery ? "#ccc" : "var(--primary)",
+              color: "white",
+              border: "none",
+              borderRadius: "12px",
+              fontSize: "1rem",
+              cursor: loadingGallery ? "not-allowed" : "pointer",
+            }}
+          >
+            {loadingGallery ? "Loading..." : "Load More"}
+          </button>
+        </div>
       )}
     </div>
     {/* Meal Viewer - Moved outside container for perfect centering */}
