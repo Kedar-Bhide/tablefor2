@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { db, auth, storage } from "../firebase";
 import { collection, query, where, onSnapshot, updateDoc, deleteDoc, doc, getDoc, getDocs, addDoc, deleteField, Timestamp } from "firebase/firestore";
 import { compressImage } from "../utils/compressImage";
@@ -16,7 +16,6 @@ import PartnerResponseCard from "../components/PartnerResponseCard";
 
 function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const user = auth.currentUser;
-  const [meals, setMeals] = useState([]);
   const [rawRecentMeals, setRawRecentMeals] = useState([]);
 
   const partnerUid = globalPartnerData?.uid || null;
@@ -36,7 +35,6 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [viewMeal, setViewMeal] = useState(null);
   const [comment, setComment] = useState("");
   const [savingComment, setSavingComment] = useState(false);
-  const [nutrition, setNutrition] = useState({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 });
   const [editIngredients, setEditIngredients] = useState("");
   const [editPortionSize, setEditPortionSize] = useState("");
   const [editCookType, setEditCookType] = useState("Homemade"); // Homemade, Restaurant, Packaged
@@ -93,6 +91,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [editFiber, setEditFiber] = useState("");
   const [manualMacrosModified, setManualMacrosModified] = useState(false);
   const [energyCheckIn, setEnergyCheckIn] = useState(null);
+  const energyCheckInRef = useRef(null);
+  useEffect(() => { energyCheckInRef.current = energyCheckIn; }, [energyCheckIn]);
   const [physicalLevel, setPhysicalLevel] = useState(50);
   const [mentalLevel, setMentalLevel] = useState(50);
   const [energySaving, setEnergySaving] = useState(false);
@@ -228,7 +228,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   }, [user.uid]);
 
   useEffect(() => {
-    const checkEligibility = () => {
+    const checkEligibility = async () => {
       const now = new Date();
       const todayString = now.toLocaleDateString("en-CA"); // YYYY-MM-DD
 
@@ -254,12 +254,17 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
         if (now >= triggerTime && now < expirationTime) {
           // If we are already showing a check-in, don't swap it unless it's a different one and we want oldest
-          if (!energyCheckIn || energyCheckIn.id !== c.id) {
+          if (!energyCheckInRef.current || energyCheckInRef.current.id !== c.id) {
             setEnergyCheckIn(c);
+            energyCheckInRef.current = c;
           }
           return;
         } else if (now >= expirationTime) {
-          updateDoc(doc(db, "energy_checkins", c.id), { status: "expired", updatedAt: new Date() });
+          try {
+            await updateDoc(doc(db, "energy_checkins", c.id), { status: "expired", updatedAt: new Date() });
+          } catch (e) {
+            console.error("Failed to expire energy check-in:", e);
+          }
         }
       }
       setEnergyCheckIn(null);
@@ -268,7 +273,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
     checkEligibility();
     const interval = setInterval(checkEligibility, 30000); // Check every 30s
     return () => clearInterval(interval);
-  }, [rawEnergyCheckIns, energyCheckIn]);
+  }, [rawEnergyCheckIns]);
 
   // Unified Filtering Logic for Today Feed
   const filteredMeals = useMemo(() => {
@@ -315,13 +320,8 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
     });
   }, [rawRecentMeals, pendingTasks, globalUserData?.timezone, globalPartnerData?.timezone, user.uid]);
 
-  // Sync filteredMeals to the legacy meals state for JSX
-  useEffect(() => {
-    setMeals(filteredMeals);
-  }, [filteredMeals]);
-
   // Calculate Today's Nutrition Totals
-  useEffect(() => {
+  const nutrition = useMemo(() => {
     const userTz = globalUserData?.timezone;
     const now = new Date();
     const todayKey = getLocalDateKeyInTz(now, userTz);
@@ -343,16 +343,15 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         fiber_g: acc.fiber_g + (m.nutrition.fiber_g || 0),
       }), { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 });
 
-      setNutrition({
+      return {
         calories: Math.round(totals.calories),
         protein_g: Math.round(totals.protein_g),
         carbs_g: Math.round(totals.carbs_g),
         fat_g: Math.round(totals.fat_g),
         fiber_g: Math.round(totals.fiber_g),
-      });
-    } else {
-      setNutrition({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 });
+      };
     }
+    return { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 };
   }, [filteredMeals, globalUserData?.timezone, user.uid]);
 
   // Pre-populate task macros when a task is opened
@@ -415,43 +414,56 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
   const displayMeals = useMemo(() => {
     // Only show the "representative" meal for each group in the feed list
-    return meals.filter(m => !m.sourceMealId || !meals.some(orig => orig.id === m.sourceMealId));
-  }, [meals]);
+    return filteredMeals.filter(m => !m.sourceMealId || !filteredMeals.some(orig => orig.id === m.sourceMealId));
+  }, [filteredMeals]);
 
   const mealCount = displayMeals.length;
 
   const handleDelete = async (mealId) => {
-    await deleteDoc(doc(db, "meals", mealId));
-
-    // Cancel energy check-in if pending
     try {
-      const { cancelEnergyCheckIn } = await import("../utils/energyCheckIn");
-      await cancelEnergyCheckIn(user.uid, mealId);
-    } catch (e) {
-      console.error("Failed to cancel energy check-in:", e);
-    }
+      await deleteDoc(doc(db, "meals", mealId));
 
-    setSelectedMeal(null);
+      // Cancel energy check-in if pending
+      try {
+        const { cancelEnergyCheckIn } = await import("../utils/energyCheckIn");
+        await cancelEnergyCheckIn(user.uid, mealId);
+      } catch (e) {
+        console.error("Failed to cancel energy check-in:", e);
+      }
+
+      setSelectedMeal(null);
+    } catch (e) {
+      console.error("Failed to delete meal:", e);
+    }
   };
 
   const handleReaction = async (meal, emoji) => {
-    const mealRef = doc(db, "meals", meal.id);
-    await updateDoc(mealRef, {
-      [`reactions.${user.uid}`]: emoji,
-    });
-    setReactionMeal(null);
+    try {
+      const mealRef = doc(db, "meals", meal.id);
+      await updateDoc(mealRef, {
+        [`reactions.${user.uid}`]: emoji,
+      });
+      setReactionMeal(null);
+    } catch (e) {
+      console.error("Failed to save reaction:", e);
+    }
   };
 
   const handleComment = async () => {
     if (!comment.trim() || !viewMeal) return;
     setSavingComment(true);
-    const mealRef = doc(db, "meals", viewMeal.id);
-    await updateDoc(mealRef, {
-      [`comments.${user.uid}`]: comment.trim(),
-    });
-    setViewMeal({ ...viewMeal, comments: { ...viewMeal.comments, [user.uid]: comment.trim() } });
-    setSavingComment(false);
-    setComment("");
+    try {
+      const mealRef = doc(db, "meals", viewMeal.id);
+      await updateDoc(mealRef, {
+        [`comments.${user.uid}`]: comment.trim(),
+      });
+      setViewMeal({ ...viewMeal, comments: { ...viewMeal.comments, [user.uid]: comment.trim() } });
+      setComment("");
+    } catch (e) {
+      console.error("Failed to save comment:", e);
+    } finally {
+      setSavingComment(false);
+    }
   };
 
   const handleEditSave = async () => {
@@ -674,15 +686,19 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
   const handleWeightSnooze = async () => {
     if (weightCheckIn?.isLastDay) return; // Can't snooze on last day
-    await updateDoc(doc(db, "users", user.uid), {
-      weightInsightSnooze: new Date().toISOString(),
-    });
-    setWeightCheckIn(null);
+    try {
+      await updateDoc(doc(db, "users", user.uid), {
+        weightInsightSnooze: new Date().toISOString(),
+      });
+      setWeightCheckIn(null);
+    } catch (e) {
+      console.error("Failed to snooze weight check-in:", e);
+    }
   };
 
   const getPendingTaskForMeal = (meal) => {
     // Don't show task if partner already completed it (has their own meal with sourceMealId)
-    const alreadyCompleted = meals.some(
+    const alreadyCompleted = filteredMeals.some(
       (m) => m.uid === user.uid && m.sourceMealId === meal.id
     );
     if (alreadyCompleted) return null;
@@ -771,12 +787,16 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
   const handleTaskDismiss = async () => {
     if (!activeTask) return;
-    await updateDoc(doc(db, "tasks", activeTask.id), {
-      dismissed: true,
-    });
-    setActiveTask(null);
-    setTaskIngredients("");
-    setTaskPortionSize("");
+    try {
+      await updateDoc(doc(db, "tasks", activeTask.id), {
+        dismissed: true,
+      });
+      setActiveTask(null);
+      setTaskIngredients("");
+      setTaskPortionSize("");
+    } catch (e) {
+      console.error("Failed to dismiss task:", e);
+    }
   };
 
   // --- Nutrient Goals Logic ---
@@ -1168,7 +1188,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
               {goalSetupStep === "profile" && (
                 <>
                   <p style={styles.sheetTitle}>Complete Your Profile</p>
-                  <p style={styles.sheetMeta}>We need a few details to calculate your goals</p>
+                  <p style={styles.sheetMeta}>Please fill all details below to calculate your goals</p>
                   {[
                     { key: "age", label: "Age", unit: "yrs", placeholder: "0", inputMode: "numeric" },
                     { key: "height_cm", label: "Height", unit: "cm", placeholder: "0", inputMode: "numeric" },
@@ -1251,7 +1271,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         {displayMeals.map((meal) => {
           // For shared meals, we want to show the current user's specific version (portion/macros)
           // while still treating it as the "main" card for that shared event.
-          const myVersion = meal.isShared ? meals.find(m => m.sourceMealId === meal.id && m.uid === user.uid) : null;
+          const myVersion = meal.isShared ? filteredMeals.find(m => m.sourceMealId === meal.id && m.uid === user.uid) : null;
           const displayMeal = myVersion || meal;
 
           const ismine = displayMeal.uid === user.uid;
