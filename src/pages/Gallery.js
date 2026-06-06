@@ -98,41 +98,46 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
     const uid = filter === "mine" ? user.uid : partnerUid;
     if (!uid) return;
 
-    const constraints = [where("uid", "==", uid), orderBy("createdAt", "desc"), limit(PAGE_SIZE)];
-    const cursor = lastDocRef.current[filter];
-    if (append && cursor) {
-      constraints.push(startAfter(cursor));
-    }
+    try {
+      const constraints = [where("uid", "==", uid), orderBy("createdAt", "desc"), limit(PAGE_SIZE)];
+      const cursor = lastDocRef.current[filter];
+      if (append && cursor) {
+        constraints.push(startAfter(cursor));
+      }
 
-    const q = query(collection(db, "meals"), ...constraints);
-    const snap = await getDocs(q);
+      const q = query(collection(db, "meals"), ...constraints);
+      const snap = await getDocs(q);
 
-    if (snap.empty) return;
+      if (snap.empty) return;
 
-    const meals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    lastDocRef.current[filter] = snap.docs[snap.docs.length - 1];
+      const meals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      lastDocRef.current[filter] = snap.docs[snap.docs.length - 1];
 
-    if (append) {
-      setGroupedMeals((prev) => {
-        const merged = { ...prev };
-        const newGrouped = groupMeals(meals);
-        for (const [dateKey, group] of Object.entries(newGrouped)) {
-          if (merged[dateKey]) {
-            merged[dateKey] = {
-              ...merged[dateKey],
-              meals: [...merged[dateKey].meals, ...group.meals],
-            };
-          } else {
-            merged[dateKey] = group;
+      if (append) {
+        setGroupedMeals((prev) => {
+          const merged = { ...prev };
+          const newGrouped = groupMeals(meals);
+          for (const [dateKey, group] of Object.entries(newGrouped)) {
+            if (merged[dateKey]) {
+              merged[dateKey] = {
+                ...merged[dateKey],
+                meals: [...merged[dateKey].meals, ...group.meals],
+              };
+            } else {
+              merged[dateKey] = group;
+            }
           }
-        }
-        return merged;
-      });
-    } else {
-      setGroupedMeals(groupMeals(meals));
-    }
+          return merged;
+        });
+      } else {
+        setGroupedMeals(groupMeals(meals));
+      }
 
-    setHasMore(snap.docs.length === PAGE_SIZE);
+      setHasMore(snap.docs.length === PAGE_SIZE);
+    } catch (e) {
+      console.error("Gallery fetch failed:", e);
+      if (!append) setHasMore(false);
+    }
   }, [filter, partnerUid, user.uid]);
 
   const loadMore = () => fetchMeals(true);

@@ -1,4 +1,4 @@
-import { collection, query, where, orderBy, limit, getDocs, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, limit, getDocs, doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase";
 
 const CUTOFFS = {
@@ -56,7 +56,7 @@ export async function calculateWallet(uid) {
     ? userSnap.data().walletResetAt.toDate()
     : null;
 
-  const q = query(collection(db, "meals"), where("uid", "==", uid), orderBy("createdAt", "desc"), limit(1000));
+  const q = query(collection(db, "meals"), where("uid", "==", uid), limit(1000));
   const snap = await getDocs(q);
   const meals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 

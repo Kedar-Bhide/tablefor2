@@ -1,4 +1,4 @@
-import { collection, query, where, orderBy, limit, getDocs, doc, getDoc, updateDoc } from "firebase/firestore";
+import { collection, query, where, limit, getDocs, doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { BADGES } from "./badges";
 import { formatLocalDateKey, getMealLocalDateKey } from "./dateTime";
@@ -6,10 +6,7 @@ import { formatLocalDateKey, getMealLocalDateKey } from "./dateTime";
 export async function calculateBadges(uid, partnerUid = null) {
   const mealsRef = collection(db, "meals");
 
-  // Fetch recent meals (last year is enough for streaks)
-  const yearAgo = new Date();
-  yearAgo.setFullYear(yearAgo.getFullYear() - 1);
-  const snap = await getDocs(query(mealsRef, where("uid", "==", uid), orderBy("createdAt", "desc"), limit(1000)));
+  const snap = await getDocs(query(mealsRef, where("uid", "==", uid), limit(1000)));
   const ownMeals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
   // Only own meals for all calculations
@@ -58,7 +55,7 @@ export async function calculateBadges(uid, partnerUid = null) {
   // Couple streak
   let coupleStreak = 0;
   if (partnerUid) {
-    const partnerSnap = await getDocs(query(mealsRef, where("uid", "==", partnerUid), orderBy("createdAt", "desc"), limit(1000)));
+    const partnerSnap = await getDocs(query(mealsRef, where("uid", "==", partnerUid), limit(1000)));
     const partnerMeals = partnerSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
     const partnerDayMap = {};
