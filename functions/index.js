@@ -40,6 +40,38 @@ async function getUser(uid) {
   return snap.exists ? snap.data() : null;
 }
 
+// Simple Firestore-based rate limiter per user per function
+// Allows maxCalls calls per windowMinutes window
+async function checkRateLimit(uid, functionName, maxCalls = 30, windowMinutes = 60) {
+  const docId = `${functionName}_${uid}`;
+  const ref = db.collection("rateLimits").doc(docId);
+
+  await db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(ref);
+    const now = Date.now();
+    const windowStart = now - windowMinutes * 60 * 1000;
+
+    let data = snap.data();
+    if (!data || data.windowStart < windowStart) {
+      // Start a new window
+      transaction.set(ref, {
+        uid,
+        functionName,
+        count: 1,
+        windowStart: now,
+      });
+      return;
+    }
+
+    if (data.count >= maxCalls) {
+      const retryAfter = Math.ceil((data.windowStart + windowMinutes * 60 * 1000 - now) / 1000);
+      throw new Error(`Rate limit exceeded. Retry after ${retryAfter}s`);
+    }
+
+    transaction.update(ref, { count: admin.firestore.FieldValue.increment(1) });
+  });
+}
+
 function getDateKeyFromParts(year, month, day) {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
@@ -717,6 +749,10 @@ The descriptor should be a concise 2-4 word food description.
 exports.parseVoiceMeal = onCall(
   { secrets: [ANTHROPIC_API_KEY] },
   async (request) => {
+    if (!request.auth?.uid) {
+      throw new Error("Unauthorized: not authenticated");
+    }
+    await checkRateLimit(request.auth.uid, "parseVoiceMeal", 30, 60);
     const { transcript } = request.data;
     if (!transcript) return { error: "No transcript provided" };
 
@@ -784,7 +820,15 @@ exports.onMealCreated = onDocumentCreated(
   { document: "meals/{mealId}", secrets: [ANTHROPIC_API_KEY] },
   async (event) => {
 
+    if (!event.data) {
+      console.log("Meal data missing (likely deleted before function ran)");
+      return;
+    }
     const meal = event.data.data();
+    if (!meal || !meal.uid) {
+      console.log("Meal data or uid missing");
+      return;
+    }
     const uid = meal.uid;
     const mealId = event.params.mealId;
     const user = await getUser(uid);
@@ -1013,6 +1057,8 @@ exports.retryAnalysis = onCall({ secrets: [ANTHROPIC_API_KEY] }, async (request)
   const uid = request.auth?.uid;
   if (!uid) throw new functions.https.HttpsError("unauthenticated", "User must be logged in");
 
+  await checkRateLimit(uid, "retryAnalysis", 10, 60);
+
   const mealId = request.data.mealId;
   if (!mealId) throw new functions.https.HttpsError("invalid-argument", "Missing mealId");
 
@@ -1083,14 +1129,13 @@ exports.onMealUpdated = onDocumentUpdated("meals/{mealId}", async (event) => {
     try {
       const partner = await getUser(mealOwner.partnerUid);
       if (partner) {
-        // Check if task already exists for this meal
-        const existingTask = await db.collection("tasks")
-          .where("sourceMealId", "==", mealId)
-          .where("toUid", "==", mealOwner.partnerUid)
-          .get();
+        // Use deterministic ID to prevent duplicate tasks
+        const taskId = `${mealId}_${mealOwner.partnerUid}`;
+        const taskRef = db.collection("tasks").doc(taskId);
+        const taskSnap = await taskRef.get();
 
-        if (existingTask.empty) {
-          await db.collection("tasks").add({
+        if (!taskSnap.exists) {
+          await taskRef.set({
             sourceMealId: mealId,
             fromUid: mealOwnerUid,
             toUid: mealOwner.partnerUid,
@@ -1127,19 +1172,12 @@ exports.onMealUpdated = onDocumentUpdated("meals/{mealId}", async (event) => {
   // 3. Check for isShared transition (true -> false) to remove incomplete partner tasks
   if (before.isShared && !after.isShared && mealOwner.partnerUid) {
     try {
-      const existingTasks = await db.collection("tasks")
-        .where("sourceMealId", "==", mealId)
-        .where("toUid", "==", mealOwner.partnerUid)
-        .where("completed", "==", false)
-        .get();
-
-      if (!existingTasks.empty) {
-        const batch = db.batch();
-        existingTasks.docs.forEach(doc => {
-          batch.delete(doc.ref);
-        });
-        await batch.commit();
-        console.log(`Incomplete tasks deleted for meal ${mealId} because sharing was disabled`);
+      const taskId = `${mealId}_${mealOwner.partnerUid}`;
+      const taskRef = db.collection("tasks").doc(taskId);
+      const taskSnap = await taskRef.get();
+      if (taskSnap.exists && !taskSnap.data().completed) {
+        await taskRef.delete();
+        console.log(`Incomplete task deleted for meal ${mealId} because sharing was disabled`);
       }
     } catch (err) {
       console.error("Failed to delete tasks during isShared disabled transition:", err);
@@ -1412,6 +1450,8 @@ exports.reanalyzeMeal = onCall(
         }
       }
 
+      await checkRateLimit(request.auth.uid, "reanalyzeMeal", 20, 60);
+
       await db.collection("meals").doc(mealId).update({ analysisStatus: "analyzing" });
 
       const userSnap = await db.collection("users").doc(meal.uid).get();
@@ -1481,6 +1521,9 @@ exports.generateWeightInsight = onCall(
   { secrets: [ANTHROPIC_API_KEY] },
   async (request) => {
     try {
+      if (!request.auth?.uid) {
+        throw new Error("Unauthorized: not authenticated");
+      }
       const {
         uid,
         newWeight,
@@ -1492,6 +1535,11 @@ exports.generateWeightInsight = onCall(
       } = request.data;
 
       if (!uid || !newWeight) throw new Error("Missing required fields");
+      if (request.auth.uid !== uid) {
+        throw new Error("Unauthorized: cannot generate insight for another user");
+      }
+
+      await checkRateLimit(uid, "generateWeightInsight", 5, 60);
       // If no previous weight — use new weight as both (first check-in)
       const effectivePreviousWeight = previousWeight || newWeight;
 
@@ -1744,6 +1792,9 @@ IMPORTANT:
 // Notify partner of incoming link request
 exports.sendPartnerRequestNotification = onCall(async (request) => {
   try {
+    if (!request.auth?.uid) {
+      throw new Error("Unauthorized: not authenticated");
+    }
     const { toUid, fromName } = request.data;
     if (!toUid || !fromName) return;
 
@@ -1763,6 +1814,9 @@ exports.sendPartnerRequestNotification = onCall(async (request) => {
 // Notify requester that partner accepted
 exports.sendPartnerAcceptedNotification = onCall(async (request) => {
   try {
+    if (!request.auth?.uid) {
+      throw new Error("Unauthorized: not authenticated");
+    }
     const { toUid, fromName } = request.data;
     if (!toUid || !fromName) return;
 
