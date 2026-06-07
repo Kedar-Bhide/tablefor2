@@ -1743,30 +1743,49 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                 </div>
                 <input id="editPhotoInput" type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handleAddEditPhoto} />
                 <input id="editGalleryInput" type="file" accept="image/*" style={{ display: "none" }} onChange={handleAddEditPhoto} />
-                  {showEditPhotoOptions && (
-                  <div role="dialog" aria-modal="true" aria-label="Add photo" style={styles.overlay} onClick={() => setShowEditPhotoOptions(false)}>
-                    <div style={styles.sheet} onClick={(e) => e.stopPropagation()}>
-                      <p style={styles.sheetTitle}>Add Photo</p>
-                      <button style={styles.editButton} onClick={async () => {
-                        try {
-                          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                          stream.getTracks().forEach(t => t.stop());
-                          document.getElementById("editPhotoInput").click();
-                        } catch (e) {
-                          alert("Camera access is blocked. Please go to your browser Settings → Site Settings → Camera and allow access for this site, then reload the app.");
-                        }
-                      }}>
-                        📷 Take Photo
-                      </button>
-                      <button style={styles.editButton} onClick={() => document.getElementById("editGalleryInput").click()}>
-                        🖼️ Choose from Gallery
-                      </button>
-                      <button style={styles.cancelButton} onClick={() => setShowEditPhotoOptions(false)}>
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
+                  <AnimatePresence>
+                    {showEditPhotoOptions && (
+                    <motion.div
+                      role="dialog"
+                      aria-modal="true"
+                      aria-label="Add photo"
+                      style={styles.overlay}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      onClick={() => setShowEditPhotoOptions(false)}
+                    >
+                      <motion.div
+                        style={styles.sheet}
+                        initial={{ y: "100%" }}
+                        animate={{ y: 0 }}
+                        exit={{ y: "100%" }}
+                        transition={{ type: "spring", damping: 30, stiffness: 350 }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <p style={styles.sheetTitle}>Add Photo</p>
+                        <button style={styles.editButton} onClick={async () => {
+                          try {
+                            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                            stream.getTracks().forEach(t => t.stop());
+                            document.getElementById("editPhotoInput").click();
+                          } catch (e) {
+                            alert("Camera access is blocked. Please go to your browser Settings → Site Settings → Camera and allow access for this site, then reload the app.");
+                          }
+                        }}>
+                          📷 Take Photo
+                        </button>
+                        <button style={styles.editButton} onClick={() => document.getElementById("editGalleryInput").click()}>
+                          🖼️ Choose from Gallery
+                        </button>
+                        <button style={styles.cancelButton} onClick={() => setShowEditPhotoOptions(false)}>
+                          Cancel
+                        </button>
+                      </motion.div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 <button
                   style={styles.editSaveButton}
@@ -1981,12 +2000,27 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         +
       </button>
       {/* Weight Check-in Popup */}
-      {weightCheckIn && (
-        <div role="dialog" aria-modal="true" aria-label="Weight check-in" style={styles.overlay} onClick={handleWeightSnooze}>
-          <div
-            style={styles.weightCheckInSheet}
-            onClick={(e) => e.stopPropagation()}
+      <AnimatePresence>
+        {weightCheckIn && (
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Weight check-in"
+            style={styles.overlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={handleWeightSnooze}
           >
+            <motion.div
+              style={styles.weightCheckInSheet}
+              initial={{ y: "50px", opacity: 0, scale: 0.95 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: "50px", opacity: 0, scale: 0.95 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              onClick={(e) => e.stopPropagation()}
+            >
             <p style={styles.weightCheckInEyebrow}>
               {weightCheckIn.isLastDay
                 ? "⚠️ Last chance to check in!"
@@ -2032,25 +2066,35 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                 This is your last chance until the {weightCheckIn.checkInDate.endsWith("-01") ? "15th" : "1st"}!
               </p>
             )}
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
 
 
       {/* Insight Popup */}
-      {insightBanner === "open" && (weightInsight || monthlyInsight) && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Insights"
-          style={styles.overlay}
-          onClick={() => setInsightBanner("ready")}
-        >
-          <div
-            style={styles.insightPopup}
-            onClick={(e) => e.stopPropagation()}
+      <AnimatePresence>
+        {insightBanner === "open" && (weightInsight || monthlyInsight) && (
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Insights"
+            style={styles.overlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setInsightBanner("ready")}
           >
+            <motion.div
+              style={styles.insightPopup}
+              initial={{ y: "50px", opacity: 0, scale: 0.95 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: "50px", opacity: 0, scale: 0.95 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              onClick={(e) => e.stopPropagation()}
+            >
             <p style={styles.insightPopupEyebrow}>Your Insights ✨</p>
             <p style={styles.insightPopupPeriod}>
               {weightInsight ? `${weightInsight.periodStart} → ${weightInsight.periodEnd}` : `${monthlyInsight.month} ${monthlyInsight.year}`}
@@ -2144,53 +2188,84 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
             >
               Got it 👍
             </button>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Unlinked Popup */}
-      {showUnlinkPopup && (
-        <div role="dialog" aria-modal="true" aria-label="Unlinked notice" style={styles.overlay}>
-          <div style={{ ...styles.sheet, textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
-            {/* <p style={{ fontSize: "2rem", marginBottom: "0.5rem", marginTop: 0 }}>💔</p> */}
-            <p style={{ fontWeight: "bold", fontSize: "1.2rem", marginBottom: "0.5rem", color: "#333" }}>
-              Your partner unlinked
-            </p>
-            <p style={{ color: "#666", fontSize: "0.95rem", marginBottom: "1.5rem", lineHeight: 1.4 }}>
-              If you wish to link again, or link with a new partner, you can send them a new request from your profile.
-            </p>
-            <button
-              style={{
-                width: "100%",
-                padding: "0.8rem",
-                backgroundColor: "#ff6b6b",
-                color: "white",
-                border: "none",
-                borderRadius: "10px",
-                fontSize: "1rem",
-                fontWeight: "bold",
-                cursor: "pointer",
-              }}
-              onClick={handleDismissUnlinkPopup}
+      <AnimatePresence>
+        {showUnlinkPopup && (
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Unlinked notice"
+            style={styles.overlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <motion.div
+              style={{ ...styles.sheet, textAlign: "center" }}
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 30, stiffness: 350 }}
+              onClick={(e) => e.stopPropagation()}
             >
-              Got it
-            </button>
-          </div>
-        </div>
-      )}
+              {/* <p style={{ fontSize: "2rem", marginBottom: "0.5rem", marginTop: 0 }}>💔</p> */}
+              <p style={{ fontWeight: "bold", fontSize: "1.2rem", marginBottom: "0.5rem", color: "#333" }}>
+                Your partner unlinked
+              </p>
+              <p style={{ color: "#666", fontSize: "0.95rem", marginBottom: "1.5rem", lineHeight: 1.4 }}>
+                If you wish to link again, or link with a new partner, you can send them a new request from your profile.
+              </p>
+              <button
+                style={{
+                  width: "100%",
+                  padding: "0.8rem",
+                  backgroundColor: "#ff6b6b",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "10px",
+                  fontSize: "1rem",
+                  fontWeight: "bold",
+                  cursor: "pointer",
+                }}
+                onClick={handleDismissUnlinkPopup}
+              >
+                Got it
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Task Completion Popup */}
-      {activeTask && (
-        <div
-          style={styles.overlay}
-          onClick={() => {
-            if (!taskSaving) setActiveTask(null);
-          }}
-        >
-          <div
-            style={styles.sheet}
-            onClick={(e) => e.stopPropagation()}
+      <AnimatePresence>
+        {activeTask && (
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Task completion"
+            style={styles.overlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => {
+              if (!taskSaving) setActiveTask(null);
+            }}
           >
+            <motion.div
+              style={styles.sheet}
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 30, stiffness: 350 }}
+              onClick={(e) => e.stopPropagation()}
+            >
             {/* Photo carousel */}
             {activeTask.photos?.length > 0 && (
               <div style={{ position: "relative", marginBottom: "1rem" }}>
@@ -2319,13 +2394,32 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
               Dismiss — I didn't have this
             </button>
 
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Energy Check-In Popup */}
-      {energyCheckIn && (
-        <div style={styles.overlayCenter} onClick={handleEnergyDismiss}>
-          <div style={styles.energyPopup} onClick={(e) => e.stopPropagation()}>
+      <AnimatePresence>
+        {energyCheckIn && (
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Energy check-in"
+            style={styles.overlayCenter}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={handleEnergyDismiss}
+          >
+            <motion.div
+              style={styles.energyPopup}
+              initial={{ y: "50px", opacity: 0, scale: 0.95 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: "50px", opacity: 0, scale: 0.95 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              onClick={(e) => e.stopPropagation()}
+            >
             <div style={styles.energyHeader}>
               <p style={styles.energyEyebrow}>How are you feeling? ✨</p>
               <h3 style={styles.energyTitle}>Energy Check-In</h3>
@@ -2398,9 +2492,10 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                 {energySaving ? "Saving..." : "Done"}
               </button>
             </div>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 }

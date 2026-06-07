@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { auth, db } from "../firebase";
-import { collection, query, where, orderBy, getDocs, updateDoc, doc } from "firebase/firestore";
+import { collection, query, where, orderBy, onSnapshot, getDocs, updateDoc, doc } from "firebase/firestore";
 import { getPhotos } from "../utils/getPhotos";
 import { getMealLocalDateKey } from "../utils/dateTime";
 import PhotoCarousel from "../components/PhotoCarousel";
@@ -28,11 +28,8 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
       const functions = getFunctions();
       const retryFn = httpsCallable(functions, "retryAnalysis");
       await retryFn({ mealId });
-      
-      // Update local state if the meal is currently being viewed
-      if (viewMeal && viewMeal.id === mealId) {
-        fetchMeals();
-      }
+
+      // The onSnapshot listener automatically updates local state when the meal changes
     } catch (e) {
       console.error("Retry failed:", e);
     } finally {
@@ -48,9 +45,9 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
   useEffect(() => {
     oldestDateRef.current = null;
     loadingRef.current = false;
-    setHasMore(true);
+    setHasMore(false);
     setGroupedMeals({});
-    setLoadingGallery(false);
+    setLoadingGallery(true);
   }, [filter]);
 
   useEffect(() => {
@@ -65,7 +62,7 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
   const PAGE_DAYS = 10;
   const oldestDateRef = useRef(null);
   const loadingRef = useRef(false);
-  const [loadingGallery, setLoadingGallery] = useState(false);
+  const [loadingGallery, setLoadingGallery] = useState(true);
   const [hasMore, setHasMore] = useState(false);
 
   const groupMeals = (meals) => {
@@ -104,19 +101,45 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
     );
   };
 
-  const fetchMeals = useCallback(async (append = false) => {
+  // Real-time listener for the current 10-day window
+  useEffect(() => {
     const uid = filter === "mine" ? user.uid : partnerUid;
-    if (!uid || loadingRef.current) return;
+    if (!uid) return;
+
+    const endDate = new Date();
+    const startDate = new Date(endDate.getTime() - PAGE_DAYS * 24 * 60 * 60 * 1000);
+
+    const q = query(
+      collection(db, "meals"),
+      where("uid", "==", uid),
+      where("createdAt", ">=", startDate),
+      where("createdAt", "<=", endDate),
+      orderBy("createdAt", "asc")
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const meals = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })).reverse();
+      oldestDateRef.current = startDate;
+      setGroupedMeals(groupMeals(meals));
+      setLoadingGallery(false);
+      setHasMore(meals.length > 0);
+    }, (err) => {
+      console.error("Gallery snapshot failed:", err);
+      setLoadingGallery(false);
+      setHasMore(false);
+    });
+
+    return () => unsubscribe();
+  }, [filter, partnerUid, user.uid]);
+
+  const loadMore = useCallback(async () => {
+    const uid = filter === "mine" ? user.uid : partnerUid;
+    if (!uid || loadingRef.current || !oldestDateRef.current) return;
 
     loadingRef.current = true;
     setLoadingGallery(true);
     try {
-      const endDate = append ? oldestDateRef.current : new Date();
-      if (!endDate) {
-        setHasMore(false);
-        return;
-      }
-
+      const endDate = oldestDateRef.current;
       const startDate = new Date(endDate.getTime() - PAGE_DAYS * 24 * 60 * 60 * 1000);
 
       const q = query(
@@ -132,39 +155,32 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
       oldestDateRef.current = startDate;
 
       if (meals.length === 0) {
-        if (!append) setGroupedMeals({});
         setHasMore(false);
         return;
       }
 
-      if (append) {
-        setGroupedMeals((prev) => {
-          const merged = { ...prev };
-          const newGrouped = groupMeals(meals);
-          for (const [dateKey, group] of Object.entries(newGrouped)) {
-            if (merged[dateKey]) {
-              merged[dateKey].meals = [...merged[dateKey].meals, ...group.meals];
-            } else {
-              merged[dateKey] = group;
-            }
+      setGroupedMeals((prev) => {
+        const merged = { ...prev };
+        const newGrouped = groupMeals(meals);
+        for (const [dateKey, group] of Object.entries(newGrouped)) {
+          if (merged[dateKey]) {
+            merged[dateKey].meals = [...merged[dateKey].meals, ...group.meals];
+          } else {
+            merged[dateKey] = group;
           }
-          return merged;
-        });
-      } else {
-        setGroupedMeals(groupMeals(meals));
-      }
+        }
+        return merged;
+      });
 
       setHasMore(true);
     } catch (e) {
-      console.error("Gallery fetch failed:", e);
-      if (!append) setHasMore(false);
+      console.error("Load more failed:", e);
+      setHasMore(false);
     } finally {
       loadingRef.current = false;
       setLoadingGallery(false);
     }
   }, [filter, partnerUid, user.uid]);
-
-  const loadMore = () => fetchMeals(true);
 
   const handleNutritionChange = useCallback(async (key, value) => {
     try {
@@ -197,10 +213,6 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
       console.error("Failed to update nutrition from gallery", e);
     }
   }, [viewMeal]);
-
-  useEffect(() => {
-    fetchMeals();
-  }, [fetchMeals]);
 
   const handleReaction = async (meal, emoji) => {
     try {
@@ -256,7 +268,9 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
       )}
 
       {/* Grouped Photos */}
-      {Object.keys(groupedMeals).length === 0 ? (
+      {loadingGallery && Object.keys(groupedMeals).length === 0 ? (
+        <p style={styles.empty}>Loading...</p>
+      ) : Object.keys(groupedMeals).length === 0 ? (
         <p style={styles.empty}>No photos here yet.</p>
       ) : (
         Object.entries(groupedMeals).map(([dateKey, group]) => (

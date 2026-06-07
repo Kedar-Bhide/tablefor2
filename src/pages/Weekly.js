@@ -1313,15 +1313,27 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
       {/* Insight revisit buttons moved to container */}
 
       {/* Weight Insight Popup */}
-      {showWeightInsight && weightInsight && (
-        <div
-          style={styles.overlayCenter}
-          onClick={() => setShowWeightInsight(false)}
-        >
-          <div
-            style={styles.bloomSheet}
-            onClick={(e) => e.stopPropagation()}
+      <AnimatePresence>
+        {showWeightInsight && weightInsight && (
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Weight insights"
+            style={styles.overlayCenter}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setShowWeightInsight(false)}
           >
+            <motion.div
+              style={styles.bloomSheet}
+              initial={{ y: "50px", opacity: 0, scale: 0.95 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: "50px", opacity: 0, scale: 0.95 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              onClick={(e) => e.stopPropagation()}
+            >
             <p style={styles.insightPopupEyebrow}>Your Insights ✨</p>
             <p style={styles.insightPopupPeriod}>
               {weightInsight.periodStart} → {weightInsight.periodEnd}
@@ -1378,9 +1390,10 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
             >
               Got it! 👍
             </button>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 }

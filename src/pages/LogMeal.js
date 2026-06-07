@@ -6,7 +6,7 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import { compressImage } from "../utils/compressImage";
 import { formatLocalDateKey, formatLocalTimeHHMM, getCurrentTimezone } from "../utils/dateTime";
 import MealNutritionCard from "../components/MealNutritionCard";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Camera, Image as ImageIcon } from "lucide-react";
 
 function getMealTypeByTime() {
@@ -433,9 +433,27 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
       <input id="photoInput" type="file" accept="image/*" capture style={{ display: "none" }} onChange={handlePhoto} />
       <input id="galleryInput" type="file" accept="image/*" style={{ display: "none" }} onChange={handlePhoto} />
 
-      {showPhotoOptions && (
-        <div style={styles.overlay} onClick={() => setShowPhotoOptions(false)}>
-          <div style={styles.sheet} onClick={(e) => e.stopPropagation()}>
+      <AnimatePresence>
+        {showPhotoOptions && (
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Add photo"
+            style={styles.overlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setShowPhotoOptions(false)}
+          >
+            <motion.div
+              style={styles.sheet}
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 30, stiffness: 350 }}
+              onClick={(e) => e.stopPropagation()}
+            >
             <p style={styles.sheetTitle}>Add Photo</p>
             <button style={styles.optionButton} onClick={async () => {
               try {
@@ -458,9 +476,10 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
             <button style={styles.cancelButton} onClick={() => setShowPhotoOptions(false)}>
               Cancel
             </button>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Meal Type */}
       <p style={styles.sectionHeader}>MEAL TYPE</p>

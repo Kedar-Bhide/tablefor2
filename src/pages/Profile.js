@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { auth, db, storage } from "../firebase";
 import { signOut } from "firebase/auth";
-import { doc, updateDoc, collection, query, where, getDocs, runTransaction } from "firebase/firestore";
+import { doc, updateDoc, collection, query, where, onSnapshot, getDocs, getDoc, runTransaction, limit } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { calculateBadges } from "../utils/calculateBadges";
-import { calculateWallet, WHITELISTED_WALLET_UIDS } from "../utils/calculateWallet";
+import { computeBadges } from "../utils/calculateBadges";
+import { calculateWallet, computeWallet, WHITELISTED_WALLET_UIDS } from "../utils/calculateWallet";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { deleteField } from "firebase/firestore";
 import Cropper from "react-easy-crop";
@@ -89,18 +89,40 @@ function Profile({ user, globalUserData, globalPartnerData }) {
     return `$${value.toFixed(2)}`;
   };
 
-  // Calculate badges and wallets since they rely on calculations
+  // Real-time listener for meals — computes badges and wallet on every snapshot
   useEffect(() => {
-    const fetchCalculations = async () => {
-      // Run badge and wallet calculations in parallel — both fetch meals independently
-      const [earnedBadges, walletData] = await Promise.all([
-        calculateBadges(user.uid, partnerUid),
-        calculateWallet(user.uid),
-      ]);
-      setBadges(earnedBadges);
-      setWallet(walletData);
-    };
-    fetchCalculations();
+    const uids = [user.uid];
+    if (partnerUid) uids.push(partnerUid);
+
+    const mealsQuery = query(
+      collection(db, "meals"),
+      where("uid", "in", uids),
+      limit(1000)
+    );
+
+    const userDocRef = doc(db, "users", user.uid);
+
+    const unsubscribeMeals = onSnapshot(mealsQuery, (snapshot) => {
+      const allMeals = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const ownMeals = allMeals.filter((m) => m.uid === user.uid);
+      const partnerMeals = allMeals.filter((m) => m.uid === partnerUid);
+
+      // Get user doc for earnedBadges and walletResetAt (separate listener below)
+      getDoc(userDocRef).then((userSnap) => {
+        const userData = userSnap.exists() ? userSnap.data() : {};
+        const lockedBadges = userData.earnedBadges || [];
+        const resetAt = userData.walletResetAt
+          ? userData.walletResetAt.toDate()
+          : null;
+
+        setBadges(computeBadges(ownMeals, partnerMeals, lockedBadges));
+        setWallet(computeWallet(user.uid, ownMeals, resetAt));
+      });
+    }, (err) => {
+      console.error("Profile meals snapshot failed:", err);
+    });
+
+    return () => unsubscribeMeals();
   }, [user.uid, partnerUid]);
 
   // Click outside menu closer
@@ -438,18 +460,37 @@ function Profile({ user, globalUserData, globalPartnerData }) {
       </div>
 
       {/* Unlink Confirmation Popup (Global) */}
-      {showUnlinkConfirm && (
-        <div role="dialog" aria-modal="true" aria-label="Unlink confirmation" style={styles.overlay} onClick={() => setShowUnlinkConfirm(false)}>
-          <div style={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
-            <p style={styles.confirmModalTitle}>Unlink Partner?</p>
-            <p style={styles.confirmModalText}>This will remove your shared connection. You can link again later if you want.</p>
-            <div style={styles.confirmModalButtons}>
-              <button style={styles.confirmYes} onClick={handleUnlink}>Yes, Unlink</button>
-              <button style={styles.confirmNo} onClick={() => setShowUnlinkConfirm(false)}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {showUnlinkConfirm && (
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Unlink confirmation"
+            style={styles.overlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setShowUnlinkConfirm(false)}
+          >
+            <motion.div
+              style={styles.confirmModal}
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p style={styles.confirmModalTitle}>Unlink Partner?</p>
+              <p style={styles.confirmModalText}>This will remove your shared connection. You can link again later if you want.</p>
+              <div style={styles.confirmModalButtons}>
+                <button style={styles.confirmYes} onClick={handleUnlink}>Yes, Unlink</button>
+                <button style={styles.confirmNo} onClick={() => setShowUnlinkConfirm(false)}>Cancel</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <motion.div variants={itemVariants} style={styles.card}>
         <div style={styles.avatarWrapper}>
@@ -464,42 +505,59 @@ function Profile({ user, globalUserData, globalPartnerData }) {
       </motion.div>
 
       {/* Cropper Modal */}
-      {imageToCrop && (
-        <div role="dialog" aria-modal="true" aria-label="Crop photo" style={styles.overlay}>
-          <div style={styles.cropperContainer}>
-            <div style={styles.cropperWrapper}>
-              <Cropper
-                image={imageToCrop}
-                crop={crop}
-                zoom={zoom}
-                aspect={1}
-                cropShape="round"
-                onCropChange={setCrop}
-                onCropComplete={(_, pixels) => setCroppedAreaPixels(pixels)}
-                onZoomChange={setZoom}
-              />
-            </div>
-            <div style={styles.cropperControls}>
-              <p style={styles.cropperHint}>Pinch or drag to adjust</p>
-              <div style={styles.cropperButtons}>
-                <button
-                  style={styles.cropperCancel}
-                  onClick={() => setImageToCrop(null)}
-                >
-                  Cancel
-                </button>
-                <button
-                  style={styles.cropperSave}
-                  onClick={handleCropSave}
-                  disabled={saving}
-                >
-                  {saving ? "Saving..." : "Save Photo"}
-                </button>
+      <AnimatePresence>
+        {imageToCrop && (
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Crop photo"
+            style={styles.overlay}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <motion.div
+              style={styles.cropperContainer}
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+            >
+              <div style={styles.cropperWrapper}>
+                <Cropper
+                  image={imageToCrop}
+                  crop={crop}
+                  zoom={zoom}
+                  aspect={1}
+                  cropShape="round"
+                  onCropChange={setCrop}
+                  onCropComplete={(_, pixels) => setCroppedAreaPixels(pixels)}
+                  onZoomChange={setZoom}
+                />
               </div>
-            </div>
-          </div>
-        </div>
-      )}
+              <div style={styles.cropperControls}>
+                <p style={styles.cropperHint}>Pinch or drag to adjust</p>
+                <div style={styles.cropperButtons}>
+                  <button
+                    style={styles.cropperCancel}
+                    onClick={() => setImageToCrop(null)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    style={styles.cropperSave}
+                    onClick={handleCropSave}
+                    disabled={saving}
+                  >
+                    {saving ? "Saving..." : "Save Photo"}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <motion.div
         variants={itemVariants}
         style={partnerName ? { ...styles.card, cursor: "pointer" } : styles.card}
