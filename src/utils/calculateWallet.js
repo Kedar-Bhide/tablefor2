@@ -46,28 +46,19 @@ export function getRewardForMeal(meal) {
   return 0.5;
 }
 
-export async function calculateWallet(uid) {
+export function computeWallet(uid, ownMeals, resetAt = null) {
   if (!WHITELISTED_WALLET_UIDS.includes(uid)) {
     return { total: 0, fullCount: 0, halfCount: 0, quarterCount: 0, resetAt: null };
   }
-  const userRef = doc(db, "users", uid);
-  const userSnap = await getDoc(userRef);
-  const resetAt = userSnap.exists() && userSnap.data().walletResetAt
-    ? userSnap.data().walletResetAt.toDate()
-    : null;
-
-  const q = query(collection(db, "meals"), where("uid", "==", uid), limit(1000));
-  const snap = await getDocs(q);
-  const meals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
   const filtered = resetAt
-    ? meals.filter((m) => {
+    ? ownMeals.filter((m) => {
       const mealDate = m.createdAt?.toDate
         ? m.createdAt.toDate()
         : new Date(m.createdAt);
       return mealDate > resetAt;
     })
-    : meals;
+    : ownMeals;
 
   let total = 0;
   let fullCount = 0;
@@ -89,4 +80,18 @@ export async function calculateWallet(uid) {
     quarterCount,
     resetAt,
   };
+}
+
+export async function calculateWallet(uid) {
+  const userRef = doc(db, "users", uid);
+  const userSnap = await getDoc(userRef);
+  const resetAt = userSnap.exists() && userSnap.data().walletResetAt
+    ? userSnap.data().walletResetAt.toDate()
+    : null;
+
+  const q = query(collection(db, "meals"), where("uid", "==", uid), limit(1000));
+  const snap = await getDocs(q);
+  const meals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+  return computeWallet(uid, meals, resetAt);
 }

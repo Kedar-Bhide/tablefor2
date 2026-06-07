@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { auth, db, storage } from "../firebase";
 import { signOut } from "firebase/auth";
-import { doc, updateDoc, collection, query, where, getDocs, runTransaction } from "firebase/firestore";
+import { doc, updateDoc, collection, query, where, onSnapshot, getDocs, getDoc, runTransaction, limit } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { calculateBadges } from "../utils/calculateBadges";
-import { calculateWallet, WHITELISTED_WALLET_UIDS } from "../utils/calculateWallet";
+import { computeBadges } from "../utils/calculateBadges";
+import { calculateWallet, computeWallet, WHITELISTED_WALLET_UIDS } from "../utils/calculateWallet";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { deleteField } from "firebase/firestore";
 import Cropper from "react-easy-crop";
@@ -89,18 +89,40 @@ function Profile({ user, globalUserData, globalPartnerData }) {
     return `$${value.toFixed(2)}`;
   };
 
-  // Calculate badges and wallets since they rely on calculations
+  // Real-time listener for meals — computes badges and wallet on every snapshot
   useEffect(() => {
-    const fetchCalculations = async () => {
-      // Run badge and wallet calculations in parallel — both fetch meals independently
-      const [earnedBadges, walletData] = await Promise.all([
-        calculateBadges(user.uid, partnerUid),
-        calculateWallet(user.uid),
-      ]);
-      setBadges(earnedBadges);
-      setWallet(walletData);
-    };
-    fetchCalculations();
+    const uids = [user.uid];
+    if (partnerUid) uids.push(partnerUid);
+
+    const mealsQuery = query(
+      collection(db, "meals"),
+      where("uid", "in", uids),
+      limit(1000)
+    );
+
+    const userDocRef = doc(db, "users", user.uid);
+
+    const unsubscribeMeals = onSnapshot(mealsQuery, (snapshot) => {
+      const allMeals = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const ownMeals = allMeals.filter((m) => m.uid === user.uid);
+      const partnerMeals = allMeals.filter((m) => m.uid === partnerUid);
+
+      // Get user doc for earnedBadges and walletResetAt (separate listener below)
+      getDoc(userDocRef).then((userSnap) => {
+        const userData = userSnap.exists() ? userSnap.data() : {};
+        const lockedBadges = userData.earnedBadges || [];
+        const resetAt = userData.walletResetAt
+          ? userData.walletResetAt.toDate()
+          : null;
+
+        setBadges(computeBadges(ownMeals, partnerMeals, lockedBadges));
+        setWallet(computeWallet(user.uid, ownMeals, resetAt));
+      });
+    }, (err) => {
+      console.error("Profile meals snapshot failed:", err);
+    });
+
+    return () => unsubscribeMeals();
   }, [user.uid, partnerUid]);
 
   // Click outside menu closer
