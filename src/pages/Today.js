@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { db, auth, storage } from "../firebase";
-import { collection, query, where, onSnapshot, updateDoc, deleteDoc, doc, getDoc, getDocs, addDoc, deleteField, Timestamp } from "firebase/firestore";
+import { collection, query, where, onSnapshot, updateDoc, deleteDoc, doc, getDoc, getDocs, addDoc, deleteField } from "firebase/firestore";
 import { compressImage } from "../utils/compressImage";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -90,13 +90,6 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [editFat, setEditFat] = useState("");
   const [editFiber, setEditFiber] = useState("");
   const [manualMacrosModified, setManualMacrosModified] = useState(false);
-  const [energyCheckIn, setEnergyCheckIn] = useState(null);
-  const energyCheckInRef = useRef(null);
-  useEffect(() => { energyCheckInRef.current = energyCheckIn; }, [energyCheckIn]);
-  const [physicalLevel, setPhysicalLevel] = useState(50);
-  const [mentalLevel, setMentalLevel] = useState(50);
-  const [energySaving, setEnergySaving] = useState(false);
-  const [rawEnergyCheckIns, setRawEnergyCheckIns] = useState([]);
 
   const handleSelectedMealNutritionChange = useCallback(async (key, value) => {
     try {
@@ -246,72 +239,6 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
     };
   }, [user.uid, partnerUid]);
 
-  useEffect(() => {
-    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const q = query(
-      collection(db, "energy_checkins"),
-      where("uid", "==", user.uid)
-    );
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .filter(c => {
-          const d = c.createdAt instanceof Timestamp ? c.createdAt.toDate() : new Date(c.createdAt);
-          return d >= dayAgo;
-        });
-      setRawEnergyCheckIns(data);
-    });
-    return () => unsubscribe();
-  }, [user.uid]);
-
-  useEffect(() => {
-    const checkEligibility = async () => {
-      const now = new Date();
-      const todayString = now.toLocaleDateString("en-CA"); // YYYY-MM-DD
-
-      const completedToday = rawEnergyCheckIns.filter(c => {
-        if (c.status !== "completed" || !c.respondedAt) return false;
-        const d = c.respondedAt?.toDate?.() || new Date(c.respondedAt);
-        return d.toLocaleDateString("en-CA") === todayString;
-      }).length;
-
-      if (completedToday >= 2) {
-        setEnergyCheckIn(null);
-        return;
-      }
-
-      const pending = rawEnergyCheckIns
-        .filter(c => c.status === "pending")
-        .sort((a, b) => (a.scheduledTriggerAt?.toDate?.() || a.scheduledTriggerAt) - (b.scheduledTriggerAt?.toDate?.() || b.scheduledTriggerAt));
-
-      for (const c of pending) {
-        const triggerTime = c.scheduledTriggerAt?.toDate?.() || new Date(c.scheduledTriggerAt);
-        const gracePeriodMs = 2 * 60 * 60 * 1000; // 2 hours
-        const expirationTime = new Date(triggerTime.getTime() + gracePeriodMs);
-
-        if (now >= triggerTime && now < expirationTime) {
-          // If we are already showing a check-in, don't swap it unless it's a different one and we want oldest
-          if (!energyCheckInRef.current || energyCheckInRef.current.id !== c.id) {
-            setEnergyCheckIn(c);
-            energyCheckInRef.current = c;
-          }
-          return;
-        } else if (now >= expirationTime) {
-          try {
-            await updateDoc(doc(db, "energy_checkins", c.id), { status: "expired", updatedAt: new Date() });
-          } catch (e) {
-            console.error("Failed to expire energy check-in:", e);
-          }
-        }
-      }
-      setEnergyCheckIn(null);
-    };
-
-    checkEligibility();
-    const interval = setInterval(checkEligibility, 30000); // Check every 30s
-    return () => clearInterval(interval);
-  }, [rawEnergyCheckIns]);
-
   // Unified Filtering Logic for Today Feed
   const filteredMeals = useMemo(() => {
     const myTz = globalUserData?.timezone;
@@ -459,15 +386,6 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const handleDelete = async (mealId) => {
     try {
       await deleteDoc(doc(db, "meals", mealId));
-
-      // Cancel energy check-in if pending
-      try {
-        const { cancelEnergyCheckIn } = await import("../utils/energyCheckIn");
-        await cancelEnergyCheckIn(user.uid, mealId);
-      } catch (e) {
-        console.error("Failed to cancel energy check-in:", e);
-      }
-
       setSelectedMeal(null);
     } catch (e) {
       console.error("Failed to delete meal:", e);
@@ -558,14 +476,6 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
       await updateDoc(mealRef, updateData);
 
-      // Update energy check-in if exists
-      try {
-        const { updateEnergyCheckIn } = await import("../utils/energyCheckIn");
-        await updateEnergyCheckIn(user.uid, selectedMeal.id, { ...selectedMeal, ...updateData });
-      } catch (e) {
-        console.error("Failed to update energy check-in:", e);
-      }
-
       // Sync to frequent meals if it was originally saved from this log
       try {
         const q = query(collection(db, "frequentMeals"), where("originalMealId", "==", selectedMeal.id));
@@ -623,41 +533,6 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
     setEditPhotos((prev) => [...prev, file]);
     setEditPhotoPreviews((prev) => [...prev, URL.createObjectURL(file)]);
     setShowEditPhotoOptions(false);
-  };
-
-
-
-
-  const handleEnergySubmit = async () => {
-    if (!energyCheckIn || energySaving) return;
-    setEnergySaving(true);
-    try {
-      await updateDoc(doc(db, "energy_checkins", energyCheckIn.id), {
-        status: "completed",
-        physicalEnergy: physicalLevel,
-        mentalEnergy: mentalLevel,
-        respondedAt: new Date(),
-        updatedAt: new Date(),
-      });
-      setEnergyCheckIn(null);
-    } catch (e) {
-      console.error("Failed to save energy check-in:", e);
-    } finally {
-      setEnergySaving(false);
-    }
-  };
-
-  const handleEnergyDismiss = async () => {
-    if (!energyCheckIn) return;
-    try {
-      await updateDoc(doc(db, "energy_checkins", energyCheckIn.id), {
-        status: "dismissed",
-        updatedAt: new Date()
-      });
-      setEnergyCheckIn(null);
-    } catch (e) {
-      console.error("Failed to dismiss energy check-in:", e);
-    }
   };
 
   const handleWeightCheckInSave = async () => {
@@ -794,15 +669,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         saveToFrequent: taskSaveToFrequent,
         createdAt: now,
       };
-      const mealRef = await addDoc(collection(db, "meals"), mealObj);
-
-      // Schedule energy check-in if qualifying
-      try {
-        const { scheduleEnergyCheckIn } = await import("../utils/energyCheckIn");
-        await scheduleEnergyCheckIn(user.uid, mealRef.id, mealObj);
-      } catch (e) {
-        console.error("Failed to schedule energy check-in:", e);
-      }
+      await addDoc(collection(db, "meals"), mealObj);
 
       // Mark task complete
       await updateDoc(doc(db, "tasks", activeTask.id), {
@@ -2398,104 +2265,6 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
           </motion.div>
         )}
       </AnimatePresence>
-      {/* Energy Check-In Popup */}
-      <AnimatePresence>
-        {energyCheckIn && (
-          <motion.div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Energy check-in"
-            style={styles.overlayCenter}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            onClick={handleEnergyDismiss}
-          >
-            <motion.div
-              style={styles.energyPopup}
-              initial={{ y: "50px", opacity: 0, scale: 0.95 }}
-              animate={{ y: 0, opacity: 1, scale: 1 }}
-              exit={{ y: "50px", opacity: 0, scale: 0.95 }}
-              transition={{ type: "spring", damping: 25, stiffness: 350 }}
-              onClick={(e) => e.stopPropagation()}
-            >
-            <div style={styles.energyHeader}>
-              <p style={styles.energyEyebrow}>How are you feeling? ✨</p>
-              <h3 style={styles.energyTitle}>Energy Check-In</h3>
-              <p style={styles.energySubtitle}>
-                Based on your {energyCheckIn.mealType}
-              </p>
-            </div>
-
-            <div style={styles.energyField}>
-              <div style={styles.energyLabelRow}>
-                <span style={styles.energyLabel}>⚡️ Physical Energy</span>
-                <span style={styles.energyValueText}>{physicalLevel}%</span>
-              </div>
-              <div style={styles.batteryContainer}>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={physicalLevel}
-                  onChange={(e) => setPhysicalLevel(parseInt(e.target.value))}
-                  style={styles.energySlider}
-                />
-                <div style={styles.batteryTrack}>
-                  <div
-                    style={{
-                      ...styles.batteryFill,
-                      width: `${physicalLevel}%`,
-                      backgroundColor: physicalLevel > 60 ? "#7ec8a4" : (physicalLevel > 30 ? "#ffb347" : "#ff6b6b")
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div style={styles.energyField}>
-              <div style={styles.energyLabelRow}>
-                <span style={styles.energyLabel}>🧠 Mental Focus</span>
-                <span style={styles.energyValueText}>{mentalLevel}%</span>
-              </div>
-              <div style={styles.batteryContainer}>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={mentalLevel}
-                  onChange={(e) => setMentalLevel(parseInt(e.target.value))}
-                  style={styles.energySlider}
-                />
-                <div style={styles.batteryTrack}>
-                  <div
-                    style={{
-                      ...styles.batteryFill,
-                      width: `${mentalLevel}%`,
-                      backgroundColor: mentalLevel > 60 ? "#7ec8a4" : (mentalLevel > 30 ? "#ffb347" : "#ff6b6b")
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div style={styles.energyActions}>
-              <button style={styles.energyLaterBtn} onClick={handleEnergyDismiss}>
-                Maybe Later
-              </button>
-              <button
-                style={styles.energySubmitBtn}
-                onClick={handleEnergySubmit}
-                disabled={energySaving}
-              >
-                {energySaving ? "Saving..." : "Done"}
-              </button>
-            </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </>
   );
 }
@@ -3508,137 +3277,6 @@ const styles = {
     cursor: "pointer",
     marginTop: "0.5rem",
     marginBottom: "0.4rem",
-  },
-  // --- Energy Check-In Styles ---
-  overlayCenter: {
-    position: "fixed",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.4)",
-    backdropFilter: "blur(4px)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 2000,
-    padding: "1.5rem",
-  },
-  energyPopup: {
-    width: "100%",
-    maxWidth: "400px",
-    backgroundColor: "white",
-    borderRadius: "24px",
-    padding: "2rem",
-    boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
-    animation: "slideUpFade 0.4s ease both",
-  },
-  energyHeader: {
-    textAlign: "center",
-    marginBottom: "2rem",
-  },
-  energyEyebrow: {
-    fontSize: "0.75rem",
-    color: "#ff6b6b",
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: "0.05em",
-    margin: "0 0 4px 0",
-  },
-  energyTitle: {
-    fontSize: "1.4rem",
-    fontWeight: "700",
-    color: "#333",
-    margin: "0 0 6px 0",
-  },
-  energySubtitle: {
-    fontSize: "0.85rem",
-    color: "#888",
-    margin: 0,
-  },
-  energyField: {
-    marginBottom: "1.5rem",
-  },
-  energyLabelRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "0.8rem",
-  },
-  energyLabel: {
-    fontSize: "0.9rem",
-    fontWeight: "600",
-    color: "#444",
-  },
-  energyValueText: {
-    fontSize: "1rem",
-    fontWeight: "700",
-    color: "#333",
-    backgroundColor: "#f5f5f5",
-    padding: "2px 8px",
-    borderRadius: "6px",
-  },
-  batteryContainer: {
-    position: "relative",
-    height: "36px",
-    width: "100%",
-    backgroundColor: "#f0f0f0",
-    borderRadius: "10px",
-    padding: "4px",
-    display: "flex",
-    alignItems: "center",
-  },
-  batteryTrack: {
-    position: "absolute",
-    top: 4,
-    left: 4,
-    right: 4,
-    bottom: 4,
-    borderRadius: "7px",
-    overflow: "hidden",
-    pointerEvents: "none",
-  },
-  batteryFill: {
-    height: "100%",
-    transition: "width 0.3s ease, background-color 0.3s ease",
-  },
-  energySlider: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    width: "100%",
-    height: "100%",
-    opacity: 0,
-    cursor: "pointer",
-    zIndex: 2,
-  },
-  energyActions: {
-    display: "flex",
-    gap: "0.8rem",
-    marginTop: "2rem",
-  },
-  energyLaterBtn: {
-    flex: 1,
-    padding: "0.9rem",
-    backgroundColor: "transparent",
-    border: "1px solid #eee",
-    borderRadius: "14px",
-    fontSize: "0.9rem",
-    fontWeight: "600",
-    color: "#888",
-    cursor: "pointer",
-  },
-  energySubmitBtn: {
-    flex: 2,
-    padding: "0.9rem",
-    backgroundColor: "#ff6b6b",
-    color: "white",
-    border: "none",
-    borderRadius: "14px",
-    fontSize: "0.95rem",
-    fontWeight: "700",
-    cursor: "pointer",
-    boxShadow: "0 8px 16px rgba(255,107,107,0.25)",
   },
 };
 

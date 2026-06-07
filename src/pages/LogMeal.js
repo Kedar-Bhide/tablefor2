@@ -310,15 +310,7 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
     };
 
     // Update meal
-    const mealRef = await addDoc(collection(db, "meals"), mealObj);
-
-    // Schedule energy check-in if qualifying
-    try {
-      const { scheduleEnergyCheckIn } = await import("../utils/energyCheckIn");
-      await scheduleEnergyCheckIn(user.uid, mealRef.id, mealObj);
-    } catch (e) {
-      console.error("Failed to schedule energy check-in:", e);
-    }
+    await addDoc(collection(db, "meals"), mealObj);
 
     // Update local state so it appears immediately next time
     if (saveAsFrequent) {
