@@ -21,45 +21,75 @@ const SPECTRUM_CATEGORIES = [
   { id: "light", label: "Light", emoji: "🌿", color: "#0891b2", desc: "Under 150 kcal, <4g Fat, <8g Pro" },
 ];
 
-// Rule-based Back-of-the-Napkin Habit Reflection Synthesizer
-const generateWeeklyReflection = (weeklyData) => {
-  // Multi-tag: count every tag a meal receives (not just the primary)
+// Build per-category counts from a week of day objects
+const buildCategoryCounts = (weekData) => {
   const counts = {};
+  const dayCategories = {};
   SPECTRUM_CATEGORIES.forEach(c => { counts[c.id] = 0; });
-
-  let totalMeals = 0;
-
-  weeklyData.forEach(day => {
-    if (day.meals && day.meals.length > 0) {
-      totalMeals += day.meals.length;
-      day.meals.forEach(meal => {
-        // Use getAllHabitCategories (uncapped) so every matched spectrum
-        // is counted even if it didn't make the top-3 on the meal card
-        const cats = getAllHabitCategories(meal.nutrition);
-        cats.forEach(cat => {
-          if (cat.id in counts) {
-            counts[cat.id]++;
-          }
-        });
+  weekData.forEach(day => {
+    const dayCats = {};
+    SPECTRUM_CATEGORIES.forEach(c => { dayCats[c.id] = 0; });
+    (day.meals || []).forEach(meal => {
+      const cats = getAllHabitCategories(meal.nutrition);
+      cats.forEach(cat => {
+        if (cat.id in counts) counts[cat.id]++;
+        if (cat.id in dayCats) dayCats[cat.id]++;
       });
+    });
+    dayCategories[day.date] = dayCats;
+  });
+  return { counts, dayCategories };
+};
+
+// Card 1: Weekly Identity
+const IDENTITY_MAP = {
+  strength: { title: "The Builder", emoji: "💪", explanation: "Protein-packed meals appeared most often this week. Your meals frequently supported muscle maintenance and satiety." },
+  fuel: { title: "The Fueler", emoji: "🔋", explanation: "Energy-focused meals appeared most often this week. Your meals frequently leaned toward sustained energy and carb-forward choices." },
+  balanced: { title: "The Balancer", emoji: "⚖️", explanation: "Balanced meals appeared most often this week. You consistently included a mix of protein, carbs, fat, and fiber." },
+  fiberHero: { title: "The Fiber Seeker", emoji: "🌾", explanation: "High-fiber meals appeared most often this week. You prioritized gut-friendly, plant-forward choices." },
+  power: { title: "The Power Planner", emoji: "🚀", explanation: "Power meals appeared most often this week. You regularly ate substantial, high-impact meals." },
+  filling: { title: "The Saturator", emoji: "🍽️", explanation: "Filling meals appeared most often this week. Your meals emphasized protein and fiber for lasting fullness." },
+  lean: { title: "The Lean Sharpshooter", emoji: "🎯", explanation: "Lean choices appeared most often this week. You consistently picked protein-rich, lower-fat options." },
+  comfort: { title: "The Comfort Eater", emoji: "🧸", explanation: "Comfort-style meals appeared most often this week. Your meals leaned toward richer, more satisfying flavors." },
+  snack: { title: "The Grazer", emoji: "⚡", explanation: "Snack-sized meals appeared most often this week. Your eating pattern featured lighter, quicker bites." },
+  light: { title: "The Lighter", emoji: "🌿", explanation: "Light meals appeared most often this week. You gravitated toward easy, low-calorie options." },
+};
+
+const computeIdentity = (categoryCounts, totalMeals) => {
+  if (totalMeals === 0) return null;
+  const sorted = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1]);
+  const topId = sorted[0][0];
+  const identity = IDENTITY_MAP[topId] || { title: "The Balanced", emoji: "⚖️", explanation: "Your eating patterns this week showed variety across different meal styles." };
+  const top3 = sorted.slice(0, 3).filter(([, c]) => c > 0).map(([id, count]) => {
+    const cat = SPECTRUM_CATEGORIES.find(c => c.id === id);
+    return { id, label: cat?.label || id, count, emoji: cat?.emoji || "" };
+  });
+  return { ...identity, top3 };
+};
+
+// Card 2: Trend Changes
+const computeTrends = (currentCounts, prevCounts) => {
+  const changes = [];
+  SPECTRUM_CATEGORIES.forEach(c => {
+    const curr = currentCounts[c.id] || 0;
+    const prev = prevCounts[c.id] || 0;
+    const delta = curr - prev;
+    if (delta !== 0) {
+      changes.push({ id: c.id, label: c.label, emoji: c.emoji, color: c.color, delta });
     }
   });
-
-  if (totalMeals === 0) {
-    return {
-      percentages: null,
-      counts: null,
-      note: "Your canvas is empty! Log some meals this week to paint your Habit Spectrum and see your Weekly Habit Synthesis. 🎨"
-    };
-  }
-
-  const percentages = {};
-  SPECTRUM_CATEGORIES.forEach(c => {
-    percentages[c.id] = Math.round((counts[c.id] / totalMeals) * 100);
-  });
-
-  return { percentages, counts };
+  changes.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+  return changes;
 };
+
+// Card 3: Meal Diversity
+const computeDiversity = (categoryCounts) => {
+  const used = SPECTRUM_CATEGORIES.filter(c => (categoryCounts[c.id] || 0) > 0);
+  const unused = SPECTRUM_CATEGORIES.filter(c => (categoryCounts[c.id] || 0) === 0);
+  return { count: used.length, total: SPECTRUM_CATEGORIES.length, used, unused };
+};
+
+// Card 4: (reserved)
 
 function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserData, globalPartnerData }) {
   const user = auth.currentUser;
@@ -70,6 +100,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
   const [monthMeals, setMonthMeals] = useState([]);
   const [partnerMonthMeals, setPartnerMonthMeals] = useState([]);
   const [weeklyNutrition, setWeeklyNutrition] = useState([]);
+  const [prevWeekData, setPrevWeekData] = useState([]);
   const [selectedCalendarDay, setSelectedCalendarDay] = useState(null);
   const [selectedSpectrumDay, setSelectedSpectrumDay] = useState(null);
   const [activeTab, setActiveTab] = useState("classic"); // Default to classic stats
@@ -81,7 +112,6 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
   const [dismissingInsight, setDismissingInsight] = useState(false);
   const [weightInsight, setWeightInsight] = useState(null);
   const [showWeightInsight, setShowWeightInsight] = useState(false);
-  const [activeNapkinTooltip, setActiveNapkinTooltip] = useState(null);
 
   const [rawMonthlyInsights, setRawMonthlyInsights] = useState([]);
   const [rawWeightInsights, setRawWeightInsights] = useState([]);
@@ -156,11 +186,14 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
       });
       setFullDayMap(dayMap);
 
-      // Build weekly nutrition per day
+      // Build weekly nutrition per day (Mon-Sun)
+      const today = new Date();
+      const monOffset = (today.getDay() + 6) % 7;
       const last7 = [];
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
+      const prev7 = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - monOffset + i);
         const dateStr = formatLocalDateKey(d);
         const dayMeals = allMeals.filter(
           (m) => (getMealLocalDateKey(m) === dateStr) && m.nutrition
@@ -187,8 +220,21 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
           hasMeals: dayMeals.length > 0,
           meals: dayMeals
         });
+
+        // Also build previous week (Mon-Sun)
+        const p = new Date(today);
+        p.setDate(p.getDate() - monOffset - 7 + i);
+        const prevDateStr = formatLocalDateKey(p);
+        const prevDayMeals = allMeals.filter(
+          (m) => (getMealLocalDateKey(m) === prevDateStr) && m.nutrition
+        );
+        prev7.push({
+          date: prevDateStr,
+          meals: prevDayMeals
+        });
       }
       setWeeklyNutrition(last7);
+      setPrevWeekData(prev7);
 
       // Couple streak
       if (partnerUid) {
@@ -406,6 +452,44 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
   const daysHit = [...new Set((monthMeals || []).map((m) => getMealLocalDateKey(m)))]
     .filter((dateStr) => getDayMealCount(dateStr, monthMeals || []) >= 3).length;
 
+  // Insight data for Habit Spectrum
+  const [hoveredCategory, setHoveredCategory] = useState(null);
+  const { weeklyCounts, identity, trends, diversity } = useMemo(() => {
+    try {
+      const weekCounts = buildCategoryCounts(weeklyNutrition).counts;
+      const totalMealsWeek = weeklyNutrition.reduce((s, d) => s + (d.meals?.length || 0), 0);
+
+      // Identity
+      const ident = computeIdentity(weekCounts, totalMealsWeek);
+
+      // Prev week data
+      let trendData = [];
+      const prevCountData = buildCategoryCounts(prevWeekData);
+      const prevTotalMeals = prevWeekData.reduce((s, d) => s + (d.meals?.length || 0), 0);
+      if (prevTotalMeals >= 3) {
+        trendData = computeTrends(weekCounts, prevCountData.counts);
+      }
+
+      // Diversity
+      const div = computeDiversity(weekCounts);
+
+      return {
+        weeklyCounts: weekCounts,
+        identity: ident,
+        trends: trendData,
+        diversity: div,
+      };
+    } catch (e) {
+      console.error("Habit insight error:", e);
+      return {
+        weeklyCounts: {},
+        identity: null,
+        trends: [],
+        diversity: { count: 0, total: 10, used: [], unused: [] },
+      };
+    }
+  }, [weeklyNutrition, prevWeekData]);
+
   const handleCalendarDayTap = (dateStr) => {
     // Use the already-fetched monthMeals to show daily details.
     // This is more reliable as it includes late-accepted shared meals caught by the wider month fetch.
@@ -477,9 +561,6 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
         variants={containerVariants}
         initial="hidden"
         animate="show"
-        onClick={() => {
-          if (activeNapkinTooltip) setActiveNapkinTooltip(null);
-        }}
       >
         <h2 style={styles.title}>Stats</h2>
 
@@ -798,6 +879,18 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                   borderStyle = `2px solid ${allCats[0].color}`;
                 }
 
+                // Collect unique categories for hover tooltip
+                const allDayCats = [];
+                const seenCatIds = new Set();
+                dayMeals.forEach(m => {
+                  getHabitCategories(m.nutrition).forEach(cat => {
+                    if (!seenCatIds.has(cat.id)) {
+                      seenCatIds.add(cat.id);
+                      allDayCats.push(cat);
+                    }
+                  });
+                });
+
                 // Show primary emoji per meal (up to 3 slots)
                 return (
                   <div
@@ -837,67 +930,106 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
               })}
             </div>
 
-            {/* Weekly Habit Synthesis Card */}
-            {(() => {
-              const reflection = generateWeeklyReflection(weeklyNutrition);
-              return (
-                <div style={styles.napkinCard}>
-                  <div style={styles.napkinLines}>
-                    <p style={styles.napkinTitle}>✨ Weekly Habit Synthesis</p>
-                    {reflection.percentages ? (
-                      <div style={styles.napkinBarsContainer}>
-                        {SPECTRUM_CATEGORIES.map((item) => {
-                          const pct = reflection.percentages[item.id] ?? 0;
-                          return (
-                            <div key={item.id} style={{ ...styles.napkinBarRow, position: "relative" }}>
-                              <div 
-                                style={{ ...styles.napkinBarLabel, cursor: "pointer", position: "relative" }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveNapkinTooltip(activeNapkinTooltip === item.id ? null : item.id);
-                                }}
-                              >
-                                {item.emoji} {item.label}
-                                
-                                <AnimatePresence>
-                                  {activeNapkinTooltip === item.id && (
-                                    <motion.div 
-                                      initial={{ opacity: 0, y: 5 }}
-                                      animate={{ opacity: 1, y: 0 }}
-                                      exit={{ opacity: 0, y: 5 }}
-                                      style={styles.napkinTooltip}
-                                    >
-                                      {item.desc}
-                                    </motion.div>
-                                  )}
-                                </AnimatePresence>
-                              </div>
-                              <div style={styles.napkinBarTrack}>
-                                <div style={{
-                                  ...styles.napkinBarFill,
-                                  width: `${pct}%`,
-                                  backgroundColor: pct > 0 ? item.color : "transparent"
-                                }} />
-                              </div>
-                              <span style={{
-                                ...styles.napkinBarValue,
-                                color: pct > 0 ? "#374151" : "#d1d5db"
-                              }}>
-                                {pct}%
-                              </span>
-                            </div>
-                          );
-                        })}
+            {/* Weekly Habit Synthesis — Coming Soon Overlay */}
+            <div style={{ position: "relative", marginTop: "0.5rem" }}>
+              {/* Cards still render underneath (data keeps flowing) */}
+              {identity ? (
+                <>
+                  {/* Card 1: Weekly Identity */}
+                  <div style={styles.card}>
+                    <div style={styles.identityHero}>
+                      <span style={styles.identityEmoji}>{identity.emoji}</span>
+                      <div>
+                        <p style={styles.identityTitle}>{identity.title}</p>
+                        <p style={styles.identityExplanation}>{identity.explanation}</p>
                       </div>
-                    ) : (
-                      <p style={styles.napkinReflectionTextEmpty}>
-                        {reflection.note}
-                      </p>
-                    )}
+                    </div>
+                    <div style={styles.identityTop3}>
+                      <p style={styles.identityTop3Label}>Top 3 meal styles this week</p>
+                      {identity.top3.map((item, i) => (
+                        <div key={item.id} style={styles.identityTop3Row}>
+                          <span style={styles.identityTop3Rank}>{i + 1}</span>
+                          <span style={styles.identityTop3Emoji}>{item.emoji}</span>
+                          <span style={styles.identityTop3Name}>{item.label}</span>
+                          <span style={styles.identityTop3Count}>{item.count} meals</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              );
-            })()}
+
+                  {/* Card 2: Trend Changes */}
+                  {trends.length > 0 && (
+                    <div style={styles.card}>
+                      <p style={styles.cardTitle}>📊 Trends vs Last Week</p>
+                      <div style={styles.trendList}>
+                        {trends.slice(0, 4).map((t) => (
+                          <div key={t.id} style={styles.trendRow}>
+                            <span style={styles.trendEmoji}>{t.emoji}</span>
+                            <span style={styles.trendLabel}>{t.label}</span>
+                            <span style={{
+                              ...styles.trendDelta,
+                              color: t.delta > 0 ? "#059669" : "#ef4444",
+                            }}>
+                              {t.delta > 0 ? "+" : ""}{t.delta}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Card 3: Meal Diversity */}
+                  <div style={styles.card}>
+                    <p style={styles.cardTitle}>🎨 Meal Variety</p>
+                    <p style={styles.diversityHeadline}>
+                      <span style={styles.diversityCount}>{diversity.count}</span>
+                      <span style={styles.diversitySeparator}>/</span>
+                      <span style={styles.diversityTotal}>{diversity.total}</span>
+                      <span style={styles.diversityLabel}> meal styles explored this week</span>
+                    </p>
+                    <div style={styles.diversityGrid}>
+                      {SPECTRUM_CATEGORIES.map((c) => {
+                        const count = weeklyCounts[c.id] || 0;
+                        const isUsed = count > 0;
+                        return (
+                          <div key={c.id} style={{
+                            ...styles.diversityBadge,
+                            backgroundColor: isUsed ? `${c.color}18` : "#f3f4f6",
+                            color: isUsed ? c.color : "#9ca3af",
+                            border: isUsed ? `1.5px solid ${c.color}40` : "1.5px dashed #d1d5db",
+                          }}
+                            onMouseEnter={() => setHoveredCategory(c.id)}
+                            onMouseLeave={() => setHoveredCategory(null)}
+                          >
+                            <span>{c.emoji}</span>
+                            <span style={{
+                              ...styles.diversityBadgeLabel,
+                              color: isUsed ? c.color : "#9ca3af",
+                            }}>{c.label}</span>
+                            {hoveredCategory === c.id && (
+                              <div style={{
+                                ...styles.diversityTooltip,
+                                borderColor: c.color,
+                              }}>
+                                <strong>{c.label}:</strong> {c.desc}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div style={{ minHeight: "200px" }} />
+              )}
+
+              {/* Coming Soon Overlay */}
+              <div style={styles.comingSoonOverlay}>
+                <span style={styles.comingSoonIcon}>✨</span>
+                <p style={styles.comingSoonTitle}>Coming Soon</p>
+              </div>
+            </div>
           </motion.div>
         )}
 
@@ -2098,96 +2230,190 @@ const styles = {
     padding: "1px 4px",
     borderRadius: "6px"
   },
-  napkinCard: {
-    backgroundColor: "#ffffff",
-    border: "1px solid #f3f4f6",
-    borderRadius: "16px",
-    padding: "0",
-    boxShadow: "0 4px 20px rgba(243, 244, 246, 0.8)",
-    overflow: "hidden"
-  },
-  napkinLines: {
-    backgroundImage: "linear-gradient(transparent calc(24px - 1px), #f3f4f6 calc(24px - 1px))",
-    backgroundSize: "100% 24px",
-    padding: "24px 18px",
-  },
-  napkinTitle: {
-    fontSize: "0.88rem",
-    fontWeight: "700",
-    color: "#78350f",
-    margin: "0 0 24px 0",
-    lineHeight: "24px",
-    letterSpacing: "0.01em"
-  },
-  napkinBarsContainer: {
+  comingSoonOverlay: {
+    position: "absolute",
+    inset: 0,
+    backgroundColor: "rgba(255, 255, 255, 0.82)",
+    backdropFilter: "blur(6px)",
+    WebkitBackdropFilter: "blur(6px)",
     display: "flex",
     flexDirection: "column",
-    gap: "0",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: "16px",
+    zIndex: 10,
+    minHeight: "220px",
+    padding: "2rem",
+    textAlign: "center",
   },
-  napkinBarRow: {
+  comingSoonIcon: {
+    fontSize: "2.5rem",
+    marginBottom: "0.5rem",
+  },
+  comingSoonTitle: {
+    fontSize: "1.2rem",
+    fontWeight: "800",
+    color: "#d1d5db",
+    margin: "0 0 0.3rem 0",
+    letterSpacing: "0.5px",
+  },
+  comingSoonSub: {
+    fontSize: "0.82rem",
+    color: "#9ca3af",
+    lineHeight: "1.5",
+    margin: 0,
+    maxWidth: "260px",
+  },
+  // Identity Card
+  identityHero: {
+    display: "flex",
+    gap: "1rem",
+    alignItems: "flex-start",
+    marginBottom: "1.2rem",
+  },
+  identityEmoji: {
+    fontSize: "2.2rem",
+    lineHeight: 1,
+    flexShrink: 0,
+  },
+  identityTitle: {
+    fontSize: "1.15rem",
+    fontWeight: "800",
+    color: "#333",
+    margin: "0 0 4px 0",
+  },
+  identityExplanation: {
+    fontSize: "0.82rem",
+    color: "#666",
+    lineHeight: "1.5",
+    margin: 0,
+  },
+  identityTop3: {
+    borderTop: "1px solid #f0f0f0",
+    paddingTop: "0.8rem",
+  },
+  identityTop3Label: {
+    fontSize: "0.7rem",
+    fontWeight: "700",
+    color: "#999",
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+    margin: "0 0 0.5rem 0",
+  },
+  identityTop3Row: {
     display: "flex",
     alignItems: "center",
-    gap: "8px",
-    height: "24px",
+    gap: "0.5rem",
+    padding: "0.35rem 0",
   },
-  napkinBarLabel: {
-    width: "100px",
-    fontSize: "0.72rem",
-    fontWeight: "700",
-    color: "#4b5563",
-    whiteSpace: "nowrap"
-  },
-  napkinTooltip: {
-    position: "absolute",
-    left: "0",
-    top: "100%",
-    marginTop: "6px",
-    backgroundColor: "#1f2937",
-    color: "#f9fafb",
+  identityTop3Rank: {
     fontSize: "0.68rem",
-    fontWeight: "normal",
-    padding: "6px 10px",
-    borderRadius: "8px",
-    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-    zIndex: 10,
-    width: "max-content",
-    pointerEvents: "none",
-    letterSpacing: "0.01em"
+    fontWeight: "700",
+    color: "#bbb",
+    width: "16px",
+    textAlign: "right",
   },
-  napkinBarTrack: {
+  identityTop3Emoji: {
+    fontSize: "0.95rem",
+    lineHeight: 1,
+  },
+  identityTop3Name: {
     flex: 1,
-    height: "6px",
-    backgroundColor: "#e5e7eb",
-    borderRadius: "3px",
-    overflow: "hidden"
+    fontSize: "0.82rem",
+    fontWeight: "600",
+    color: "#444",
   },
-  napkinBarFill: {
-    height: "100%",
-    borderRadius: "3px"
+  identityTop3Count: {
+    fontSize: "0.75rem",
+    fontWeight: "700",
+    color: "#888",
   },
-  napkinBarValue: {
-    fontSize: "0.72rem",
+  // Trend Card
+  trendList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "0.5rem",
+  },
+  trendRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.5rem",
+    padding: "0.3rem 0",
+  },
+  trendEmoji: {
+    fontSize: "1rem",
+    lineHeight: 1,
+    width: "24px",
+  },
+  trendLabel: {
+    flex: 1,
+    fontSize: "0.82rem",
+    fontWeight: "600",
+    color: "#444",
+  },
+  trendDelta: {
+    fontSize: "0.85rem",
     fontWeight: "800",
-    color: "#374151",
-    width: "30px",
-    textAlign: "right"
   },
-  napkinReflectionText: {
-    fontSize: "0.85rem",
-    fontStyle: "italic",
-    fontFamily: "'Georgia', serif",
-    color: "#451a03",
-    margin: 0,
-    lineHeight: "24px"
+  // Diversity Card
+  diversityHeadline: {
+    fontSize: "1.4rem",
+    fontWeight: "700",
+    marginBottom: "1rem",
   },
-  napkinReflectionTextEmpty: {
+  diversityCount: {
+    color: "#333",
+  },
+  diversitySeparator: {
+    color: "#ddd",
+    margin: "0 2px",
+  },
+  diversityTotal: {
+    color: "#bbb",
+  },
+  diversityLabel: {
     fontSize: "0.85rem",
-    color: "#9a3412",
-    margin: 0,
-    lineHeight: "24px",
-    fontStyle: "italic",
-    fontFamily: "'Georgia', serif"
-  }
+    fontWeight: "400",
+    color: "#888",
+  },
+  diversityGrid: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "0.4rem",
+  },
+  diversityBadge: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.3rem",
+    padding: "0.3rem 0.5rem",
+    borderRadius: "20px",
+    fontSize: "0.72rem",
+    fontWeight: "600",
+    position: "relative",
+    cursor: "default",
+  },
+  diversityBadgeLabel: {
+    fontSize: "0.72rem",
+    fontWeight: "600",
+  },
+  diversityTooltip: {
+    position: "absolute",
+    bottom: "calc(100% + 6px)",
+    left: "50%",
+    transform: "translateX(-50%)",
+    backgroundColor: "#fff",
+    border: "1.5px solid",
+    borderRadius: "8px",
+    padding: "0.4rem 0.6rem",
+    fontSize: "0.7rem",
+    fontWeight: "500",
+    color: "#555",
+    whiteSpace: "nowrap",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+    zIndex: 20,
+    pointerEvents: "none",
+    lineHeight: "1.4",
+  },
 };
 
 export default Weekly;

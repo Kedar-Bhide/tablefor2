@@ -1724,6 +1724,88 @@ IMPORTANT:
   }
 );
 
+// Generate a Claude-powered weekly reflection based on meal category data
+exports.generateWeeklyReflection = onCall(
+  { secrets: [ANTHROPIC_API_KEY] },
+  async (request) => {
+    try {
+      if (!request.auth?.uid) {
+        throw new Error("Unauthorized: not authenticated");
+      }
+      const { categoryCounts, topCategories, totalMeals } = request.data;
+      if (!categoryCounts || !topCategories) throw new Error("Missing required fields");
+
+      await checkRateLimit(request.auth.uid, "generateWeeklyReflection", 5, 60);
+
+      const topCats = topCategories.map((t) => `${t.emoji || ""} ${t.label} (${t.count} meals)`).join(", ");
+
+      const prompt = `The user logged ${totalMeals} meals this week.
+
+Their meal category counts: ${Object.entries(categoryCounts).filter(([, c]) => c > 0).map(([id, count]) => `${id}: ${count}`).join(", ")}
+
+Their top meal styles this week: ${topCats}
+
+Write exactly 1-2 sentences of warm, encouraging reflection about their eating patterns this week.
+
+Rules:
+- Mention their dominant behaviors using category names
+- Be warm and encouraging 
+- Do NOT use percentages or numbers
+- Do NOT mention calories, weight, or dieting
+- Do NOT shame or criticize
+- Do NOT give generic advice like "eat more vegetables"
+- Do NOT mention doctors or nutritionists
+- Keep it concise and personal
+- Write like a thoughtful friend, not a clinician`;
+
+      const reflection = await new Promise((resolve, reject) => {
+        const body = JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 200,
+          temperature: 0.6,
+          system: "You write warm, concise, human reflections about eating patterns. You focus on behaviors, not numbers. You never use clinical language or percentages. You write like a thoughtful friend who notices patterns.",
+          messages: [{ role: "user", content: prompt }],
+        });
+
+        const options = {
+          hostname: "api.anthropic.com",
+          path: "/v1/messages",
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": process.env.ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+          },
+        };
+
+        const req = https.request(options, (res) => {
+          let data = "";
+          res.on("data", (chunk) => { data += chunk; });
+          res.on("end", () => {
+            try {
+              const parsed = JSON.parse(data);
+              const text = parsed.content?.[0]?.text?.trim() || "";
+              if (!text) reject(new Error("Empty response"));
+              else resolve(text);
+            } catch (e) {
+              reject(e);
+            }
+          });
+        });
+
+        req.on("error", reject);
+        req.write(body);
+        req.end();
+      });
+
+      return { success: true, reflection };
+    } catch (e) {
+      console.error("Weekly reflection error:", e);
+      return { success: false, reflection: null };
+    }
+  }
+);
+
 // Notify partner of incoming link request
 exports.sendPartnerRequestNotification = onCall(async (request) => {
   try {
