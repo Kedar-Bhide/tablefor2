@@ -326,7 +326,8 @@ export default React.memo(function MealNutritionCard({
               return (
                 <div
                   key={cat.id || idx}
-                  onClick={() => setActivePillId(isActive ? null : cat.id)}
+                  onMouseEnter={() => setActivePillId(cat.id)}
+                  onMouseLeave={() => setActivePillId(null)}
                   style={{
                     display: "flex",
                     alignItems: "center",
