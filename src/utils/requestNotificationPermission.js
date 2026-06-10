@@ -12,7 +12,10 @@ export async function requestNotificationPermission(uid) {
 
     const token = await getToken(messaging, { vapidKey: VAPID_KEY });
     if (token) {
-      const utcOffset = -new Date().getTimezoneOffset() / 60;
+      const now = new Date();
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+      const utcOffsetMinutes = -now.getTimezoneOffset();
+      const utcOffset = utcOffsetMinutes / 60;
 
       // Get existing token
       const userSnap = await getDoc(doc(db, "users", uid));
@@ -24,12 +27,16 @@ export async function requestNotificationPermission(uid) {
           fcmToken: token,
           notificationsEnabled: true,
           utcOffset: utcOffset,
+          utcOffsetMinutes: utcOffsetMinutes,
+          timezone: timezone,
         });
         console.log("New FCM token saved:", token);
       } else {
-        // Still update utcOffset even if token unchanged
+        // Still update offset/timezone fields even if token unchanged
         await updateDoc(doc(db, "users", uid), {
           utcOffset: utcOffset,
+          utcOffsetMinutes: utcOffsetMinutes,
+          timezone: timezone,
         });
       }
       return token;
