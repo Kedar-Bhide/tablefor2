@@ -1237,25 +1237,19 @@ async function hasLoggedToday(uid, mealType) {
 // Runs every 15 mins to check each user's local time accurately across all offsets
 exports.breakfastReminder = onSchedule("*/15 * * * *", async () => {
   await sendMealReminder("Breakfast", 10, 30, [
-    "Morning! ☀️ Log your breakfast to start the day right",
-    "Good morning! ☕ Don't forget breakfast",
-    "Rise and eat! Breakfast is waiting 🥣",
+    "Log your breakfast to start the day right",
   ]);
 });
 
 exports.lunchReminder = onSchedule("*/15 * * * *", async () => {
   await sendMealReminder("Lunch", 13, 30, [
     "Lunch time! 🥪 Log your meal",
-    "Hey, it's lunch time! 🍴",
-    "Halfway through the day — have you eaten? 🌯",
   ]);
 });
 
 exports.dinnerReminder = onSchedule("*/15 * * * *", async () => {
   await sendMealReminder("Dinner", 20, 30, [
     "Dinner time! 🍽️ Log your dinner",
-    "Evening! 🌙 Time for dinner",
-    "Last meal of the day — make it count! ✨",
   ]);
 });
 
