@@ -1021,14 +1021,42 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                   </div>
                 </>
               ) : (
-                <div style={{ minHeight: "200px" }} />
+                <div style={styles.card}>
+                  <div style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    minHeight: "220px",
+                    textAlign: "center",
+                    padding: "2rem",
+                  }}>
+                    <span style={{ fontSize: "2.5rem", marginBottom: "0.5rem" }}>✨</span>
+                    <p style={{
+                      fontSize: "1.2rem",
+                      fontWeight: "800",
+                      color: "#d1d5db",
+                      margin: "0 0 0.3rem 0",
+                      letterSpacing: "0.5px",
+                    }}>Coming Soon</p>
+                    <p style={{
+                      fontSize: "0.82rem",
+                      color: "#9ca3af",
+                      lineHeight: "1.5",
+                      margin: 0,
+                      maxWidth: "260px",
+                    }}>Weekly habit insights will be coming soon!</p>
+                  </div>
+                </div>
               )}
 
-              {/* Coming Soon Overlay */}
-              <div style={styles.comingSoonOverlay}>
-                <span style={styles.comingSoonIcon}>✨</span>
-                <p style={styles.comingSoonTitle}>Coming Soon</p>
-              </div>
+              {identity && (
+                <div style={styles.comingSoonOverlay}>
+                  <span style={styles.comingSoonIcon}>✨</span>
+                  <p style={styles.comingSoonTitle}>Coming Soon</p>
+                  <p style={styles.comingSoonSub}>Weekly habit insights will be coming soon!</p>
+                </div>
+              )}
             </div>
           </motion.div>
         )}
