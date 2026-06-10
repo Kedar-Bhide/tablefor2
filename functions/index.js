@@ -954,18 +954,17 @@ exports.onMealCreated = onDocumentCreated(
         const partner = await getUser(user.partnerUid);
         if (partner) {
           // Create task if meal is shared
+          // Create task if meal is shared
           if (meal.isShared) {
             try {
-              // Check if task already exists for this meal
-              const existingTask = await db.collection("tasks")
-                .where("sourceMealId", "==", mealId)
-                .where("toUid", "==", user.partnerUid)
-                .get();
+              const taskId = `${mealId}_${user.partnerUid}`;
+              const taskRef = db.collection("tasks").doc(taskId);
+              const taskSnap = await taskRef.get();
 
-              if (!existingTask.empty) {
+              if (taskSnap.exists) {
                 console.log(`Task already exists for meal ${mealId}, skipping`);
               } else {
-                await db.collection("tasks").add({
+                await taskRef.set({
                   sourceMealId: mealId,
                   fromUid: uid,
                   toUid: user.partnerUid,
@@ -998,12 +997,7 @@ exports.onMealCreated = onDocumentCreated(
             if (meal.isShared) {
               body = `${firstName} logged a shared ${meal.type.toLowerCase()} 🍽️ — add your quantities!`;
             } else {
-              const messages = [
-                `${firstName} just logged ${meal.type.toLowerCase()} 🍽️`,
-                `${firstName} is eating! Don't fall behind 😄`,
-                `${firstName} logged a meal — your turn! 🍴`,
-              ];
-              body = messages[Math.floor(Math.random() * messages.length)];
+              body = `${firstName} just logged ${meal.type.toLowerCase()} 🍽️`;
             }
             await sendNotification(partner.fcmToken, "TableFor2", body);
           }
@@ -1041,12 +1035,7 @@ exports.onBadgeEarned = onDocumentUpdated("users/{uid}", async (event) => {
 
   for (const badgeId of justEarned) {
     const badgeName = badgeNames[badgeId] || "New Badge";
-    const messages = [
-      `You just earned ${badgeName}!`,
-      `New badge unlocked: ${badgeName} 🏆`,
-      `Achievement unlocked: ${badgeName}!`,
-    ];
-    const body = messages[Math.floor(Math.random() * messages.length)];
+    const body = `New badge unlocked: ${badgeName} 🏆`;
     await sendNotification(token, "TableFor2 🏆", body);
   }
 });
@@ -1206,16 +1195,12 @@ exports.onMealUpdated = onDocumentUpdated("meals/{mealId}", async (event) => {
       const actor = await getUser(actorUid);
       const actorName = actor?.name ? actor.name.split(" ")[0] : "Your partner";
 
-      let body = "";
-      if (newReactionEntry && newCommentEntry) {
-        body = `${actorName} reacted ${newReactionEntry[1]} and commented on your ${after.type.toLowerCase()} 💬`;
-      } else if (newReactionEntry) {
-        body = `${actorName} reacted ${newReactionEntry[1]} to your ${after.type.toLowerCase()} 🍽️`;
-      } else if (newCommentEntry) {
-        body = `${actorName} commented on your ${after.type.toLowerCase()}: "${newCommentEntry[1]}" 💬`;
+      if (newReactionEntry) {
+        const body = `${actorName} reacted ${newReactionEntry[1]} to your ${after.type.toLowerCase()} 🍽️`;
+        await sendNotification(mealOwner.fcmToken, "TableFor2", body);
       }
-
-      if (body) {
+      if (newCommentEntry) {
+        const body = `${actorName} left a comment on your ${after.type.toLowerCase()} 💬`;
         await sendNotification(mealOwner.fcmToken, "TableFor2", body);
       }
     }
@@ -1252,25 +1237,19 @@ async function hasLoggedToday(uid, mealType) {
 // Runs every 15 mins to check each user's local time accurately across all offsets
 exports.breakfastReminder = onSchedule("*/15 * * * *", async () => {
   await sendMealReminder("Breakfast", 10, 30, [
-    "Good morning! Don't skip breakfast 🌅",
-    "Time for breakfast! How are you starting your day? 🍳",
-    "Rise and eat! Breakfast is waiting 🥣",
+    "Log your breakfast to start the day right",
   ]);
 });
 
 exports.lunchReminder = onSchedule("*/15 * * * *", async () => {
   await sendMealReminder("Lunch", 13, 30, [
-    "Lunchtime! Don't forget to log your meal 🥗",
-    "Time for a break? Remember to log lunch 🍱",
-    "Halfway through the day — have you eaten? 🌯",
+    "Lunch time! 🥪 Log your meal",
   ]);
 });
 
 exports.dinnerReminder = onSchedule("*/15 * * * *", async () => {
   await sendMealReminder("Dinner", 20, 30, [
-    "Dinner time! Don't forget to log it 🌙",
-    "Hope you had a great dinner! Log it now 🍽️",
-    "Last meal of the day — make it count! ✨",
+    "Dinner time! 🍽️ Log your dinner",
   ]);
 });
 
@@ -1820,7 +1799,7 @@ exports.sendPartnerRequestNotification = onCall(async (request) => {
 
     await sendNotification(
       partner.fcmToken,
-      "TableFor2 💑",
+      "TableFor2",
       `${fromName} wants to link accounts with you — check your Profile!`
     );
   } catch (e) {
@@ -1842,7 +1821,7 @@ exports.sendPartnerAcceptedNotification = onCall(async (request) => {
 
     await sendNotification(
       partner.fcmToken,
-      "TableFor2 🎉",
+      "TableFor2",
       `${fromName} accepted your partner request! You're now linked.`
     );
   } catch (e) {
