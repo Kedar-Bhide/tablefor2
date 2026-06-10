@@ -89,12 +89,15 @@ function App() {
       const timezone = getCurrentTimezone();
       const utcOffsetMinutes = -now.getTimezoneOffset();
 
-      if (
-        globalUserData && (
-          globalUserData.timezone !== timezone ||
-          globalUserData.utcOffsetMinutes !== utcOffsetMinutes
-        )
-      ) {
+      const cachedTz = localStorage.getItem("user_timezone");
+      const cachedOffset = localStorage.getItem("user_utc_offset_minutes");
+
+      const needsDbSync = globalUserData && (
+        globalUserData.timezone !== timezone ||
+        globalUserData.utcOffsetMinutes !== utcOffsetMinutes
+      );
+
+      if (cachedTz !== timezone || Number(cachedOffset) !== utcOffsetMinutes || needsDbSync) {
         try {
           await setDoc(
             doc(db, "users", user.uid),
@@ -105,24 +108,31 @@ function App() {
             },
             { merge: true }
           );
+          localStorage.setItem("user_timezone", timezone || "");
+          localStorage.setItem("user_utc_offset_minutes", String(utcOffsetMinutes));
+          console.log("Timezone synced to Firestore:", timezone, utcOffsetMinutes);
         } catch (e) {
           console.error("Failed to sync timezone:", e);
         }
       }
     };
 
-    if (globalUserData) {
-      syncTimezone();
-    }
+    syncTimezone();
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         syncTimezone();
       }
     };
+
+    const intervalId = setInterval(syncTimezone, 5 * 60 * 1000);
+
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [user, globalUserData]);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      clearInterval(intervalId);
+    };
+  }, [user, globalUserData, currentPage]);
 
   // Global Partner Data Listener
   useEffect(() => {
