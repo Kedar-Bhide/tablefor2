@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { auth, db, storage } from "../firebase";
+import { auth, db, storage, fixStorageUrl } from "../firebase";
 import { signOut } from "firebase/auth";
 import { doc, updateDoc, collection, query, where, onSnapshot, getDocs, getDoc, runTransaction, limit } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -13,7 +13,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { LogOut, HeartCrack, Info } from "lucide-react";
 
 function Profile({ user, globalUserData, globalPartnerData }) {
-  const [photoURL, setPhotoURL] = useState(globalUserData?.photoURL || user?.photoURL);
+  const [photoURL, setPhotoURL] = useState(globalUserData?.photoURL || fixStorageUrl(user?.photoURL));
 
   const handleProfilePhoto = async (e) => {
     const file = e.target.files[0];

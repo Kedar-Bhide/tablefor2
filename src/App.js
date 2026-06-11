@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { auth, db } from "./firebase";
+import { auth, db, fixUserUrls } from "./firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, setDoc, getDoc, onSnapshot } from "firebase/firestore";
 import { AnimatePresence, motion } from "framer-motion";
@@ -72,7 +72,7 @@ function App() {
     if (!user) return;
     const unsub = onSnapshot(doc(db, "users", user.uid), (docSnap) => {
       if (docSnap.exists()) {
-        setGlobalUserData({ uid: user.uid, ...docSnap.data() });
+        setGlobalUserData({ uid: user.uid, ...fixUserUrls(docSnap.data()) });
       } else {
         setGlobalUserData(null);
       }
@@ -143,7 +143,7 @@ function App() {
     }
     const unsub = onSnapshot(doc(db, "users", partnerUid), (docSnap) => {
       if (docSnap.exists()) {
-        setGlobalPartnerData({ uid: partnerUid, ...docSnap.data() });
+        setGlobalPartnerData({ uid: partnerUid, ...fixUserUrls(docSnap.data()) });
       } else {
         setGlobalPartnerData(null);
       }
