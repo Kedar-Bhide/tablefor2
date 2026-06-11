@@ -40,3 +40,41 @@ if (typeof window !== "undefined") {
 }
 export const VAPID_KEY = "BDOOci-IG6aXEO37dUgyEMk6uV-R_V00SfNmNVSj84QSuAUBAAiOhMKouEyHBA87nornIr5ymx1HtUGpNK8sVs8";
 export { getToken, onMessage };
+
+export function fixStorageUrl(url) {
+  if (!url) return url;
+  if (Array.isArray(url)) {
+    return url.map(fixStorageUrl);
+  }
+  if (typeof url !== "string") return url;
+  if (url.includes("meals-a2f8e")) {
+    return url.replace(/meals-a2f8e(\.appspot\.com|\.firebasestorage\.app)?/g, "trytablefor2.firebasestorage.app");
+  }
+  return url;
+}
+
+export function fixMealUrls(meal) {
+  if (!meal) return meal;
+  return {
+    ...meal,
+    photoURL: fixStorageUrl(meal.photoURL),
+    photos: fixStorageUrl(meal.photos),
+    _galleryPhoto: fixStorageUrl(meal._galleryPhoto)
+  };
+}
+
+export function fixUserUrls(user) {
+  if (!user) return user;
+  return {
+    ...user,
+    photoURL: fixStorageUrl(user.photoURL)
+  };
+}
+
+export function fixTaskUrls(task) {
+  if (!task) return task;
+  return {
+    ...task,
+    photos: fixStorageUrl(task.photos)
+  };
+}

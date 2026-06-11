@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { auth, db } from "../firebase";
+import { auth, db, fixMealUrls } from "../firebase";
 import { collection, query, where, orderBy, onSnapshot, getDocs, updateDoc, doc } from "firebase/firestore";
 import { getPhotos } from "../utils/getPhotos";
 import { getMealLocalDateKey } from "../utils/dateTime";
@@ -118,7 +118,7 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const meals = snapshot.docs.map((d) => ({ id: d.id, ...d.data() })).reverse();
+      const meals = snapshot.docs.map((d) => fixMealUrls({ id: d.id, ...d.data() })).reverse();
       oldestDateRef.current = startDate;
       setGroupedMeals(groupMeals(meals));
       setLoadingGallery(false);
@@ -151,7 +151,7 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
       );
 
       const snap = await getDocs(q);
-      const meals = snap.docs.map((d) => ({ id: d.id, ...d.data() })).reverse();
+      const meals = snap.docs.map((d) => fixMealUrls({ id: d.id, ...d.data() })).reverse();
       oldestDateRef.current = startDate;
 
       if (meals.length === 0) {

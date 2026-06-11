@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
-import { db, auth, storage } from "../firebase";
+import { db, auth, storage, fixMealUrls, fixTaskUrls, fixStorageUrl } from "../firebase";
 import { collection, query, where, onSnapshot, updateDoc, deleteDoc, doc, getDoc, getDocs, addDoc, deleteField } from "firebase/firestore";
 import { compressImage } from "../utils/compressImage";
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -55,7 +55,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
     }
   };
 
-  const [myPhoto, setMyPhoto] = useState(user.photoURL);
+  const [myPhoto, setMyPhoto] = useState(fixStorageUrl(user.photoURL));
   const [weightCheckIn, setWeightCheckIn] = useState(null);
   const [newWeight, setNewWeight] = useState("");
   const [weightCheckInSaving, setWeightCheckInSaving] = useState(false);
@@ -217,7 +217,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       where("createdAt", ">=", recentStart)
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const data = snapshot.docs.map((d) => fixMealUrls({ id: d.id, ...d.data() }));
       setRawRecentMeals(data);
     });
 
@@ -229,7 +229,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       where("dismissed", "==", false)
     );
     const unsubscribeTasks = onSnapshot(taskQ, (snapshot) => {
-      const tasks = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const tasks = snapshot.docs.map((d) => fixTaskUrls({ id: d.id, ...d.data() }));
       setPendingTasks(tasks);
     });
 

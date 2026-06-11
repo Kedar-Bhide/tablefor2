@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
-import { auth, db } from "../firebase";
+import { auth, db, fixMealUrls } from "../firebase";
 import { collection, query, where, getDocs, doc, getDoc, updateDoc, onSnapshot } from "firebase/firestore";
 import { PieChart, Pie, Cell } from "recharts";
 import { formatLocalDateKey, getMealLocalDateKey } from "../utils/dateTime";
@@ -265,12 +265,12 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
     };
 
     const unsubMy = onSnapshot(allMealsQ, (snap) => {
-      myMeals = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      myMeals = snap.docs.map(d => fixMealUrls({ id: d.id, ...d.data() }));
       processMeals();
     });
 
     const unsubPartner = partnerQ ? onSnapshot(partnerQ, (snap) => {
-      pMeals = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      pMeals = snap.docs.map(d => fixMealUrls({ id: d.id, ...d.data() }));
       processMeals();
     }) : null;
 
@@ -313,7 +313,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
     ]);
 
     const ownMonthMeals = snap.docs
-      .map((d) => ({ id: d.id, ...d.data() }))
+      .map((d) => fixMealUrls({ id: d.id, ...d.data() }))
       .filter(m => {
         const dateKey = getMealLocalDateKey(m);
         return dateKey >= monthStartStr && dateKey <= monthEndStr;
@@ -321,7 +321,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
 
     const partnerMonthMealsData = pSnap
       ? pSnap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
+        .map((d) => fixMealUrls({ id: d.id, ...d.data() }))
         .filter(m => {
           const dateKey = getMealLocalDateKey(m);
           return dateKey >= monthStartStr && dateKey <= monthEndStr;
