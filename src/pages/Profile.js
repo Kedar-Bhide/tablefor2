@@ -304,13 +304,19 @@ function Profile({ user, globalUserData, globalPartnerData }) {
   const handleDeclineRequest = async () => {
     if (!incomingRequest) return;
     try {
-      // Remove request from own document
-      await updateDoc(doc(db, "users", user.uid), {
-        partnerRequest: deleteField(),
-      });
-      // Remove pending from requester's document
-      await updateDoc(doc(db, "users", incomingRequest.fromUid), {
-        pendingPartnerRequest: deleteField(),
+      // Use transaction for atomicity
+      await runTransaction(db, async (transaction) => {
+        // Remove request from own document
+        const ownUserRef = doc(db, "users", user.uid);
+        transaction.update(ownUserRef, {
+          partnerRequest: deleteField(),
+        });
+        
+        // Remove pending from requester's document
+        const requesterRef = doc(db, "users", incomingRequest.fromUid);
+        transaction.update(requesterRef, {
+          pendingPartnerRequest: deleteField(),
+        });
       });
       setMessage("Request declined.");
     } catch (e) {
@@ -330,18 +336,23 @@ function Profile({ user, globalUserData, globalPartnerData }) {
     try {
       const prevPartnerUid = partnerUid;
 
-      // Update own document
-      await updateDoc(doc(db, "users", user.uid), {
-        partnerUid: deleteField(),
-        partnerEmail: deleteField()
-      });
+      // Use transaction for atomicity
+      await runTransaction(db, async (transaction) => {
+        // Update own document
+        const ownUserRef = doc(db, "users", user.uid);
+        transaction.update(ownUserRef, {
+          partnerUid: deleteField(),
+          partnerEmail: deleteField()
+        });
 
-      // Update partner document
-      await updateDoc(doc(db, "users", prevPartnerUid), {
-        partnerUid: deleteField(),
-        partnerEmail: deleteField(),
-        pendingPartnerRequest: deleteField(),
-        unlinkedNotification: true
+        // Update partner document
+        const partnerRef = doc(db, "users", prevPartnerUid);
+        transaction.update(partnerRef, {
+          partnerUid: deleteField(),
+          partnerEmail: deleteField(),
+          pendingPartnerRequest: deleteField(),
+          unlinkedNotification: true
+        });
       });
 
       setMessage("Successfully unlinked.");

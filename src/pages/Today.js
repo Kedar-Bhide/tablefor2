@@ -13,6 +13,7 @@ import OnboardingPopup from "../components/OnboardingPopup";
 import PhotoCarousel from "../components/PhotoCarousel";
 import MealNutritionCard from "../components/MealNutritionCard";
 import PartnerResponseCard from "../components/PartnerResponseCard";
+import AuthorizationService from "../services/authorization";
 
 function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const user = auth.currentUser;
@@ -101,6 +102,11 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         }
       }));
       if (selectedMeal?.id) {
+        // Authorization check: only owner can update nutrition
+        if (!AuthorizationService.canMutateMeal(selectedMeal)) {
+          console.error("Unauthorized: Cannot update nutrition on meals you don't own");
+          return;
+        }
         await updateDoc(doc(db, "meals", selectedMeal.id), {
           [`nutrition.${key}`]: value
         });
@@ -108,7 +114,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
     } catch (e) {
       console.error("Failed to update nutrition inline", e);
     }
-  }, [selectedMeal?.id]);
+  }, [selectedMeal]);
 
   const handleEditNutritionChange = useCallback((key, value) => {
     if (key === 'calories') setEditCalories(String(value));
@@ -384,6 +390,13 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const mealCount = displayMeals.length;
 
   const handleDelete = async (mealId) => {
+    // Authorization check: only owner can delete
+    const meal = displayMeals.find(m => m.id === mealId);
+    if (!AuthorizationService.canMutateMeal(meal)) {
+      console.error("Unauthorized: Cannot delete meals you don't own");
+      return;
+    }
+
     try {
       await deleteDoc(doc(db, "meals", mealId));
       setSelectedMeal(null);
@@ -423,6 +436,13 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
   const handleEditSave = async () => {
     if (!selectedMeal || saving || reanalyzing) return;
+    
+    // Authorization check: only owner can edit
+    if (!AuthorizationService.canMutateMeal(selectedMeal)) {
+      console.error("Unauthorized: Cannot edit meals you don't own");
+      return;
+    }
+    
     setSaving(true);
 
     try {

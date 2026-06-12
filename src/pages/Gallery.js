@@ -7,6 +7,7 @@ import PhotoCarousel from "../components/PhotoCarousel";
 import MealNutritionCard from "../components/MealNutritionCard";
 import PartnerResponseCard from "../components/PartnerResponseCard";
 import { motion, AnimatePresence } from "framer-motion";
+import AuthorizationService from "../services/authorization";
 
 function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, globalPartnerData }) {
   const user = auth.currentUser;
@@ -183,6 +184,12 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
   }, [filter, partnerUid, user.uid]);
 
   const handleNutritionChange = useCallback(async (key, value) => {
+    // Authorization check: only owner can update nutrition
+    if (!AuthorizationService.canMutateMeal(viewMeal)) {
+      console.error("Unauthorized: Cannot update nutrition on meals you don't own");
+      return;
+    }
+
     try {
       const updatedMeal = {
         ...viewMeal,

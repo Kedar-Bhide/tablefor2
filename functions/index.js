@@ -1791,11 +1791,23 @@ exports.sendPartnerRequestNotification = onCall(async (request) => {
     if (!request.auth?.uid) {
       throw new Error("Unauthorized: not authenticated");
     }
+    
+    // Rate limit: 3 requests per hour per user
+    await checkRateLimit(request.auth.uid, "sendPartnerRequestNotification", 3, 60);
+    
     const { toUid, fromName } = request.data;
     if (!toUid || !fromName) return;
 
+    // Validate that the target user exists
     const partner = await getUser(toUid);
     if (!partner?.fcmToken) return;
+
+    // Validate that the caller's name matches what we have in the database
+    const caller = await getUser(request.auth.uid);
+    if (!caller || caller.name !== fromName) {
+      console.error("sendPartnerRequestNotification: Caller name mismatch");
+      return;
+    }
 
     await sendNotification(
       partner.fcmToken,
@@ -1813,11 +1825,30 @@ exports.sendPartnerAcceptedNotification = onCall(async (request) => {
     if (!request.auth?.uid) {
       throw new Error("Unauthorized: not authenticated");
     }
+    
+    // Rate limit: 3 requests per hour per user
+    await checkRateLimit(request.auth.uid, "sendPartnerAcceptedNotification", 3, 60);
+    
     const { toUid, fromName } = request.data;
     if (!toUid || !fromName) return;
 
+    // Validate that the target user exists and has a pending request from the caller
     const partner = await getUser(toUid);
     if (!partner?.fcmToken) return;
+    
+    // Validate that the caller's name matches what we have in the database
+    const caller = await getUser(request.auth.uid);
+    if (!caller || caller.name !== fromName) {
+      console.error("sendPartnerAcceptedNotification: Caller name mismatch");
+      return;
+    }
+
+    // Validate that the target user has a pending request from the caller
+    const targetUser = await getUser(toUid);
+    if (!targetUser?.partnerRequest?.fromUid || targetUser.partnerRequest.fromUid !== request.auth.uid) {
+      console.error("sendPartnerAcceptedNotification: No matching pending request found");
+      return;
+    }
 
     await sendNotification(
       partner.fcmToken,
