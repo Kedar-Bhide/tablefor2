@@ -20,9 +20,17 @@ service cloud.firestore {
       allow read: if isOwnerOrPartner(userId);
       allow create: if isOwner(userId);
       allow update: if isOwner(userId) || (
+        // Existing partner updates (when relationship is established)
         isPartnerOf(userId) &&
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['partnerRequest', 'pendingPartnerRequest', 'partnerUid', 'partnerEmail', 'unlinkedNotification'])
+      ) || (
+        // Allow any authenticated user to create a partner request on a target user
+        // This enables the partner linking feature to work
+        request.auth != null &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['partnerRequest']) &&
+        !resource.data.keys().hasAny(['partnerUid'])
       );
       allow delete: if isOwner(userId);
 
@@ -51,11 +59,20 @@ service cloud.firestore {
       allow read: if isOwner(resource.data.fromUid) || isOwner(resource.data.toUid);
       allow create: if isOwner(request.resource.data.fromUid);
       allow update: if isOwner(resource.data.toUid);
+      allow delete: if isOwner(resource.data.fromUid) || isOwner(resource.data.toUid);
     }
     
     match /frequentMeals/{mealId} {
-      allow read, write: if resource == null || isOwner(resource.data.uid);
+      // Allow listing if authenticated (queries filter by uid)
+      allow list: if request.auth != null;
+      // Allow reading individual documents if owner
+      allow get: if isOwner(resource.data.uid);
+      // Allow creating if owner of the uid field
       allow create: if isOwner(request.resource.data.uid);
+      // Allow updating if owner
+      allow update: if isOwner(resource.data.uid);
+      // Allow deleting if owner
+      allow delete: if isOwner(resource.data.uid);
     }
 
   }

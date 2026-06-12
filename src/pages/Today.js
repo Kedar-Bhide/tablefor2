@@ -406,6 +406,12 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   };
 
   const handleReaction = async (meal, emoji) => {
+    // Authorization check: only owner or partner can react
+    if (!AuthorizationService.canInteractWithMeal(meal, globalUserData)) {
+      console.error("Unauthorized: Cannot react to this meal");
+      return;
+    }
+
     try {
       const mealRef = doc(db, "meals", meal.id);
       await updateDoc(mealRef, {
@@ -419,6 +425,13 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
   const handleComment = async () => {
     if (!comment.trim() || !viewMeal) return;
+    
+    // Authorization check: only owner or partner can comment
+    if (!AuthorizationService.canInteractWithMeal(viewMeal, globalUserData)) {
+      console.error("Unauthorized: Cannot comment on this meal");
+      return;
+    }
+    
     setSavingComment(true);
     try {
       const mealRef = doc(db, "meals", viewMeal.id);

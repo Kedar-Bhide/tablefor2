@@ -1859,3 +1859,62 @@ exports.sendPartnerAcceptedNotification = onCall(async (request) => {
     console.error("sendPartnerAcceptedNotification error:", e);
   }
 });
+
+// Secure email lookup for partner linking (bypasses Firestore rules)
+exports.lookupPartnerByEmail = onCall(async (request) => {
+  try {
+    if (!request.auth?.uid) {
+      throw new Error("Unauthorized: not authenticated");
+    }
+
+    // Rate limit: 10 lookups per hour per user
+    await checkRateLimit(request.auth.uid, "lookupPartnerByEmail", 10, 60);
+
+    const { email } = request.data;
+    if (!email || typeof email !== 'string') {
+      return { found: false, error: "Invalid email" };
+    }
+
+    // Sanitize email
+    const sanitizedEmail = email.trim().toLowerCase();
+
+    // Query users collection using admin SDK (bypasses security rules)
+    const usersRef = db.collection('users');
+    const q = usersRef.where('email', '==', sanitizedEmail);
+    const snapshot = await q.get();
+
+    if (snapshot.empty) {
+      return { found: false, error: "No account found with that email" };
+    }
+
+    // Get the first matching user (there should only be one)
+    const userDoc = snapshot.docs[0];
+    const userData = userDoc.data();
+
+    // Don't allow linking to yourself
+    if (userDoc.id === request.auth.uid) {
+      return { found: false, error: "You cannot link to your own account" };
+    }
+
+    // Don't allow linking if either user already has a partner
+    const currentUser = await getUser(request.auth.uid);
+    if (currentUser?.partnerUid) {
+      return { found: false, error: "You already have a linked partner" };
+    }
+    if (userData.partnerUid) {
+      return { found: false, error: "This user already has a linked partner" };
+    }
+
+    // Return safe user data (no sensitive fields)
+    return {
+      found: true,
+      uid: userDoc.id,
+      name: userData.name || "Partner",
+      email: userData.email,
+      photoURL: userData.photoURL || null,
+    };
+  } catch (e) {
+    console.error("lookupPartnerByEmail error:", e);
+    return { found: false, error: "Lookup failed. Please try again." };
+  }
+});
