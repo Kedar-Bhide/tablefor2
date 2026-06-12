@@ -112,6 +112,22 @@ function getUserLocalClock(userData, now = new Date()) {
   return { dateStr: getDateKeyFromParts(year, month, day), hour, minute };
 }
 
+// Usage monitoring for Claude API
+async function logApiUsage(uid, endpoint, tokensUsed = 0) {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const usageRef = db.collection("usage_logs").doc(today);
+    await usageRef.set({
+      [`calls.${uid}`]: admin.firestore.FieldValue.increment(1),
+      [`tokens.${uid}`]: admin.firestore.FieldValue.increment(tokensUsed),
+      [`endpoints.${endpoint}`]: admin.firestore.FieldValue.increment(1),
+      lastUpdated: new Date(),
+    }, { merge: true });
+  } catch (e) {
+    console.error("Failed to log API usage:", e);
+  }
+}
+
 async function generateInsightForUser(uid, year, month) {
   try {
     const userSnap = await db.collection("users").doc(uid).get();
@@ -250,6 +266,10 @@ The response should feel like a personalized monthly check-in from a smart nutri
               });
 
             console.log(`Insight saved for ${uid} - ${insightKey}`);
+            
+            // Log API usage
+            const usageTokens = parsed.usage?.input_tokens + parsed.usage?.output_tokens || 0;
+            await logApiUsage(uid, "insight", usageTokens);
 
             // Send notification
             if (user.fcmToken) {
@@ -796,7 +816,10 @@ exports.parseVoiceMeal = onCall(
             const parsed = JSON.parse(data);
             const text = parsed.content?.[0]?.text || "";
             const clean = text.replace(/```json|```/g, "").trim();
-            resolve(JSON.parse(clean));
+            const result = JSON.parse(clean);
+            // Log API usage
+            await logApiUsage(request.auth.uid, "voice_parse", 0);
+            resolve(result);
           } catch (e) {
             console.error("Failed to parse voice transcript:", e, data);
             resolve({ name: transcript, ingredients: "", portion: "", cookType: "Homemade" });
@@ -861,6 +884,8 @@ exports.onMealCreated = onDocumentCreated(
             nutrition,
             analysisStatus: "completed"
           });
+          // Log API usage
+          await logApiUsage(meal.uid, "meal_analysis", 0);
         } else {
           await db.collection("meals").doc(mealId).update({ analysisStatus: "failed" });
         }

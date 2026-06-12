@@ -5,12 +5,12 @@ import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "fire
 import { getMessaging, getToken, isSupported, onMessage } from "firebase/messaging";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCP_lNulhO_ofoIRy3mqjCGSA0l-sKV5I0",
-  authDomain: "trytablefor2.firebaseapp.com",
-  projectId: "trytablefor2",
-  storageBucket: "trytablefor2.firebasestorage.app",
-  messagingSenderId: "1004615054636",
-  appId: "1:1004615054636:web:83a1ddd1fbbe214c2ba889"
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID,
 };
 
 const app = initializeApp(firebaseConfig);
@@ -44,7 +44,7 @@ if (typeof window !== "undefined") {
       messaging = null;
     });
 }
-export const VAPID_KEY = "BDOOci-IG6aXEO37dUgyEMk6uV-R_V00SfNmNVSj84QSuAUBAAiOhMKouEyHBA87nornIr5ymx1HtUGpNK8sVs8";
+export const VAPID_KEY = process.env.REACT_APP_FIREBASE_VAPID_KEY;
 export { getToken, onMessage };
 
 export function fixStorageUrl(url) {
