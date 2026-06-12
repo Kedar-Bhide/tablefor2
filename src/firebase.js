@@ -1,7 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore, enableMultiTabIndexedDbPersistence } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
+import { getFirestore, enableMultiTabIndexedDbPersistence, doc, collection, addDoc, updateDoc, deleteDoc, query, where, getDoc, getDocs, onSnapshot, writeBatch, orderBy, serverTimestamp, setDoc, runTransaction, limit, deleteField } from "firebase/firestore";
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { getMessaging, getToken, isSupported, onMessage } from "firebase/messaging";
 
 const firebaseConfig = {
@@ -15,9 +15,14 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
+const db = getFirestore(app);
+
 export const auth = getAuth(app);
 export const provider = new GoogleAuthProvider();
-export const db = getFirestore(app);
+export { db };
+export { doc, collection, addDoc, updateDoc, deleteDoc, query, where, getDoc, getDocs, onSnapshot, writeBatch, orderBy, serverTimestamp, setDoc, runTransaction, limit, deleteField };
+export { ref, uploadBytes, getDownloadURL, deleteObject };
+
 enableMultiTabIndexedDbPersistence(db).catch((err) => {
   if (err.code === "failed-precondition") {
     console.warn("Offline persistence unavailable (multiple tabs open)");
@@ -25,6 +30,7 @@ enableMultiTabIndexedDbPersistence(db).catch((err) => {
     console.warn("Offline persistence not supported in this browser");
   }
 });
+
 export const storage = getStorage(app);
 export let messaging = null;
 if (typeof window !== "undefined") {

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { auth, db, fixUserUrls } from "./firebase";
+import { auth, db, doc, setDoc, getDoc, onSnapshot, fixUserUrls } from "./firebase";
+import { getCurrentTimezone } from "./utils/dateTime";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, setDoc, getDoc, onSnapshot } from "firebase/firestore";
 import { AnimatePresence, motion } from "framer-motion";
 import LandingPage from "./pages/LandingPage";
 import Profile from "./pages/Profile";
@@ -11,7 +11,6 @@ import LogMeal from "./pages/LogMeal";
 import Weekly from "./pages/Weekly";
 import Gallery from "./pages/Gallery";
 import { requestNotificationPermission } from "./utils/requestNotificationPermission";
-import { getCurrentTimezone } from "./utils/dateTime";
 
 function App() {
   const [user, setUser] = useState(null);
@@ -33,26 +32,52 @@ function App() {
         const utcOffsetMinutes = -now.getTimezoneOffset();
 
         if (!userSnap.exists()) {
-          await setDoc(userRef, {
-            name: currentUser.displayName,
-            email: currentUser.email,
-            photoURL: currentUser.photoURL,
-            createdAt: now,
-            timezone: timezone || null,
-            utcOffsetMinutes,
-            utcOffset: utcOffsetMinutes / 60,
-          });
-        } else {
-          await setDoc(
-            userRef,
-            {
+          // Create user with better validation and error handling
+          try {
+            await setDoc(userRef, {
+              name: currentUser.displayName || "Anonymous",
+              email: currentUser.email,
+              photoURL: currentUser.photoURL,
+              createdAt: now,
               timezone: timezone || null,
               utcOffsetMinutes,
               utcOffset: utcOffsetMinutes / 60,
-            },
-            { merge: true }
-          );
+              // Initialize default user preferences
+              notifSettings: {
+                partnerMeal: true,
+                badgeEarned: true,
+                mealReminder: true
+              },
+              partnerUid: null,
+              streakCount: 0,
+              lastReminders: {},
+              lastReminder_Breakfast: null,
+              lastReminder_Lunch: null,
+              lastReminder_Dinner: null,
+              lastReminder_Snack: null,
+              streakUpdatedAt: null,
+            });
+          } catch (error) {
+            console.error("Failed to create user profile:", error);
+            // Continue with minimal user state even if profile creation fails
+          }
+        } else {
+          // Update timezone with better validation
+          try {
+            await setDoc(
+              userRef,
+              {
+                timezone: timezone || null,
+                utcOffsetMinutes,
+                utcOffset: utcOffsetMinutes / 60,
+              },
+              { merge: true }
+            );
+          } catch (error) {
+            console.error("Failed to update user timezone:", error);
+          }
         }
+        
         setUser(currentUser);
         setTimeout(() => {
           requestNotificationPermission(currentUser.uid);

@@ -1,12 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { auth, db, storage, fixStorageUrl } from "../firebase";
+import { auth, db, doc, updateDoc, collection, query, where, onSnapshot, getDocs, getDoc, runTransaction, limit, deleteField, fixStorageUrl } from "../firebase";
+import ApiService from "../services/api";
 import { signOut } from "firebase/auth";
-import { doc, updateDoc, collection, query, where, onSnapshot, getDocs, getDoc, runTransaction, limit } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { computeBadges } from "../utils/calculateBadges";
 import { calculateWallet, computeWallet, WHITELISTED_WALLET_UIDS } from "../utils/calculateWallet";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { deleteField } from "firebase/firestore";
 import Cropper from "react-easy-crop";
 import { getCroppedImg } from "../utils/cropImage";
 import { motion, AnimatePresence } from "framer-motion";
@@ -31,14 +29,14 @@ function Profile({ user, globalUserData, globalPartnerData }) {
     setSaving(true);
     try {
       const croppedBlob = await getCroppedImg(imageToCrop, croppedAreaPixels);
-      const photoRef = ref(storage, `profiles/${user.uid}`);
-      await uploadBytes(photoRef, croppedBlob);
-      const url = await getDownloadURL(photoRef);
-      await updateDoc(doc(db, "users", user.uid), { photoURL: url });
+      const photoRef = `profiles/${user.uid}`;
+      const url = await ApiService.uploadMealPhoto(croppedBlob, photoRef);
+      await ApiService.updateUser(user.uid, { photoURL: url });
       setPhotoURL(url);
       setImageToCrop(null);
     } catch (e) {
       console.error("Crop save failed:", e);
+      alert('Failed to update profile photo: ' + (e.message || 'Unknown error'));
     }
     setSaving(false);
   };

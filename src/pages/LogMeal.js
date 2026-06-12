@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { auth, db, storage } from "../firebase";
-import { collection, addDoc, updateDoc, doc, query, where, getDocs, limit } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { auth, db, query, collection, where, limit, getDocs } from "../firebase";
+import ApiService from "../services/api";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { compressImage } from "../utils/compressImage";
 import { formatLocalDateKey, formatLocalTimeHHMM, getCurrentTimezone } from "../utils/dateTime";
@@ -264,6 +263,20 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
 
   const handleSave = async () => {
     if (!mealName) return;
+    
+    // Validate meal data
+    const validation = ApiService.validateMealData({
+      name: mealName,
+      type: mealType,
+      photos: photos.length > 0,
+      photoURL: photos.length > 0,
+    });
+    
+    if (!validation.isValid) {
+      alert(validation.errors.join('\n'));
+      return;
+    }
+    
     setSaving(true);
 
     try {
@@ -271,76 +284,77 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
       const uploadedURLs = [];
       for (const photoFile of photos) {
         const compressed = await compressImage(photoFile);
-        const photoRef = ref(storage, `meals/${user.uid}/${Date.now()}_${Math.random()}`);
-        await uploadBytes(photoRef, compressed);
-        const url = await getDownloadURL(photoRef);
+        const photoRef = `meals/${user.uid}/${Date.now()}_${Math.random}`;
+        const url = await ApiService.uploadMealPhoto(compressed, photoRef);
         uploadedURLs.push(url);
       }
 
-    const now = new Date();
-    const createdAt = (() => {
-      if (!showDatePicker) return now;
-      const [y, m, d] = mealDate.split("-").map(Number);
-      const [h, min] = mealTime.split(":").map(Number);
-      return new Date(y, m - 1, d, h, min, 0, 0);
-    })();
-    const localDate = showDatePicker ? mealDate : formatLocalDateKey(now);
-    const localTime = showDatePicker ? mealTime : formatLocalTimeHHMM(now);
-    const timezone = getCurrentTimezone();
-    const utcOffsetMinutesAtLog = -createdAt.getTimezoneOffset();
-    const mealObj = {
-      uid: user.uid,
-      name: mealName,
-      type: mealType,
-      photoURL: uploadedURLs[0] || null,
-      photos: uploadedURLs,
-      isShared: isShared,
-      isRestaurant: cookType === "Restaurant",
-      isPackaged: cookType === "Packaged",
-      createdAt,
-      localDate,
-      localTime,
-      timezone: timezone || null,
-      utcOffsetMinutesAtLog,
-      ingredients: ingredients.trim(),
-      portionSize: portionSize.trim(),
-      nutrition: previewNutrition || null,
-      analysisStatus: previewNutrition ? "completed" : "analyzing",
-      saveToFrequent: saveAsFrequent,
-    };
-
-    // Update meal
-    await addDoc(collection(db, "meals"), mealObj);
-
-    // Update local state so it appears immediately next time
-    if (saveAsFrequent) {
-      setFrequentMeals(prev => [{
-        id: "temp-" + Date.now(),
-        name: mealName.trim(),
+      const now = new Date();
+      const createdAt = (() => {
+        if (!showDatePicker) return now;
+        const [y, m, d] = mealDate.split("-").map(Number);
+        const [h, min] = mealTime.split(":").map(Number);
+        return new Date(y, m - 1, d, h, min, 0, 0);
+      })();
+      const localDate = showDatePicker ? mealDate : formatLocalDateKey(now);
+      const localTime = showDatePicker ? mealTime : formatLocalTimeHHMM(now);
+      const timezone = getCurrentTimezone();
+      const utcOffsetMinutesAtLog = -createdAt.getTimezoneOffset();
+      
+      const mealObj = {
+        uid: user.uid,
+        name: mealName,
+        type: mealType,
+        photoURL: uploadedURLs[0] || null,
+        photos: uploadedURLs,
+        isShared: isShared,
+        isRestaurant: cookType === "Restaurant",
+        isPackaged: cookType === "Packaged",
+        createdAt,
+        localDate,
+        localTime,
+        timezone: timezone || null,
+        utcOffsetMinutesAtLog,
         ingredients: ingredients.trim(),
         portionSize: portionSize.trim(),
         nutrition: previewNutrition || null,
-        mealType: mealType
-      }, ...prev]);
-    }
+        analysisStatus: previewNutrition ? "completed" : "analyzing",
+        saveToFrequent: saveAsFrequent,
+      };
 
-    // Also update user's current timezone/offset to ensure reminders are accurate
-    try {
-      await updateDoc(doc(db, "users", user.uid), {
-        timezone: timezone || null,
-        utcOffsetMinutes: utcOffsetMinutesAtLog,
-        utcOffset: utcOffsetMinutesAtLog / 60,
-      });
-    } catch (e) {
-      console.error("Failed to update user timezone during meal log:", e);
-    }
+      // Create meal using API service
+      const createdMeal = await ApiService.createMeal(mealObj);
+      
+      // Update local state so it appears immediately next time
+      if (saveAsFrequent) {
+        setFrequentMeals(prev => [{
+          id: createdMeal.id,
+          name: mealName.trim(),
+          ingredients: ingredients.trim(),
+          portionSize: portionSize.trim(),
+          nutrition: previewNutrition || null,
+          mealType: mealType
+        }, ...prev]);
+      }
 
-    setSaving(false);
-    setCurrentPage("today");
-    } catch (e) {
-      console.error("Meal save failed:", e);
+      // Update user's current timezone/offset to ensure reminders are accurate
+      try {
+        await ApiService.updateUser(user.uid, {
+          timezone: timezone || null,
+          utcOffsetMinutes: utcOffsetMinutesAtLog,
+          utcOffset: utcOffsetMinutesAtLog / 60,
+        });
+      } catch (e) {
+        console.error("Failed to update user timezone during meal log:", e);
+      }
+
       setSaving(false);
-    }
+      setCurrentPage("today");
+      } catch (e) {
+        console.error("Meal save failed:", e);
+        alert('Failed to save meal: ' + (e.message || 'Unknown error'));
+        setSaving(false);
+      }
   };
 
   return (
