@@ -8,7 +8,6 @@ class ApiService {
       const mealRef = await addDoc(collection(db, 'meals'), {
         ...mealData,
         createdAt: serverTimestamp(),
-        analysisStatus: 'pending'
       });
       return { id: mealRef.id, ...mealData };
     } catch (error) {
