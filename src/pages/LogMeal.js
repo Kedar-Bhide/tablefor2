@@ -278,10 +278,9 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
     }
     
     setSaving(true);
-    let createdMeal = null;
 
     try {
-      // Upload photos with retry logic (non-blocking for meal creation)
+      // Upload photos with retry logic
       const uploadPhotoWithRetry = async (photoFile, retries = 2) => {
         for (let attempt = 0; attempt <= retries; attempt++) {
           try {
@@ -291,17 +290,21 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
           } catch (uploadError) {
             console.error(`Photo upload attempt ${attempt + 1} failed:`, uploadError);
             if (attempt === retries) throw uploadError;
-            // Wait before retry
             await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
           }
         }
       };
 
-      // Upload photos in parallel with meal creation
-      const photoPromises = photos.map(photo => uploadPhotoWithRetry(photo).catch(e => {
-        console.error("Photo upload failed after retries:", e);
-        return null; // Return null for failed uploads
-      }));
+      // Upload all photos FIRST (meal must have photos before creation for AI analysis)
+      const uploadedURLs = [];
+      for (const photoFile of photos) {
+        try {
+          const url = await uploadPhotoWithRetry(photoFile);
+          if (url) uploadedURLs.push(url);
+        } catch (e) {
+          console.error("Photo upload failed:", e);
+        }
+      }
       
       // Create meal object
       const now = new Date();
@@ -320,8 +323,8 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
         uid: user.uid,
         name: mealName,
         type: mealType,
-        photoURL: null, // Will be updated after photos upload
-        photos: [], // Will be updated after photos upload
+        photoURL: uploadedURLs[0] || null,
+        photos: uploadedURLs,
         isShared: isShared,
         isRestaurant: cookType === "Restaurant",
         isPackaged: cookType === "Packaged",
@@ -337,19 +340,8 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
         saveToFrequent: saveAsFrequent,
       };
 
-      // Create meal first (without photos)
-      createdMeal = await ApiService.createMeal(mealObj);
-      
-      // Wait for photos to upload and update meal
-      const photoResults = await Promise.all(photoPromises);
-      const successfulUploads = photoResults.filter(url => url !== null);
-      
-      if (successfulUploads.length > 0) {
-        await ApiService.updateMeal(createdMeal.id, {
-          photoURL: successfulUploads[0],
-          photos: successfulUploads,
-        });
-      }
+      // Create meal with photos already uploaded
+      const createdMeal = await ApiService.createMeal(mealObj);
 
       // Update local state so it appears immediately next time
       if (saveAsFrequent) {
@@ -378,14 +370,8 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
       setCurrentPage("today");
       } catch (e) {
         console.error("Meal save failed:", e);
-        // If meal was created but something else failed, still navigate away
-        if (createdMeal) {
-          setSaving(false);
-          setCurrentPage("today");
-        } else {
-          alert('Failed to save meal: ' + (e.message || 'Unknown error'));
-          setSaving(false);
-        }
+        alert('Failed to save meal: ' + (e.message || 'Unknown error'));
+        setSaving(false);
       }
   };
 
