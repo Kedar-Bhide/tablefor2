@@ -48,8 +48,20 @@ class ApiService {
       errors.push('Meal name must be at least 2 characters');
     }
     
+    if (mealData.name && mealData.name.trim().length > 200) {
+      errors.push('Meal name must be under 200 characters');
+    }
+    
     if (!mealData.type) {
       errors.push('Meal type is required');
+    }
+    
+    if (mealData.ingredients && mealData.ingredients.length > 1000) {
+      errors.push('Ingredients must be under 1000 characters');
+    }
+    
+    if (mealData.portionSize && mealData.portionSize.length > 200) {
+      errors.push('Portion size must be under 200 characters');
     }
     
     return {

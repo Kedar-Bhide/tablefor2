@@ -30,6 +30,7 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
   const isIntentionalStop = React.useRef(false);
   const finalTranscriptRef = React.useRef("");
   const isRecordingRef = React.useRef(false);
+  const lastSaveTimeRef = React.useRef(0);
   const today = new Date();
   const localToday = formatLocalDateKey(today);
   const [mealDate, setMealDate] = useState(localToday);
@@ -264,12 +265,19 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
   const handleSave = async () => {
     if (!mealName) return;
     
+    // Cooldown: prevent rapid re-submission (3 second cooldown)
+    const now = Date.now();
+    if (now - lastSaveTimeRef.current < 3000) {
+      return;
+    }
+    lastSaveTimeRef.current = now;
+    
     // Validate meal data
     const validation = ApiService.validateMealData({
       name: mealName,
       type: mealType,
-      photos: photos.length > 0,
-      photoURL: photos.length > 0,
+      ingredients: ingredients,
+      portionSize: portionSize,
     });
     
     if (!validation.isValid) {

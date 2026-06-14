@@ -1074,6 +1074,15 @@ exports.onMealCreated = onDocumentCreated(
     // Step 1: Run nutrition analysis and update the meal
     let finalNutrition = meal.nutrition || null;
 
+    // Rate limit AI analysis: max 20 analyses per hour per user
+    try {
+      await checkRateLimit(uid, "meal_analysis", 20, 60);
+    } catch (e) {
+      console.log(`Rate limited AI analysis for ${uid}: ${e.message}`);
+      await db.collection("meals").doc(mealId).update({ analysisStatus: "failed" });
+      return;
+    }
+
     try {
       console.log(`[onMealCreated] ${mealId} finalNutrition: ${JSON.stringify(finalNutrition)}`);
       if (!finalNutrition || !finalNutrition.calories) {
