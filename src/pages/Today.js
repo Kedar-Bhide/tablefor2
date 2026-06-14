@@ -275,9 +275,10 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       const isMyOriginal = original.uid === user.uid;
       const loggerTz = isMyOriginal ? myTz : partnerTz;
 
-      if (!loggerTz) return;
+      // Fallback to user's timezone if logger tz is unknown
+      const effectiveTz = loggerTz || myTz || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-      const currentDayInLoggerTz = getLocalDateKeyInTz(now, loggerTz);
+      const currentDayInLoggerTz = getLocalDateKeyInTz(now, effectiveTz);
       const mealDate = getMealLocalDateKey(original);
 
       const isTodayInLoggerTz = mealDate === currentDayInLoggerTz;
@@ -589,7 +590,10 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
     setWeightCheckInSaving(true);
     try {
       const weight = parseFloat(newWeight);
-      if (isNaN(weight) || weight <= 0) return;
+      if (isNaN(weight) || weight <= 0) {
+        alert("Please enter a valid weight (greater than 0)");
+        return;
+      }
 
       const userRef = doc(db, "users", user.uid);
       const userSnap = await getDoc(userRef);
@@ -643,6 +647,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         }
       }).catch(() => {
         setInsightBanner("error");
+        setTimeout(() => setInsightBanner(null), 5000);
       });
 
     } catch (e) {
@@ -887,7 +892,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
           <div style={styles.cardRow}>
             <img src={myPhoto} alt="avatar" style={styles.avatar} referrerPolicy="no-referrer" />
             <div style={styles.cardInfo}>
-              <p style={styles.name}>{user.displayName.split(" ")[0]}</p>
+              <p style={styles.name}>{(user.displayName || "You").split(" ")[0]}</p>
               <p style={styles.mealCount}>{mealCount} meal{mealCount !== 1 ? "s" : ""} logged today</p>
             </div>
           </div>
@@ -1239,7 +1244,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
           const ismine = displayMeal.uid === user.uid;
           const avatarSrc = ismine ? myPhoto : partnerPhoto;
-          const personName = ismine ? user.displayName.split(" ")[0] : (partnerName ? partnerName.split(" ")[0] : "Partner");
+          const personName = ismine ? (user.displayName || "You").split(" ")[0] : (partnerName ? partnerName.split(" ")[0] : "Partner");
           const isPartnerMeal = meal.uid !== user.uid;
 
           return (

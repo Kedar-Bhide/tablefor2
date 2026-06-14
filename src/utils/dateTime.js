@@ -12,8 +12,12 @@ export function formatLocalTimeHHMM(date) {
 }
 
 export function getMealCreatedAtDate(meal) {
-  if (!meal?.createdAt) return null;
-  return meal.createdAt?.toDate ? meal.createdAt.toDate() : new Date(meal.createdAt);
+  if (!meal?.createdAt) return new Date(0);
+  try {
+    return meal.createdAt?.toDate ? meal.createdAt.toDate() : new Date(meal.createdAt);
+  } catch {
+    return new Date(0);
+  }
 }
 
 export function getMealLocalDateKey(meal) {

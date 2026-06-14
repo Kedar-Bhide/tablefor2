@@ -12,14 +12,7 @@ const SkeletonLoader = ({ width = "100%", height = "200px", borderRadius = "12px
         animation: "skeleton-shimmer 1.5s infinite",
         ...style,
       }}
-    >
-      <style>{`
-        @keyframes skeleton-shimmer {
-          0% { background-position: 200% 0; }
-          100% { background-position: -200% 0; }
-        }
-      `}</style>
-    </div>
+    />
   );
 };
 

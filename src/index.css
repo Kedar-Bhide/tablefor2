@@ -152,3 +152,8 @@ button {
   0% { opacity: 0; }
   100% { opacity: 1; }
 }
+
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

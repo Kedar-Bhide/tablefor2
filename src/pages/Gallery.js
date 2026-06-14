@@ -106,7 +106,10 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
   // One-time fetch for the current 10-day window (no real-time listener needed for gallery)
   useEffect(() => {
     const uid = filter === "mine" ? user.uid : partnerUid;
-    if (!uid) return;
+    if (!uid) {
+      setLoadingGallery(false);
+      return;
+    }
 
     const endDate = new Date();
     const startDate = new Date(endDate.getTime() - PAGE_DAYS * 24 * 60 * 60 * 1000);

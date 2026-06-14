@@ -23,6 +23,23 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [mealType, setMealType] = useState(getMealTypeByTime());
   const [photos, setPhotos] = useState([]);
   const [photoPreviews, setPhotoPreviews] = useState([]);
+  const previewUrlsRef = React.useRef([]);
+
+  // Track preview URLs for cleanup
+  useEffect(() => {
+    previewUrlsRef.current = photoPreviews;
+  }, [photoPreviews]);
+
+  // Cleanup blob URLs on unmount
+  useEffect(() => {
+    return () => {
+      previewUrlsRef.current.forEach((url) => {
+        if (url && url.startsWith("blob:")) {
+          try { URL.revokeObjectURL(url); } catch {}
+        }
+      });
+    };
+  }, []);
   const [saving, setSaving] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isParsingVoice, setIsParsingVoice] = useState(false);
@@ -259,11 +276,17 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
 
   const handleRemovePhoto = (index) => {
     setPhotos((prev) => prev.filter((_, i) => i !== index));
-    setPhotoPreviews((prev) => prev.filter((_, i) => i !== index));
+    setPhotoPreviews((prev) => {
+      const url = prev[index];
+      if (url && url.startsWith("blob:")) {
+        try { URL.revokeObjectURL(url); } catch {}
+      }
+      return prev.filter((_, i) => i !== index);
+    });
   };
 
   const handleSave = async () => {
-    if (!mealName) return;
+    if (!mealName || !user) return;
     
     // Cooldown: prevent rapid re-submission (3 second cooldown)
     const now = Date.now();
@@ -746,7 +769,7 @@ const styles = {
     maxWidth: "400px",
     margin: "0 auto",
     padding: "1rem 1.2rem",
-    backgroundColor: "#fffaf7",
+    backgroundColor: "#fffaf5",
     minHeight: "100vh",
   },
   back: {
@@ -778,7 +801,8 @@ const styles = {
   },
   title: {
     fontSize: "2.2rem",
-    fontFamily: "'Playfair Display', serif",
+    fontFamily: "'Outfit', sans-serif",
+    fontWeight: 700,
     color: "#333",
     margin: "0 0 1.5rem 0",
   },
