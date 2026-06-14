@@ -6,6 +6,7 @@ import { getMealLocalDateKey } from "../utils/dateTime";
 import PhotoCarousel from "../components/PhotoCarousel";
 import MealNutritionCard from "../components/MealNutritionCard";
 import PartnerResponseCard from "../components/PartnerResponseCard";
+import SkeletonLoader from "../components/SkeletonLoader";
 import { motion, AnimatePresence } from "framer-motion";
 import AuthorizationService from "../services/authorization";
 
@@ -294,7 +295,18 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
 
       {/* Grouped Photos */}
       {loadingGallery && Object.keys(groupedMeals).length === 0 ? (
-        <p style={styles.empty}>Loading...</p>
+        <div style={styles.skeletonContainer}>
+          {[1, 2, 3].map((i) => (
+            <div key={i} style={styles.skeletonGroup}>
+              <SkeletonLoader width="60%" height="20px" style={{ marginBottom: "12px" }} />
+              <div style={styles.grid}>
+                {[1, 2, 3, 4].map((j) => (
+                  <SkeletonLoader key={j} width="100%" height="120px" borderRadius="12px" />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       ) : Object.keys(groupedMeals).length === 0 ? (
         <p style={styles.empty}>No photos here yet.</p>
       ) : (
@@ -536,6 +548,12 @@ const styles = {
     borderRadius: "8px",
     fontSize: "0.85rem",
     cursor: "pointer",
+  },
+  skeletonContainer: {
+    padding: "1rem 0",
+  },
+  skeletonGroup: {
+    marginBottom: "1.5rem",
   },
   dateGroup: {
     marginBottom: "1.5rem",

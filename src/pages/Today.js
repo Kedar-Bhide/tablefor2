@@ -1905,9 +1905,15 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
           </motion.div>
         )}
       </AnimatePresence>
-      <button style={styles.fab} onClick={() => setCurrentPage("logMeal")}>
+      <motion.button 
+        style={styles.fab} 
+        onClick={() => setCurrentPage("logMeal")}
+        aria-label="Log a new meal"
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.95 }}
+      >
         +
-      </button>
+      </motion.button>
       {/* Weight Check-in Popup */}
       <AnimatePresence>
         {weightCheckIn && (
