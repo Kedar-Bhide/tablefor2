@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { auth, db, fixMealUrls } from "../firebase";
 import { collection, query, where, getDocs, doc, getDoc, updateDoc, onSnapshot } from "firebase/firestore";
-import { PieChart, Pie, Cell } from "recharts";
+import DonutChart from "../components/DonutChart";
 import { formatLocalDateKey, getMealLocalDateKey } from "../utils/dateTime";
 import { motion, AnimatePresence } from "framer-motion";
 import { Flame, Heart, BarChart2, Calendar, FileText, ChevronLeft, ChevronRight } from "lucide-react";
@@ -769,32 +769,12 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                   {mySplit.length === 0 ? (
                     <p style={styles.splitEmpty}>No meals</p>
                   ) : (
-                    <>
-                      <PieChart width={130} height={130}>
-                        <Pie
-                          data={mySplit}
-                          cx={60}
-                          cy={60}
-                          innerRadius={35}
-                          outerRadius={55}
-                          paddingAngle={3}
-                          dataKey="value"
-                        >
-                          {mySplit.map((entry, index) => (
-                            <Cell key={index} fill={entry.color} />
-                          ))}
-                        </Pie>
-                      </PieChart>
-                      <div style={styles.splitLegend}>
-                        {mySplit.map((entry) => (
-                          <div key={entry.name} style={styles.splitLegendItem}>
-                            <div style={{ ...styles.splitDot, backgroundColor: entry.color }} />
-                            <span style={styles.splitLabel}>{entry.name}</span>
-                            <span style={styles.splitCount}>{entry.value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </>
+                    <DonutChart 
+                      data={mySplit} 
+                      size={160}
+                      centerLabel={(monthMeals || []).length}
+                      centerSubLabel="meals"
+                    />
                   )}
                 </div>
 
@@ -806,32 +786,12 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                       {partnerSplit.length === 0 ? (
                         <p style={styles.splitEmpty}>No meals</p>
                       ) : (
-                        <>
-                          <PieChart width={130} height={130}>
-                            <Pie
-                              data={partnerSplit}
-                              cx={60}
-                              cy={60}
-                              innerRadius={35}
-                              outerRadius={55}
-                              paddingAngle={3}
-                              dataKey="value"
-                            >
-                              {partnerSplit.map((entry, index) => (
-                                <Cell key={index} fill={entry.color} />
-                              ))}
-                            </Pie>
-                          </PieChart>
-                          <div style={styles.splitLegend}>
-                            {partnerSplit.map((entry) => (
-                              <div key={entry.name} style={styles.splitLegendItem}>
-                                <div style={{ ...styles.splitDot, backgroundColor: entry.color }} />
-                                <span style={styles.splitLabel}>{entry.name}</span>
-                                <span style={styles.splitCount}>{entry.value}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </>
+                        <DonutChart 
+                          data={partnerSplit} 
+                          size={160}
+                          centerLabel={(partnerMonthMeals || []).length}
+                          centerSubLabel="meals"
+                        />
                       )}
                     </div>
                   </>
