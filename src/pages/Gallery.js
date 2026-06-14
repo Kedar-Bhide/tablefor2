@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { auth, db, fixMealUrls } from "../firebase";
-import { collection, query, where, orderBy, onSnapshot, getDocs, updateDoc, doc } from "firebase/firestore";
+import { collection, query, where, orderBy, getDocs, updateDoc, doc } from "firebase/firestore";
 import { getPhotos } from "../utils/getPhotos";
 import { getMealLocalDateKey } from "../utils/dateTime";
 import PhotoCarousel from "../components/PhotoCarousel";
