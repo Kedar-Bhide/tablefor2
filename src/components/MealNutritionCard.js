@@ -305,8 +305,6 @@ export default React.memo(function MealNutritionCard({
 
   return (
     <div style={styles.mealNutritionCard}>
-      {/* keyframe for the why-strip fade-in */}
-      <style>{`@keyframes _mnc_fadeUp{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}`}</style>
       {categories.length > 0 && (
         <div style={{
           marginBottom: "12px",
