@@ -2275,6 +2275,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                 }}
                 editable={true}
                 onNutritionChange={handleTaskNutritionChange}
+                showExplainer={false}
               />
             </div>
 

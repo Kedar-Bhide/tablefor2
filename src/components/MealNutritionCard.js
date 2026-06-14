@@ -256,7 +256,8 @@ export default React.memo(function MealNutritionCard({
   onNutritionChange = null,
   analysisStatus = "completed",
   onRetry = null,
-  isRetrying = false
+  isRetrying = false,
+  showExplainer = true
 }) {
   // ⚑ All hooks MUST come before any early returns (Rules of Hooks)
   const [activePillId, setActivePillId] = useState(null);
@@ -318,8 +319,8 @@ export default React.memo(function MealNutritionCard({
               return (
                 <div
                   key={cat.id || idx}
-                  onMouseEnter={() => setActivePillId(cat.id)}
-                  onMouseLeave={() => setActivePillId(null)}
+                  onMouseEnter={() => showExplainer && setActivePillId(cat.id)}
+                  onMouseLeave={() => showExplainer && setActivePillId(null)}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -359,7 +360,7 @@ export default React.memo(function MealNutritionCard({
           </div>
 
           {/* Tap-to-explain: why-strip */}
-          {activePillId && (() => {
+          {showExplainer && activePillId && (() => {
             const activeCat = categories.find(c => c.id === activePillId);
             if (!activeCat) return null;
             const why = getWhyText(activeCat, nutrition);
