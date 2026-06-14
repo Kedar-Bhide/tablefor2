@@ -102,7 +102,7 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
     );
   };
 
-  // Real-time listener for the current 10-day window
+  // One-time fetch for the current 10-day window (no real-time listener needed for gallery)
   useEffect(() => {
     const uid = filter === "mine" ? user.uid : partnerUid;
     if (!uid) return;
@@ -118,19 +118,24 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
       orderBy("createdAt", "asc")
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    let cancelled = false;
+    setLoadingGallery(true);
+    
+    getDocs(q).then((snapshot) => {
+      if (cancelled) return;
       const meals = snapshot.docs.map((d) => fixMealUrls({ id: d.id, ...d.data() })).reverse();
       oldestDateRef.current = startDate;
       setGroupedMeals(groupMeals(meals));
       setLoadingGallery(false);
       setHasMore(meals.length > 0);
-    }, (err) => {
-      console.error("Gallery snapshot failed:", err);
+    }).catch((err) => {
+      if (cancelled) return;
+      console.error("Gallery fetch failed:", err);
       setLoadingGallery(false);
       setHasMore(false);
     });
 
-    return () => unsubscribe();
+    return () => { cancelled = true; };
   }, [filter, partnerUid, user.uid]);
 
   const loadMore = useCallback(async () => {

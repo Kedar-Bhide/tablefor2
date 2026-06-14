@@ -35,9 +35,38 @@ async function sendNotification(token, title, body) {
   }
 }
 
-async function getUser(uid) {
+// Simple in-memory cache for user data (reduces Firestore reads)
+const userCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function getUser(uid, useCache = true) {
+  // Check cache first
+  if (useCache) {
+    const cached = userCache.get(uid);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      return cached.data;
+    }
+  }
+  
   const snap = await db.collection("users").doc(uid).get();
-  return snap.exists ? snap.data() : null;
+  const data = snap.exists ? snap.data() : null;
+  
+  // Update cache
+  if (data) {
+    userCache.set(uid, { data, timestamp: Date.now() });
+    
+    // Clean old cache entries periodically
+    if (userCache.size > 100) {
+      const now = Date.now();
+      for (const [key, value] of userCache.entries()) {
+        if (now - value.timestamp > CACHE_TTL) {
+          userCache.delete(key);
+        }
+      }
+    }
+  }
+  
+  return data;
 }
 
 // Simple Firestore-based rate limiter per user per function
