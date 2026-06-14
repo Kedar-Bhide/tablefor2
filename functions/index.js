@@ -811,7 +811,7 @@ exports.parseVoiceMeal = onCall(
       const req = https.request(options, (res) => {
         let data = "";
         res.on("data", (chunk) => { data += chunk; });
-        res.on("end", () => {
+        res.on("end", async () => {
           try {
             const parsed = JSON.parse(data);
             const text = parsed.content?.[0]?.text || "";
