@@ -7,6 +7,14 @@ export async function requestNotificationPermission(uid) {
     const permission = await Notification.requestPermission();
     if (permission !== "granted") {
       console.log("Notification permission denied");
+      // Update notificationsEnabled to false if permission denied
+      try {
+        await updateDoc(doc(db, "users", uid), {
+          notificationsEnabled: false,
+        });
+      } catch (e) {
+        console.error("Failed to update notification status:", e);
+      }
       return null;
     }
 

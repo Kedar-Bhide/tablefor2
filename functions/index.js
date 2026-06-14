@@ -1991,3 +1991,41 @@ exports.onMealDeleted = onDocumentDeleted(
     }
   }
 );
+
+// Scheduled function to clean up stale tasks (older than 7 days)
+exports.cleanupStaleTasks = onSchedule(
+  { schedule: "0 2 * * *", timeZone: "UTC" }, // Run daily at 2 AM UTC
+  async (event) => {
+    console.log("Running stale task cleanup...");
+    
+    try {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      
+      const tasksRef = db.collection("tasks");
+      const q = tasksRef.where("createdAt", "<", sevenDaysAgo);
+      const snapshot = await q.get();
+      
+      if (!snapshot.empty) {
+        const batch = db.batch();
+        let deletedCount = 0;
+        
+        snapshot.docs.forEach((doc) => {
+          const task = doc.data();
+          // Only delete tasks that are not completed or dismissed
+          if (!task.completed && !task.dismissed) {
+            batch.delete(doc.ref);
+            deletedCount++;
+          }
+        });
+        
+        if (deletedCount > 0) {
+          await batch.commit();
+          console.log(`Cleaned up ${deletedCount} stale tasks`);
+        }
+      }
+    } catch (e) {
+      console.error("Stale task cleanup failed:", e);
+    }
+  }
+);

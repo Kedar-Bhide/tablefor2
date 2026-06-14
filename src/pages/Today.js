@@ -235,7 +235,16 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       where("dismissed", "==", false)
     );
     const unsubscribeTasks = onSnapshot(taskQ, (snapshot) => {
-      const tasks = snapshot.docs.map((d) => fixTaskUrls({ id: d.id, ...d.data() }));
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      
+      const tasks = snapshot.docs
+        .map((d) => fixTaskUrls({ id: d.id, ...d.data() }))
+        .filter(task => {
+          // Filter out tasks older than 7 days (stale tasks)
+          const taskDate = task.createdAt?.toDate?.() || new Date(task.createdAt);
+          return taskDate >= sevenDaysAgo;
+        });
       setPendingTasks(tasks);
     });
 
