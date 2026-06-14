@@ -185,14 +185,14 @@ function Profile({ user, globalUserData, globalPartnerData }) {
             fromUid: user.uid,
             fromName: user.displayName || "Someone",
             fromEmail: user.email,
-            sentAt: new Date().toISOString(),
+            sentAt: new Date(),
           },
         });
         transaction.update(doc(db, "users", user.uid), {
           pendingPartnerRequest: {
             toUid: partnerDocUid,
             toEmail: partnerEmail,
-            sentAt: new Date().toISOString(),
+            sentAt: new Date(),
           },
         });
       });

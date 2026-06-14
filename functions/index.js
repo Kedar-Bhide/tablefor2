@@ -856,17 +856,37 @@ exports.onMealCreated = onDocumentCreated(
     const mealId = event.params.mealId;
     const user = await getUser(uid);
 
+    // Optimistic locking: check if analysis already in progress
+    const mealRef = db.collection("meals").doc(mealId);
+    const currentMeal = await mealRef.get();
+    if (!currentMeal.exists) {
+      console.log(`Meal ${mealId} no longer exists, skipping analysis`);
+      return;
+    }
+    const currentData = currentMeal.data();
+    if (currentData.analysisStatus === "analyzing" || currentData.analysisStatus === "completed") {
+      console.log(`Meal ${mealId} already being analyzed or completed, skipping`);
+      return;
+    }
+    
+    // Mark as analyzing with transaction to prevent race conditions
+    await runTransaction(db, async (transaction) => {
+      const doc = await transaction.get(mealRef);
+      if (!doc.exists || doc.data().analysisStatus === "analyzing" || doc.data().analysisStatus === "completed") {
+        return; // Already being analyzed or completed
+      }
+      transaction.update(mealRef, { analysisStatus: "analyzing" });
+    });
+
     // Skip task creation for meals completed from a task
     // (they have sourceMealId set)
     if (meal.sourceMealId) {
       try {
         if (meal.nutrition && meal.nutrition.calories > 0) {
           console.log(`Meal ${mealId} already has nutrition, skipping analysis.`);
-          await db.collection("meals").doc(mealId).update({ analysisStatus: "completed" });
+          await mealRef.update({ analysisStatus: "completed" });
           return;
         }
-
-        await db.collection("meals").doc(mealId).update({ analysisStatus: "analyzing" });
 
         const primaryPhoto = (meal.photos?.length > 0)
           ? meal.photos[0]
@@ -978,18 +998,20 @@ exports.onMealCreated = onDocumentCreated(
       if (user && user.partnerUid) {
         const partner = await getUser(user.partnerUid);
         if (partner) {
-          // Create task if meal is shared
-          // Create task if meal is shared
+          // Create task if meal is shared (with transaction to prevent race conditions)
           if (meal.isShared) {
             try {
               const taskId = `${mealId}_${user.partnerUid}`;
               const taskRef = db.collection("tasks").doc(taskId);
-              const taskSnap = await taskRef.get();
-
-              if (taskSnap.exists) {
-                console.log(`Task already exists for meal ${mealId}, skipping`);
-              } else {
-                await taskRef.set({
+              
+              await runTransaction(db, async (transaction) => {
+                const taskSnap = await transaction.get(taskRef);
+                if (taskSnap.exists) {
+                  console.log(`Task already exists for meal ${mealId}, skipping`);
+                  return;
+                }
+                
+                transaction.set(taskRef, {
                   sourceMealId: mealId,
                   fromUid: uid,
                   toUid: user.partnerUid,
@@ -1009,7 +1031,7 @@ exports.onMealCreated = onDocumentCreated(
                   createdAt: new Date(),
                 });
                 console.log(`Task created for shared meal ${mealId}`);
-              }
+              });
             } catch (e) {
               console.error("Failed to create task:", e);
             }
@@ -1943,3 +1965,29 @@ exports.lookupPartnerByEmail = onCall(async (request) => {
     return { found: false, error: "Lookup failed. Please try again." };
   }
 });
+
+// Clean up orphaned tasks when a meal is deleted
+exports.onMealDeleted = onDocumentDeleted(
+  { document: "meals/{mealId}" },
+  async (event) => {
+    const mealId = event.params.mealId;
+    
+    try {
+      // Find and delete tasks associated with this meal
+      const tasksRef = db.collection("tasks");
+      const q = tasksRef.where("sourceMealId", "==", mealId);
+      const snapshot = await q.get();
+      
+      if (!snapshot.empty) {
+        const batch = db.batch();
+        snapshot.docs.forEach((doc) => {
+          batch.delete(doc.ref);
+        });
+        await batch.commit();
+        console.log(`Cleaned up ${snapshot.size} orphaned tasks for meal ${mealId}`);
+      }
+    } catch (e) {
+      console.error(`Failed to clean up tasks for meal ${mealId}:`, e);
+    }
+  }
+);

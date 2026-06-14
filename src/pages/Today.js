@@ -633,7 +633,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
     if (weightCheckIn?.isLastDay) return; // Can't snooze on last day
     try {
       await updateDoc(doc(db, "users", user.uid), {
-        weightInsightSnooze: new Date().toISOString(),
+        weightInsightSnooze: new Date(),
       });
       setWeightCheckIn(null);
     } catch (e) {
