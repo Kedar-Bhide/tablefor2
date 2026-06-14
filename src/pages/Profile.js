@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { auth, db, doc, updateDoc, collection, query, where, onSnapshot, getDocs, getDoc, runTransaction, limit, deleteField, fixStorageUrl } from "../firebase";
+import { auth, db, doc, updateDoc, collection, query, where, onSnapshot, getDoc, runTransaction, limit, deleteField, fixStorageUrl } from "../firebase";
 import ApiService from "../services/api";
 import { signOut } from "firebase/auth";
 import { computeBadges } from "../utils/calculateBadges";
@@ -156,7 +156,7 @@ function Profile({ user, globalUserData, globalPartnerData }) {
         return;
       }
 
-      const { uid: partnerDocUid, name: partnerName, email: partnerEmailFound, photoURL: partnerPhotoURL } = result.data;
+      const { uid: partnerDocUid } = result.data;
 
       // Already sent a request
       if (requestSent) {
