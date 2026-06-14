@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "ajv": "^8.20.0",
     "firebase": "^12.10.0",
     "framer-motion": "^12.38.0",
     "lucide-react": "^1.16.0",
