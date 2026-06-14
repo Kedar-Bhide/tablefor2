@@ -168,116 +168,121 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
   }, [autoShowMonthly, showInsightPopup]);
 
   useEffect(() => {
-    const allMealsQ = query(collection(db, "meals"), where("uid", "==", user.uid));
-    const partnerQ = partnerUid ? query(collection(db, "meals"), where("uid", "==", partnerUid)) : null;
+    // One-time reads instead of unbounded real-time listeners
+    // Load 90 days for weekly view + streak computation
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 90);
 
-    let myMeals = [];
-    let pMeals = [];
-
-    const processMeals = () => {
-      const allMeals = [...myMeals];
-
-      // Build dayMap from ALL meals for streak
-      const dayMap = {};
-      allMeals.forEach((m) => {
-        const dateStr = getMealLocalDateKey(m);
-        if (!dayMap[dateStr]) dayMap[dateStr] = 0;
-        dayMap[dateStr]++;
-      });
-      setFullDayMap(dayMap);
-
-      // Build weekly nutrition per day (Mon-Sun)
-      const today = new Date();
-      const monOffset = (today.getDay() + 6) % 7;
-      const last7 = [];
-      const prev7 = [];
-      for (let i = 0; i < 7; i++) {
-        const d = new Date(today);
-        d.setDate(d.getDate() - monOffset + i);
-        const dateStr = formatLocalDateKey(d);
-        const dayMeals = allMeals.filter(
-          (m) => (getMealLocalDateKey(m) === dateStr) && m.nutrition
+    const loadMeals = async () => {
+      try {
+        const allMealsQ = query(
+          collection(db, "meals"),
+          where("uid", "==", user.uid),
+          where("createdAt", ">=", cutoff)
         );
-        const totalsRaw = dayMeals.reduce((acc, m) => ({
-          calories: acc.calories + (m.nutrition.calories || 0),
-          protein_g: acc.protein_g + (m.nutrition.protein_g || 0),
-          carbs_g: acc.carbs_g + (m.nutrition.carbs_g || 0),
-          fat_g: acc.fat_g + (m.nutrition.fat_g || 0),
-          fiber_g: acc.fiber_g + (m.nutrition.fiber_g || 0),
-        }), { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 });
+        const partnerQ = partnerUid ? query(
+          collection(db, "meals"),
+          where("uid", "==", partnerUid),
+          where("createdAt", ">=", cutoff)
+        ) : null;
 
-        const totals = {
-          calories: Math.round(totalsRaw.calories),
-          protein_g: Math.round(totalsRaw.protein_g),
-          carbs_g: Math.round(totalsRaw.carbs_g),
-          fat_g: Math.round(totalsRaw.fat_g),
-          fiber_g: Math.round(totalsRaw.fiber_g),
-        };
-        last7.push({
-          date: dateStr,
-          label: d.toLocaleDateString("en-US", { weekday: "short" }),
-          ...totals,
-          hasMeals: dayMeals.length > 0,
-          meals: dayMeals
-        });
+        const [mySnap, pSnap] = await Promise.all([
+          getDocs(allMealsQ),
+          partnerQ ? getDocs(partnerQ) : Promise.resolve(null),
+        ]);
 
-        // Also build previous week (Mon-Sun)
-        const p = new Date(today);
-        p.setDate(p.getDate() - monOffset - 7 + i);
-        const prevDateStr = formatLocalDateKey(p);
-        const prevDayMeals = allMeals.filter(
-          (m) => (getMealLocalDateKey(m) === prevDateStr) && m.nutrition
-        );
-        prev7.push({
-          date: prevDateStr,
-          meals: prevDayMeals
-        });
-      }
-      setWeeklyNutrition(last7);
-      setPrevWeekData(prev7);
+        const myMeals = mySnap.docs.map(d => fixMealUrls({ id: d.id, ...d.data() }));
+        const pMeals = pSnap ? pSnap.docs.map(d => fixMealUrls({ id: d.id, ...d.data() })) : [];
+        const allMeals = [...myMeals];
 
-      // Couple streak
-      if (partnerUid) {
-        const partnerDayMap = {};
-        pMeals.forEach((m) => {
+        // Build dayMap for streak
+        const dayMap = {};
+        allMeals.forEach((m) => {
           const dateStr = getMealLocalDateKey(m);
-          if (!partnerDayMap[dateStr]) partnerDayMap[dateStr] = 0;
-          partnerDayMap[dateStr]++;
+          if (!dayMap[dateStr]) dayMap[dateStr] = 0;
+          dayMap[dateStr]++;
         });
+        setFullDayMap(dayMap);
 
-        const todayStr = formatLocalDateKey(new Date());
-        let coupleStreak = 0;
-        for (let i = 0; i < 365; i++) {
-          const d = new Date();
-          d.setDate(d.getDate() - i);
+        // Build weekly nutrition per day (Mon-Sun)
+        const today = new Date();
+        const monOffset = (today.getDay() + 6) % 7;
+        const last7 = [];
+        const prev7 = [];
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(today);
+          d.setDate(d.getDate() - monOffset + i);
           const dateStr = formatLocalDateKey(d);
-          const isToday = dateStr === todayStr;
-          if ((dayMap[dateStr] || 0) >= 3 && (partnerDayMap[dateStr] || 0) >= 3) {
-            coupleStreak++;
-          } else if (isToday) {
-            continue;
-          } else {
-            break;
-          }
+          const dayMeals = allMeals.filter(
+            (m) => (getMealLocalDateKey(m) === dateStr) && m.nutrition
+          );
+          const totalsRaw = dayMeals.reduce((acc, m) => ({
+            calories: acc.calories + (m.nutrition.calories || 0),
+            protein_g: acc.protein_g + (m.nutrition.protein_g || 0),
+            carbs_g: acc.carbs_g + (m.nutrition.carbs_g || 0),
+            fat_g: acc.fat_g + (m.nutrition.fat_g || 0),
+            fiber_g: acc.fiber_g + (m.nutrition.fiber_g || 0),
+          }), { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0, fiber_g: 0 });
+
+          const totals = {
+            calories: Math.round(totalsRaw.calories),
+            protein_g: Math.round(totalsRaw.protein_g),
+            carbs_g: Math.round(totalsRaw.carbs_g),
+            fat_g: Math.round(totalsRaw.fat_g),
+            fiber_g: Math.round(totalsRaw.fiber_g),
+          };
+          last7.push({
+            date: dateStr,
+            label: d.toLocaleDateString("en-US", { weekday: "short" }),
+            ...totals,
+            hasMeals: dayMeals.length > 0,
+            meals: dayMeals
+          });
+
+          // Previous week
+          const p = new Date(today);
+          p.setDate(p.getDate() - monOffset - 7 + i);
+          const prevDateStr = formatLocalDateKey(p);
+          const prevDayMeals = allMeals.filter(
+            (m) => (getMealLocalDateKey(m) === prevDateStr) && m.nutrition
+          );
+          prev7.push({
+            date: prevDateStr,
+            meals: prevDayMeals
+          });
         }
-        setCoupleStreakCount(coupleStreak);
+        setWeeklyNutrition(last7);
+        setPrevWeekData(prev7);
+
+        // Couple streak
+        if (partnerUid) {
+          const partnerDayMap = {};
+          pMeals.forEach((m) => {
+            const dateStr = getMealLocalDateKey(m);
+            if (!partnerDayMap[dateStr]) partnerDayMap[dateStr] = 0;
+            partnerDayMap[dateStr]++;
+          });
+
+          const today2 = new Date();
+          let coupleStreak = 0;
+          for (let i = 1; i <= 365; i++) {
+            const d = new Date(today2);
+            d.setDate(d.getDate() - i);
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+            if ((dayMap[key] || 0) >= 3 && (partnerDayMap[key] || 0) >= 3) {
+              coupleStreak++;
+            } else {
+              break;
+            }
+          }
+          setCoupleStreakCount(coupleStreak);
+        }
+      } catch (e) {
+        console.error("Failed to load weekly meals:", e);
       }
     };
 
-    const unsubMy = onSnapshot(allMealsQ, (snap) => {
-      myMeals = snap.docs.map(d => fixMealUrls({ id: d.id, ...d.data() }));
-      processMeals();
-    });
-
-    const unsubPartner = partnerQ ? onSnapshot(partnerQ, (snap) => {
-      pMeals = snap.docs.map(d => fixMealUrls({ id: d.id, ...d.data() }));
-      processMeals();
-    }) : null;
-
-    return () => {
-      unsubMy();
-      if (unsubPartner) unsubPartner();
-    };
+    loadMeals();
   }, [user.uid, partnerUid]);
 
   const fetchMonthMeals = useCallback(async () => {

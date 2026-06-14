@@ -41,7 +41,6 @@ function App() {
               createdAt: now,
               timezone: timezone || null,
               utcOffsetMinutes,
-              utcOffset: utcOffsetMinutes / 60,
               // Initialize default user preferences
               notifSettings: {
                 partnerMeal: true,
@@ -51,10 +50,6 @@ function App() {
               partnerUid: null,
               streakCount: 0,
               lastReminders: {},
-              lastReminder_Breakfast: null,
-              lastReminder_Lunch: null,
-              lastReminder_Dinner: null,
-              lastReminder_Snack: null,
               streakUpdatedAt: null,
             });
           } catch (error) {
@@ -69,7 +64,6 @@ function App() {
               {
                 timezone: timezone || null,
                 utcOffsetMinutes,
-                utcOffset: utcOffsetMinutes / 60,
               },
               { merge: true }
             );

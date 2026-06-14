@@ -597,15 +597,22 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       const previousWeight = parseFloat(userData.weight_kg) || weight;
       const targetWeight = parseFloat(userData.target_weight_kg) || null;
 
-      // Save new weight + history + check-in date
+      // Save new weight + check-in date
       await updateDoc(userRef, {
         weight_kg: String(weight),
         lastWeightCheckIn: weightCheckIn.checkInDate,
-        weightHistory: [
-          ...(userData.weightHistory || []),
-          { date: weightCheckIn.checkInDate, weight },
-        ],
       });
+
+      // Write weight entry to subcollection (replaces unbounded array)
+      try {
+        await addDoc(collection(db, "users", user.uid, "weightHistory"), {
+          date: weightCheckIn.checkInDate,
+          weight: parseFloat(weight),
+          createdAt: new Date(),
+        });
+      } catch (whErr) {
+        console.error("Failed to write weightHistory subcollection:", whErr);
+      }
 
       // Close popup
       setWeightCheckIn(null);

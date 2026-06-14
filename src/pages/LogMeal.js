@@ -360,7 +360,6 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
         await ApiService.updateUser(user.uid, {
           timezone: timezone || null,
           utcOffsetMinutes: utcOffsetMinutesAtLog,
-          utcOffset: utcOffsetMinutesAtLog / 60,
         });
       } catch (e) {
         console.error("Failed to update user timezone during meal log:", e);

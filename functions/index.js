@@ -157,6 +157,112 @@ async function logApiUsage(uid, endpoint, tokensUsed = 0) {
   }
 }
 
+// --- Daily Summary Helper ---
+// Pre-aggregates daily nutrition totals for fast analytics queries
+async function updateDailySummary(uid, mealLocalDate, mealNutrition, delta = 1) {
+  try {
+    const summaryId = `${uid}_${mealLocalDate}`;
+    const summaryRef = db.collection("dailySummaries").doc(summaryId);
+    const summarySnap = await summaryRef.get();
+
+    if (!summarySnap.exists) {
+      // Create new summary
+      await summaryRef.set({
+        uid,
+        dateKey: mealLocalDate,
+        mealCount: delta,
+        totalCalories: (mealNutrition?.calories || 0) * delta,
+        totalProtein: (mealNutrition?.protein_g || 0) * delta,
+        totalCarbs: (mealNutrition?.carbs_g || 0) * delta,
+        totalFat: (mealNutrition?.fat_g || 0) * delta,
+        totalFiber: (mealNutrition?.fiber_g || 0) * delta,
+        updatedAt: new Date(),
+      });
+      return;
+    }
+
+    const existing = summarySnap.data();
+    const updates = {
+      mealCount: Math.max(0, (existing.mealCount || 0) + delta),
+      totalCalories: Math.max(0, (existing.totalCalories || 0) + (mealNutrition?.calories || 0) * delta),
+      totalProtein: Math.max(0, (existing.totalProtein || 0) + (mealNutrition?.protein_g || 0) * delta),
+      totalCarbs: Math.max(0, (existing.totalCarbs || 0) + (mealNutrition?.carbs_g || 0) * delta),
+      totalFat: Math.max(0, (existing.totalFat || 0) + (mealNutrition?.fat_g || 0) * delta),
+      totalFiber: Math.max(0, (existing.totalFiber || 0) + (mealNutrition?.fiber_g || 0) * delta),
+      updatedAt: new Date(),
+    };
+
+    // If mealCount drops to 0, delete the summary doc
+    if (updates.mealCount === 0) {
+      await summaryRef.delete();
+      return;
+    }
+
+    await summaryRef.update(updates);
+  } catch (e) {
+    console.error("Failed to update daily summary:", e);
+  }
+}
+
+// --- Activity Log Helper ---
+// Writes timestamped event records for audit trail and future analytics
+async function logActivity(uid, eventType, details = {}) {
+  try {
+    await db.collection("activityLog").add({
+      uid,
+      type: eventType,
+      timestamp: new Date(),
+      details,
+    });
+  } catch (e) {
+    console.error("Failed to log activity:", e);
+  }
+}
+
+// --- Streak Calculator ---
+// Computes current streak (days with 3+ meals) for a user
+async function computeStreak(uid) {
+  try {
+    const mealsSnap = await db.collection("meals")
+      .where("uid", "==", uid)
+      .orderBy("createdAt", "desc")
+      .limit(400)
+      .get();
+
+    const dayMap = {};
+    mealsSnap.docs.forEach((doc) => {
+      const meal = doc.data();
+      const localDate = meal.localDate;
+      if (localDate) {
+        dayMap[localDate] = (dayMap[localDate] || 0) + 1;
+      }
+    });
+
+    // Count streak backwards from yesterday
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    let streak = 0;
+    const checkDate = new Date(yesterday);
+
+    for (let i = 0; i < 365; i++) {
+      const key = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, "0")}-${String(checkDate.getDate()).padStart(2, "0")}`;
+      if (dayMap[key] && dayMap[key] >= 3) {
+        streak++;
+        checkDate.setDate(checkDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+
+    return streak;
+  } catch (e) {
+    console.error("Failed to compute streak:", e);
+    return 0;
+  }
+}
+
 async function generateInsightForUser(uid, year, month) {
   try {
     const userSnap = await db.collection("users").doc(uid).get();
@@ -1024,6 +1130,28 @@ exports.onMealCreated = onDocumentCreated(
       await db.collection("meals").doc(mealId).update({ analysisStatus: "failed" });
     }
 
+    // Step 1.5: Update daily summary + activity log + streak
+    try {
+      if (meal.localDate) {
+        await updateDailySummary(uid, meal.localDate, finalNutrition, 1);
+      }
+      await logActivity(uid, "meal_created", {
+        mealId,
+        mealName: meal.name,
+        mealType: meal.type,
+        isShared: meal.isShared,
+        hasNutrition: !!(finalNutrition && finalNutrition.calories > 0),
+      });
+      // Update streak count on user doc
+      const newStreak = await computeStreak(uid);
+      await db.collection("users").doc(uid).update({
+        streakCount: newStreak,
+        streakUpdatedAt: new Date(),
+      });
+    } catch (e) {
+      console.error("Daily summary / activity log failed:", e);
+    }
+
     // Step 2: Partner notification + task creation
     try {
       if (user && user.partnerUid) {
@@ -1090,12 +1218,18 @@ exports.onMealCreated = onDocumentCreated(
 exports.onBadgeEarned = onDocumentUpdated("users/{uid}", async (event) => {
   const before = event.data.before.data();
   const after = event.data.after.data();
+  const uid = event.params.uid;
 
   const prevBadges = before.earnedBadges || [];
   const newBadges = after.earnedBadges || [];
 
   const justEarned = newBadges.filter((b) => !prevBadges.includes(b));
   if (justEarned.length === 0) return;
+
+  // Log badge earning activity
+  for (const badgeId of justEarned) {
+    await logActivity(uid, "badge_earned", { badgeId });
+  }
 
   const token = after.fcmToken;
   if (!token || after.notifSettings?.badgeEarned === false) return;
@@ -1339,6 +1473,8 @@ async function sendMealReminder(mealType, reminderLocalHour, reminderLocalMinute
     const user = userDoc.data();
 
     // Cooldown check — don't send same reminder type twice within 2 hours
+    // Use lastReminders map which stores { mealType: dateKey } for de-dup
+    // and also check the flat timestamp field for cooldown
     const cooldownKey = `lastReminder_${mealType}`;
     const lastSent = user[cooldownKey] ? new Date(user[cooldownKey]) : null;
     if (lastSent && (new Date() - lastSent) < 2 * 60 * 60 * 1000) {
@@ -1386,14 +1522,10 @@ async function sendMealReminder(mealType, reminderLocalHour, reminderLocalMinute
     const body = messages[Math.floor(Math.random() * messages.length)];
     console.log(`Sending ${mealType} reminder to ${user.name}`);
     await sendNotification(user.fcmToken, "TableFor2 ⏰", body);
-    // Save cooldown timestamp
-    await db.collection("users").doc(userDoc.id).update({
-      [`lastReminder_${mealType}`]: new Date().toISOString(),
-    });
-
-    // Save that we sent this reminder
+    // Save cooldown timestamp + de-dup date in a single map write
     await db.collection("users").doc(userDoc.id).update({
       [`lastReminders.${mealType}`]: localDateStr,
+      [`lastReminder_${mealType}`]: new Date().toISOString(),
     });
   });
   await Promise.all(promises);
@@ -1894,6 +2026,7 @@ exports.sendPartnerRequestNotification = onCall(async (request) => {
       "TableFor2",
       `${fromName} wants to link accounts with you — check your Profile!`
     );
+    await logActivity(request.auth.uid, "partner_request_sent", { toUid });
   } catch (e) {
     console.error("sendPartnerRequestNotification error:", e);
   }
@@ -1935,6 +2068,9 @@ exports.sendPartnerAcceptedNotification = onCall(async (request) => {
       "TableFor2",
       `${fromName} accepted your partner request! You're now linked.`
     );
+    // Log the linking event for both users
+    await logActivity(request.auth.uid, "partner_linked", { partnerUid: toUid });
+    await logActivity(toUid, "partner_linked", { partnerUid: request.auth.uid });
   } catch (e) {
     console.error("sendPartnerAcceptedNotification error:", e);
   }
@@ -2004,8 +2140,29 @@ exports.onMealDeleted = onDocumentDeleted(
   { document: "meals/{mealId}" },
   async (event) => {
     const mealId = event.params.mealId;
+    const meal = event.data?.data();
     
     try {
+      // Update daily summary (decrement)
+      if (meal && meal.localDate && meal.uid) {
+        await updateDailySummary(meal.uid, meal.localDate, meal.nutrition, -1);
+      }
+
+      // Log the deletion
+      if (meal && meal.uid) {
+        await logActivity(meal.uid, "meal_deleted", {
+          mealId,
+          mealName: meal.name,
+          mealType: meal.type,
+        });
+        // Recompute streak after deletion
+        const newStreak = await computeStreak(meal.uid);
+        await db.collection("users").doc(meal.uid).update({
+          streakCount: newStreak,
+          streakUpdatedAt: new Date(),
+        });
+      }
+
       // Find and delete tasks associated with this meal
       const tasksRef = db.collection("tasks");
       const q = tasksRef.where("sourceMealId", "==", mealId);
