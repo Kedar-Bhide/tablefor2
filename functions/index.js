@@ -883,6 +883,7 @@ exports.onMealCreated = onDocumentCreated(
     }
     const uid = meal.uid;
     const mealId = event.params.mealId;
+    console.log(`[onMealCreated] Meal ${mealId} - name: "${meal.name}", analysisStatus: ${meal.analysisStatus}, nutrition: ${JSON.stringify(meal.nutrition)}, photos: ${meal.photos?.length || 0}`);
     const user = await getUser(uid);
 
     // Optimistic locking: check if analysis already completed
@@ -899,7 +900,7 @@ exports.onMealCreated = onDocumentCreated(
     }
     
     // Mark as analyzing with transaction to prevent race conditions
-    await runTransaction(db, async (transaction) => {
+    await db.runTransaction(async (transaction) => {
       const doc = await transaction.get(mealRef);
       if (!doc.exists || doc.data().analysisStatus === "completed") {
         return; // Already completed
@@ -968,6 +969,7 @@ exports.onMealCreated = onDocumentCreated(
     let finalNutrition = meal.nutrition || null;
 
     try {
+      console.log(`[onMealCreated] ${mealId} finalNutrition: ${JSON.stringify(finalNutrition)}`);
       if (!finalNutrition || !finalNutrition.calories) {
         await db.collection("meals").doc(mealId).update({ analysisStatus: "analyzing" });
 
@@ -983,6 +985,7 @@ exports.onMealCreated = onDocumentCreated(
           meal.portionSize || null,
           meal.cookType || (meal.isRestaurant ? "Restaurant" : "Homemade")
         );
+        console.log(`[onMealCreated] ${mealId} analyzeMealNutrition result: ${JSON.stringify(nutrition)}`);
 
         if (nutrition && nutrition.calories > 0) {
           finalNutrition = nutrition;
@@ -1033,7 +1036,7 @@ exports.onMealCreated = onDocumentCreated(
               const taskId = `${mealId}_${user.partnerUid}`;
               const taskRef = db.collection("tasks").doc(taskId);
               
-              await runTransaction(db, async (transaction) => {
+              await db.runTransaction(async (transaction) => {
                 const taskSnap = await transaction.get(taskRef);
                 if (taskSnap.exists) {
                   console.log(`Task already exists for meal ${mealId}, skipping`);
