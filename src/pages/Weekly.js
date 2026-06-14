@@ -817,18 +817,6 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                   borderStyle = `2px solid ${allCats[0].color}`;
                 }
 
-                // Collect unique categories for hover tooltip
-                const allDayCats = [];
-                const seenCatIds = new Set();
-                dayMeals.forEach(m => {
-                  getHabitCategories(m.nutrition).forEach(cat => {
-                    if (!seenCatIds.has(cat.id)) {
-                      seenCatIds.add(cat.id);
-                      allDayCats.push(cat);
-                    }
-                  });
-                });
-
                 // Show primary emoji per meal (up to 3 slots)
                 return (
                   <div

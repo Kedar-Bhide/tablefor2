@@ -2,7 +2,7 @@ import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore, enableMultiTabIndexedDbPersistence, doc, collection, addDoc, updateDoc, deleteDoc, query, where, getDoc, getDocs, onSnapshot, writeBatch, orderBy, serverTimestamp, setDoc, runTransaction, limit, deleteField } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
-import { getMessaging, getToken, isSupported, onMessage } from "firebase/messaging";
+import { getMessaging, getToken, isSupported } from "firebase/messaging";
 
 const firebaseConfig = {
   apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
@@ -45,7 +45,7 @@ if (typeof window !== "undefined") {
     });
 }
 export const VAPID_KEY = process.env.REACT_APP_FIREBASE_VAPID_KEY;
-export { getToken, onMessage };
+export { getToken };
 
 export function fixStorageUrl(url) {
   if (!url) return url;

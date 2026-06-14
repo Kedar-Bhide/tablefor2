@@ -184,12 +184,6 @@ export const getHabitCategories = (nutrition) => {
   return categories.slice(0, 3);
 };
 
-// Backward-compatibility fallback helper (returns primary category)
-export const getHabitCategory = (nutrition) => {
-  const cats = getHabitCategories(nutrition);
-  return cats && cats.length > 0 ? cats[0] : null;
-};
-
 // Returns ALL matched categories (no top-3 cap) — used for stats/synthesis page
 // so every spectrum bucket gets scored even if it didn't make the card
 export const getAllHabitCategories = (nutrition) => {
