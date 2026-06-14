@@ -885,7 +885,7 @@ exports.onMealCreated = onDocumentCreated(
     const mealId = event.params.mealId;
     const user = await getUser(uid);
 
-    // Optimistic locking: check if analysis already in progress
+    // Optimistic locking: check if analysis already completed
     const mealRef = db.collection("meals").doc(mealId);
     const currentMeal = await mealRef.get();
     if (!currentMeal.exists) {
@@ -893,16 +893,16 @@ exports.onMealCreated = onDocumentCreated(
       return;
     }
     const currentData = currentMeal.data();
-    if (currentData.analysisStatus === "analyzing" || currentData.analysisStatus === "completed") {
-      console.log(`Meal ${mealId} already being analyzed or completed, skipping`);
+    if (currentData.analysisStatus === "completed") {
+      console.log(`Meal ${mealId} already completed, skipping`);
       return;
     }
     
     // Mark as analyzing with transaction to prevent race conditions
     await runTransaction(db, async (transaction) => {
       const doc = await transaction.get(mealRef);
-      if (!doc.exists || doc.data().analysisStatus === "analyzing" || doc.data().analysisStatus === "completed") {
-        return; // Already being analyzed or completed
+      if (!doc.exists || doc.data().analysisStatus === "completed") {
+        return; // Already completed
       }
       transaction.update(mealRef, { analysisStatus: "analyzing" });
     });
