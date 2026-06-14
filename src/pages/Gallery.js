@@ -277,7 +277,7 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
 
       {partnerUid && (
         <div style={styles.filterRow}>
-          {["mine", "hers"].map((f) => (
+          {["mine", "partner"].map((f) => (
             <button
               key={f}
               style={{

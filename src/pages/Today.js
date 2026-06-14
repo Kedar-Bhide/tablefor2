@@ -565,7 +565,14 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
   const handleRemoveEditPhoto = (index) => {
     setEditPhotoPreviews((prev) => prev.filter((_, i) => i !== index));
-    setEditPhotos((prev) => prev.filter((_, i) => i !== index));
+    // Only remove from editPhotos if this index corresponds to a new photo
+    // Existing photos are at the beginning, new photos are appended
+    const existingCount = editPhotoPreviews.length - editPhotos.length;
+    if (index >= existingCount) {
+      // This is a new photo - remove from editPhotos
+      const newPhotoIndex = index - existingCount;
+      setEditPhotos((prev) => prev.filter((_, i) => i !== newPhotoIndex));
+    }
   };
 
   const handleAddEditPhoto = (e) => {

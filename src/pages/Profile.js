@@ -303,8 +303,12 @@ function Profile({ user, globalUserData, globalPartnerData }) {
     }
   };
 
-  const handleSignOut = () => {
-    signOut(auth);
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.error("Failed to sign out:", e);
+    }
   };
 
   const handleUnlink = async () => {

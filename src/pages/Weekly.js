@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { auth, db, fixMealUrls } from "../firebase";
-import { collection, query, where, getDocs, doc, getDoc, updateDoc, onSnapshot } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, onSnapshot, arrayUnion } from "firebase/firestore";
 import MealSplitChart from "../components/MealSplitChart";
 import { formatLocalDateKey, getMealLocalDateKey } from "../utils/dateTime";
 import { motion, AnimatePresence } from "framer-motion";
@@ -526,13 +526,9 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
     setShowWeightInsight(false);
     try {
       const userRef = doc(db, "users", user.uid);
-      const userSnap = await getDoc(userRef);
-      const existing = userSnap.data()?.dismissedInsights || [];
-      if (!existing.includes(insightKey)) {
-        await updateDoc(userRef, {
-          dismissedInsights: [...existing, insightKey],
-        });
-      }
+      await updateDoc(userRef, {
+        dismissedInsights: arrayUnion(insightKey),
+      });
       // UI updates automatically via useMemo and globalUserData listener
     } catch (e) {
       console.error("Failed to save dismissed insight:", e);
@@ -1341,7 +1337,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            onClick={handleDismissInsight}
+            onClick={() => handleDismissInsight(monthlyInsight?.key)}
           >
             <motion.div
               style={styles.insightPopup}
@@ -1660,42 +1656,11 @@ const styles = {
     fontSize: "0.9rem",
     margin: "0 0 0.3rem 0",
   },
-  splitEmpty: {
-    color: "#666",
-    fontSize: "0.85rem",
-    marginTop: "2rem",
-  },
   splitDivider: {
     width: "1px",
     backgroundColor: "#f0f0f0",
     alignSelf: "stretch",
     margin: "0 0.5rem",
-  },
-  splitLegend: {
-    width: "100%",
-    paddingLeft: "0.5rem",
-  },
-  splitLegendItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: "0.3rem",
-    marginBottom: "0.3rem",
-  },
-  splitDot: {
-    width: "8px",
-    height: "8px",
-    borderRadius: "50%",
-    flexShrink: 0,
-  },
-  splitLabel: {
-    fontSize: "0.75rem",
-    color: "#555",
-    flex: 1,
-  },
-  splitCount: {
-    fontSize: "0.75rem",
-    fontWeight: "bold",
-    color: "#333",
   },
   overlayCenter: {
     position: "fixed",

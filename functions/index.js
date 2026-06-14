@@ -971,19 +971,18 @@ exports.onMealCreated = onDocumentCreated(
     try {
       console.log(`[onMealCreated] ${mealId} finalNutrition: ${JSON.stringify(finalNutrition)}`);
       if (!finalNutrition || !finalNutrition.calories) {
-        await db.collection("meals").doc(mealId).update({ analysisStatus: "analyzing" });
-
         const primaryPhoto = (meal.photos?.length > 0)
           ? meal.photos[0]
           : meal.photoURL || null;
 
+        const cookType = meal.cookType || (meal.isRestaurant ? "Restaurant" : meal.isPackaged ? "Packaged" : "Homemade");
         const nutrition = await analyzeMealNutrition(
           meal.name,
           primaryPhoto,
           user || null,
           meal.ingredients || meal.quantity || null,
           meal.portionSize || null,
-          meal.cookType || (meal.isRestaurant ? "Restaurant" : "Homemade")
+          cookType
         );
         console.log(`[onMealCreated] ${mealId} analyzeMealNutrition result: ${JSON.stringify(nutrition)}`);
 
@@ -1424,26 +1423,28 @@ exports.reanalyzeMeal = onCall(
   { secrets: [ANTHROPIC_API_KEY] },
   async (request) => {
     try {
+      // Auth check first - before any Firestore reads
+      if (!request.auth?.uid) {
+        throw new Error("Unauthorized: not authenticated");
+      }
+
       const { mealId } = request.data;
       if (!mealId) throw new Error("mealId required");
+
+      await checkRateLimit(request.auth.uid, "reanalyzeMeal", 20, 60);
 
       const mealSnap = await db.collection("meals").doc(mealId).get();
       if (!mealSnap.exists) throw new Error("Meal not found");
 
       const meal = mealSnap.data();
 
-      // Security check — only authenticated users who own the meal can reanalyze
-      if (!request.auth?.uid) {
-        throw new Error("Unauthorized: not authenticated");
-      }
+      // Ownership check - only meal owner or partner can reanalyze
       if (request.auth.uid !== meal.uid) {
         const userDoc = await db.collection("users").doc(meal.uid).get();
         if (!userDoc.exists || userDoc.data().partnerUid !== request.auth.uid) {
           throw new Error("Unauthorized: not meal owner or partner");
         }
       }
-
-      await checkRateLimit(request.auth.uid, "reanalyzeMeal", 20, 60);
 
       await db.collection("meals").doc(mealId).update({ analysisStatus: "analyzing" });
 
