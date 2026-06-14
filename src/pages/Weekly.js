@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { auth, db, fixMealUrls } from "../firebase";
-import { collection, query, where, getDocs, doc, getDoc, updateDoc, onSnapshot, arrayUnion } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, updateDoc, onSnapshot, arrayUnion } from "firebase/firestore";
 import MealSplitChart from "../components/MealSplitChart";
 import { formatLocalDateKey, getMealLocalDateKey } from "../utils/dateTime";
 import { motion, AnimatePresence } from "framer-motion";
