@@ -1,4 +1,4 @@
-const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentUpdated, onDocumentDeleted } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onCall } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
@@ -35,9 +35,38 @@ async function sendNotification(token, title, body) {
   }
 }
 
-async function getUser(uid) {
+// Simple in-memory cache for user data (reduces Firestore reads)
+const userCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function getUser(uid, useCache = true) {
+  // Check cache first
+  if (useCache) {
+    const cached = userCache.get(uid);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      return cached.data;
+    }
+  }
+  
   const snap = await db.collection("users").doc(uid).get();
-  return snap.exists ? snap.data() : null;
+  const data = snap.exists ? snap.data() : null;
+  
+  // Update cache
+  if (data) {
+    userCache.set(uid, { data, timestamp: Date.now() });
+    
+    // Clean old cache entries periodically
+    if (userCache.size > 100) {
+      const now = Date.now();
+      for (const [key, value] of userCache.entries()) {
+        if (now - value.timestamp > CACHE_TTL) {
+          userCache.delete(key);
+        }
+      }
+    }
+  }
+  
+  return data;
 }
 
 // Simple Firestore-based rate limiter per user per function
@@ -110,6 +139,128 @@ function getUserLocalClock(userData, now = new Date()) {
   const hour = local.getUTCHours();
   const minute = local.getUTCMinutes();
   return { dateStr: getDateKeyFromParts(year, month, day), hour, minute };
+}
+
+// Usage monitoring for Claude API
+async function logApiUsage(uid, endpoint, tokensUsed = 0) {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const usageRef = db.collection("usage_logs").doc(today);
+    await usageRef.set({
+      [`calls.${uid}`]: admin.firestore.FieldValue.increment(1),
+      [`tokens.${uid}`]: admin.firestore.FieldValue.increment(tokensUsed),
+      [`endpoints.${endpoint}`]: admin.firestore.FieldValue.increment(1),
+      lastUpdated: new Date(),
+    }, { merge: true });
+  } catch (e) {
+    console.error("Failed to log API usage:", e);
+  }
+}
+
+// --- Daily Summary Helper ---
+// Pre-aggregates daily nutrition totals for fast analytics queries
+async function updateDailySummary(uid, mealLocalDate, mealNutrition, delta = 1) {
+  try {
+    const summaryId = `${uid}_${mealLocalDate}`;
+    const summaryRef = db.collection("dailySummaries").doc(summaryId);
+    const summarySnap = await summaryRef.get();
+
+    if (!summarySnap.exists) {
+      // Create new summary
+      await summaryRef.set({
+        uid,
+        dateKey: mealLocalDate,
+        mealCount: delta,
+        totalCalories: (mealNutrition?.calories || 0) * delta,
+        totalProtein: (mealNutrition?.protein_g || 0) * delta,
+        totalCarbs: (mealNutrition?.carbs_g || 0) * delta,
+        totalFat: (mealNutrition?.fat_g || 0) * delta,
+        totalFiber: (mealNutrition?.fiber_g || 0) * delta,
+        updatedAt: new Date(),
+      });
+      return;
+    }
+
+    const existing = summarySnap.data();
+    const updates = {
+      mealCount: Math.max(0, (existing.mealCount || 0) + delta),
+      totalCalories: Math.max(0, (existing.totalCalories || 0) + (mealNutrition?.calories || 0) * delta),
+      totalProtein: Math.max(0, (existing.totalProtein || 0) + (mealNutrition?.protein_g || 0) * delta),
+      totalCarbs: Math.max(0, (existing.totalCarbs || 0) + (mealNutrition?.carbs_g || 0) * delta),
+      totalFat: Math.max(0, (existing.totalFat || 0) + (mealNutrition?.fat_g || 0) * delta),
+      totalFiber: Math.max(0, (existing.totalFiber || 0) + (mealNutrition?.fiber_g || 0) * delta),
+      updatedAt: new Date(),
+    };
+
+    // If mealCount drops to 0, delete the summary doc
+    if (updates.mealCount === 0) {
+      await summaryRef.delete();
+      return;
+    }
+
+    await summaryRef.update(updates);
+  } catch (e) {
+    console.error("Failed to update daily summary:", e);
+  }
+}
+
+// --- Activity Log Helper ---
+// Writes timestamped event records for audit trail and future analytics
+async function logActivity(uid, eventType, details = {}) {
+  try {
+    await db.collection("activityLog").add({
+      uid,
+      type: eventType,
+      timestamp: new Date(),
+      details,
+    });
+  } catch (e) {
+    console.error("Failed to log activity:", e);
+  }
+}
+
+// --- Streak Calculator ---
+// Computes current streak (days with 3+ meals) for a user
+async function computeStreak(uid) {
+  try {
+    const mealsSnap = await db.collection("meals")
+      .where("uid", "==", uid)
+      .orderBy("createdAt", "desc")
+      .limit(400)
+      .get();
+
+    const dayMap = {};
+    mealsSnap.docs.forEach((doc) => {
+      const meal = doc.data();
+      const localDate = meal.localDate;
+      if (localDate) {
+        dayMap[localDate] = (dayMap[localDate] || 0) + 1;
+      }
+    });
+
+    // Count streak backwards from yesterday
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    let streak = 0;
+    const checkDate = new Date(yesterday);
+
+    for (let i = 0; i < 365; i++) {
+      const key = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, "0")}-${String(checkDate.getDate()).padStart(2, "0")}`;
+      if (dayMap[key] && dayMap[key] >= 3) {
+        streak++;
+        checkDate.setDate(checkDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+
+    return streak;
+  } catch (e) {
+    console.error("Failed to compute streak:", e);
+    return 0;
+  }
 }
 
 async function generateInsightForUser(uid, year, month) {
@@ -250,6 +401,10 @@ The response should feel like a personalized monthly check-in from a smart nutri
               });
 
             console.log(`Insight saved for ${uid} - ${insightKey}`);
+            
+            // Log API usage
+            const usageTokens = parsed.usage?.input_tokens + parsed.usage?.output_tokens || 0;
+            await logApiUsage(uid, "insight", usageTokens);
 
             // Send notification
             if (user.fcmToken) {
@@ -791,12 +946,15 @@ exports.parseVoiceMeal = onCall(
       const req = https.request(options, (res) => {
         let data = "";
         res.on("data", (chunk) => { data += chunk; });
-        res.on("end", () => {
+        res.on("end", async () => {
           try {
             const parsed = JSON.parse(data);
             const text = parsed.content?.[0]?.text || "";
             const clean = text.replace(/```json|```/g, "").trim();
-            resolve(JSON.parse(clean));
+            const result = JSON.parse(clean);
+            // Log API usage
+            await logApiUsage(request.auth.uid, "voice_parse", 0);
+            resolve(result);
           } catch (e) {
             console.error("Failed to parse voice transcript:", e, data);
             resolve({ name: transcript, ingredients: "", portion: "", cookType: "Homemade" });
@@ -831,7 +989,30 @@ exports.onMealCreated = onDocumentCreated(
     }
     const uid = meal.uid;
     const mealId = event.params.mealId;
+    console.log(`[onMealCreated] Meal ${mealId} - name: "${meal.name}", analysisStatus: ${meal.analysisStatus}, nutrition: ${JSON.stringify(meal.nutrition)}, photos: ${meal.photos?.length || 0}`);
     const user = await getUser(uid);
+
+    // Optimistic locking: check if analysis already completed
+    const mealRef = db.collection("meals").doc(mealId);
+    const currentMeal = await mealRef.get();
+    if (!currentMeal.exists) {
+      console.log(`Meal ${mealId} no longer exists, skipping analysis`);
+      return;
+    }
+    const currentData = currentMeal.data();
+    if (currentData.analysisStatus === "completed") {
+      console.log(`Meal ${mealId} already completed, skipping`);
+      return;
+    }
+    
+    // Mark as analyzing with transaction to prevent race conditions
+    await db.runTransaction(async (transaction) => {
+      const doc = await transaction.get(mealRef);
+      if (!doc.exists || doc.data().analysisStatus === "completed") {
+        return; // Already completed
+      }
+      transaction.update(mealRef, { analysisStatus: "analyzing" });
+    });
 
     // Skip task creation for meals completed from a task
     // (they have sourceMealId set)
@@ -839,11 +1020,9 @@ exports.onMealCreated = onDocumentCreated(
       try {
         if (meal.nutrition && meal.nutrition.calories > 0) {
           console.log(`Meal ${mealId} already has nutrition, skipping analysis.`);
-          await db.collection("meals").doc(mealId).update({ analysisStatus: "completed" });
+          await mealRef.update({ analysisStatus: "completed" });
           return;
         }
-
-        await db.collection("meals").doc(mealId).update({ analysisStatus: "analyzing" });
 
         const primaryPhoto = (meal.photos?.length > 0)
           ? meal.photos[0]
@@ -861,6 +1040,8 @@ exports.onMealCreated = onDocumentCreated(
             nutrition,
             analysisStatus: "completed"
           });
+          // Log API usage
+          await logApiUsage(meal.uid, "meal_analysis", 0);
         } else {
           await db.collection("meals").doc(mealId).update({ analysisStatus: "failed" });
         }
@@ -893,22 +1074,32 @@ exports.onMealCreated = onDocumentCreated(
     // Step 1: Run nutrition analysis and update the meal
     let finalNutrition = meal.nutrition || null;
 
+    // Rate limit AI analysis: max 20 analyses per hour per user
     try {
-      if (!finalNutrition || !finalNutrition.calories) {
-        await db.collection("meals").doc(mealId).update({ analysisStatus: "analyzing" });
+      await checkRateLimit(uid, "meal_analysis", 20, 60);
+    } catch (e) {
+      console.log(`Rate limited AI analysis for ${uid}: ${e.message}`);
+      await db.collection("meals").doc(mealId).update({ analysisStatus: "failed" });
+      return;
+    }
 
+    try {
+      console.log(`[onMealCreated] ${mealId} finalNutrition: ${JSON.stringify(finalNutrition)}`);
+      if (!finalNutrition || !finalNutrition.calories) {
         const primaryPhoto = (meal.photos?.length > 0)
           ? meal.photos[0]
           : meal.photoURL || null;
 
+        const cookType = meal.cookType || (meal.isRestaurant ? "Restaurant" : meal.isPackaged ? "Packaged" : "Homemade");
         const nutrition = await analyzeMealNutrition(
           meal.name,
           primaryPhoto,
           user || null,
           meal.ingredients || meal.quantity || null,
           meal.portionSize || null,
-          meal.cookType || (meal.isRestaurant ? "Restaurant" : "Homemade")
+          cookType
         );
+        console.log(`[onMealCreated] ${mealId} analyzeMealNutrition result: ${JSON.stringify(nutrition)}`);
 
         if (nutrition && nutrition.calories > 0) {
           finalNutrition = nutrition;
@@ -948,23 +1139,47 @@ exports.onMealCreated = onDocumentCreated(
       await db.collection("meals").doc(mealId).update({ analysisStatus: "failed" });
     }
 
+    // Step 1.5: Update daily summary + activity log + streak
+    try {
+      if (meal.localDate) {
+        await updateDailySummary(uid, meal.localDate, finalNutrition, 1);
+      }
+      await logActivity(uid, "meal_created", {
+        mealId,
+        mealName: meal.name,
+        mealType: meal.type,
+        isShared: meal.isShared,
+        hasNutrition: !!(finalNutrition && finalNutrition.calories > 0),
+      });
+      // Update streak count on user doc
+      const newStreak = await computeStreak(uid);
+      await db.collection("users").doc(uid).update({
+        streakCount: newStreak,
+        streakUpdatedAt: new Date(),
+      });
+    } catch (e) {
+      console.error("Daily summary / activity log failed:", e);
+    }
+
     // Step 2: Partner notification + task creation
     try {
       if (user && user.partnerUid) {
         const partner = await getUser(user.partnerUid);
         if (partner) {
-          // Create task if meal is shared
-          // Create task if meal is shared
+          // Create task if meal is shared (with transaction to prevent race conditions)
           if (meal.isShared) {
             try {
               const taskId = `${mealId}_${user.partnerUid}`;
               const taskRef = db.collection("tasks").doc(taskId);
-              const taskSnap = await taskRef.get();
-
-              if (taskSnap.exists) {
-                console.log(`Task already exists for meal ${mealId}, skipping`);
-              } else {
-                await taskRef.set({
+              
+              await db.runTransaction(async (transaction) => {
+                const taskSnap = await transaction.get(taskRef);
+                if (taskSnap.exists) {
+                  console.log(`Task already exists for meal ${mealId}, skipping`);
+                  return;
+                }
+                
+                transaction.set(taskRef, {
                   sourceMealId: mealId,
                   fromUid: uid,
                   toUid: user.partnerUid,
@@ -984,7 +1199,7 @@ exports.onMealCreated = onDocumentCreated(
                   createdAt: new Date(),
                 });
                 console.log(`Task created for shared meal ${mealId}`);
-              }
+              });
             } catch (e) {
               console.error("Failed to create task:", e);
             }
@@ -1012,12 +1227,18 @@ exports.onMealCreated = onDocumentCreated(
 exports.onBadgeEarned = onDocumentUpdated("users/{uid}", async (event) => {
   const before = event.data.before.data();
   const after = event.data.after.data();
+  const uid = event.params.uid;
 
   const prevBadges = before.earnedBadges || [];
   const newBadges = after.earnedBadges || [];
 
   const justEarned = newBadges.filter((b) => !prevBadges.includes(b));
   if (justEarned.length === 0) return;
+
+  // Log badge earning activity
+  for (const badgeId of justEarned) {
+    await logActivity(uid, "badge_earned", { badgeId });
+  }
 
   const token = after.fcmToken;
   if (!token || after.notifSettings?.badgeEarned === false) return;
@@ -1261,6 +1482,8 @@ async function sendMealReminder(mealType, reminderLocalHour, reminderLocalMinute
     const user = userDoc.data();
 
     // Cooldown check — don't send same reminder type twice within 2 hours
+    // Use lastReminders map which stores { mealType: dateKey } for de-dup
+    // and also check the flat timestamp field for cooldown
     const cooldownKey = `lastReminder_${mealType}`;
     const lastSent = user[cooldownKey] ? new Date(user[cooldownKey]) : null;
     if (lastSent && (new Date() - lastSent) < 2 * 60 * 60 * 1000) {
@@ -1308,14 +1531,10 @@ async function sendMealReminder(mealType, reminderLocalHour, reminderLocalMinute
     const body = messages[Math.floor(Math.random() * messages.length)];
     console.log(`Sending ${mealType} reminder to ${user.name}`);
     await sendNotification(user.fcmToken, "TableFor2 ⏰", body);
-    // Save cooldown timestamp
-    await db.collection("users").doc(userDoc.id).update({
-      [`lastReminder_${mealType}`]: new Date().toISOString(),
-    });
-
-    // Save that we sent this reminder
+    // Save cooldown timestamp + de-dup date in a single map write
     await db.collection("users").doc(userDoc.id).update({
       [`lastReminders.${mealType}`]: localDateStr,
+      [`lastReminder_${mealType}`]: new Date().toISOString(),
     });
   });
   await Promise.all(promises);
@@ -1345,26 +1564,28 @@ exports.reanalyzeMeal = onCall(
   { secrets: [ANTHROPIC_API_KEY] },
   async (request) => {
     try {
+      // Auth check first - before any Firestore reads
+      if (!request.auth?.uid) {
+        throw new Error("Unauthorized: not authenticated");
+      }
+
       const { mealId } = request.data;
       if (!mealId) throw new Error("mealId required");
+
+      await checkRateLimit(request.auth.uid, "reanalyzeMeal", 20, 60);
 
       const mealSnap = await db.collection("meals").doc(mealId).get();
       if (!mealSnap.exists) throw new Error("Meal not found");
 
       const meal = mealSnap.data();
 
-      // Security check — only authenticated users who own the meal can reanalyze
-      if (!request.auth?.uid) {
-        throw new Error("Unauthorized: not authenticated");
-      }
+      // Ownership check - only meal owner or partner can reanalyze
       if (request.auth.uid !== meal.uid) {
         const userDoc = await db.collection("users").doc(meal.uid).get();
         if (!userDoc.exists || userDoc.data().partnerUid !== request.auth.uid) {
           throw new Error("Unauthorized: not meal owner or partner");
         }
       }
-
-      await checkRateLimit(request.auth.uid, "reanalyzeMeal", 20, 60);
 
       await db.collection("meals").doc(mealId).update({ analysisStatus: "analyzing" });
 
@@ -1791,17 +2012,30 @@ exports.sendPartnerRequestNotification = onCall(async (request) => {
     if (!request.auth?.uid) {
       throw new Error("Unauthorized: not authenticated");
     }
+    
+    // Rate limit: 3 requests per hour per user
+    await checkRateLimit(request.auth.uid, "sendPartnerRequestNotification", 3, 60);
+    
     const { toUid, fromName } = request.data;
     if (!toUid || !fromName) return;
 
+    // Validate that the target user exists
     const partner = await getUser(toUid);
     if (!partner?.fcmToken) return;
+
+    // Validate that the caller's name matches what we have in the database
+    const caller = await getUser(request.auth.uid);
+    if (!caller || caller.name !== fromName) {
+      console.error("sendPartnerRequestNotification: Caller name mismatch");
+      return;
+    }
 
     await sendNotification(
       partner.fcmToken,
       "TableFor2",
       `${fromName} wants to link accounts with you — check your Profile!`
     );
+    await logActivity(request.auth.uid, "partner_request_sent", { toUid });
   } catch (e) {
     console.error("sendPartnerRequestNotification error:", e);
   }
@@ -1813,18 +2047,184 @@ exports.sendPartnerAcceptedNotification = onCall(async (request) => {
     if (!request.auth?.uid) {
       throw new Error("Unauthorized: not authenticated");
     }
+    
+    // Rate limit: 3 requests per hour per user
+    await checkRateLimit(request.auth.uid, "sendPartnerAcceptedNotification", 3, 60);
+    
     const { toUid, fromName } = request.data;
     if (!toUid || !fromName) return;
 
+    // Validate that the target user exists and has a pending request from the caller
     const partner = await getUser(toUid);
     if (!partner?.fcmToken) return;
+    
+    // Validate that the caller's name matches what we have in the database
+    const caller = await getUser(request.auth.uid);
+    if (!caller || caller.name !== fromName) {
+      console.error("sendPartnerAcceptedNotification: Caller name mismatch");
+      return;
+    }
+
+    // Validate that the target user has a pending request from the caller
+    const targetUser = await getUser(toUid);
+    if (!targetUser?.partnerRequest?.fromUid || targetUser.partnerRequest.fromUid !== request.auth.uid) {
+      console.error("sendPartnerAcceptedNotification: No matching pending request found");
+      return;
+    }
 
     await sendNotification(
       partner.fcmToken,
       "TableFor2",
       `${fromName} accepted your partner request! You're now linked.`
     );
+    // Log the linking event for both users
+    await logActivity(request.auth.uid, "partner_linked", { partnerUid: toUid });
+    await logActivity(toUid, "partner_linked", { partnerUid: request.auth.uid });
   } catch (e) {
     console.error("sendPartnerAcceptedNotification error:", e);
   }
 });
+
+// Secure email lookup for partner linking (bypasses Firestore rules)
+exports.lookupPartnerByEmail = onCall(async (request) => {
+  try {
+    if (!request.auth?.uid) {
+      throw new Error("Unauthorized: not authenticated");
+    }
+
+    // Rate limit: 10 lookups per hour per user
+    await checkRateLimit(request.auth.uid, "lookupPartnerByEmail", 10, 60);
+
+    const { email } = request.data;
+    if (!email || typeof email !== 'string') {
+      return { found: false, error: "Invalid email" };
+    }
+
+    // Sanitize email
+    const sanitizedEmail = email.trim().toLowerCase();
+
+    // Query users collection using admin SDK (bypasses security rules)
+    const usersRef = db.collection('users');
+    const q = usersRef.where('email', '==', sanitizedEmail);
+    const snapshot = await q.get();
+
+    if (snapshot.empty) {
+      return { found: false, error: "No account found with that email" };
+    }
+
+    // Get the first matching user (there should only be one)
+    const userDoc = snapshot.docs[0];
+    const userData = userDoc.data();
+
+    // Don't allow linking to yourself
+    if (userDoc.id === request.auth.uid) {
+      return { found: false, error: "You cannot link to your own account" };
+    }
+
+    // Don't allow linking if either user already has a partner
+    const currentUser = await getUser(request.auth.uid);
+    if (currentUser?.partnerUid) {
+      return { found: false, error: "You already have a linked partner" };
+    }
+    if (userData.partnerUid) {
+      return { found: false, error: "This user already has a linked partner" };
+    }
+
+    // Return safe user data (no sensitive fields)
+    return {
+      found: true,
+      uid: userDoc.id,
+      name: userData.name || "Partner",
+      email: userData.email,
+      photoURL: userData.photoURL || null,
+    };
+  } catch (e) {
+    console.error("lookupPartnerByEmail error:", e);
+    return { found: false, error: "Lookup failed. Please try again." };
+  }
+});
+
+// Clean up orphaned tasks when a meal is deleted
+exports.onMealDeleted = onDocumentDeleted(
+  { document: "meals/{mealId}" },
+  async (event) => {
+    const mealId = event.params.mealId;
+    const meal = event.data?.data();
+    
+    try {
+      // Update daily summary (decrement)
+      if (meal && meal.localDate && meal.uid) {
+        await updateDailySummary(meal.uid, meal.localDate, meal.nutrition, -1);
+      }
+
+      // Log the deletion
+      if (meal && meal.uid) {
+        await logActivity(meal.uid, "meal_deleted", {
+          mealId,
+          mealName: meal.name,
+          mealType: meal.type,
+        });
+        // Recompute streak after deletion
+        const newStreak = await computeStreak(meal.uid);
+        await db.collection("users").doc(meal.uid).update({
+          streakCount: newStreak,
+          streakUpdatedAt: new Date(),
+        });
+      }
+
+      // Find and delete tasks associated with this meal
+      const tasksRef = db.collection("tasks");
+      const q = tasksRef.where("sourceMealId", "==", mealId);
+      const snapshot = await q.get();
+      
+      if (!snapshot.empty) {
+        const batch = db.batch();
+        snapshot.docs.forEach((doc) => {
+          batch.delete(doc.ref);
+        });
+        await batch.commit();
+        console.log(`Cleaned up ${snapshot.size} orphaned tasks for meal ${mealId}`);
+      }
+    } catch (e) {
+      console.error(`Failed to clean up tasks for meal ${mealId}:`, e);
+    }
+  }
+);
+
+// Scheduled function to clean up stale tasks (older than 7 days)
+exports.cleanupStaleTasks = onSchedule(
+  { schedule: "0 2 * * *", timeZone: "UTC" }, // Run daily at 2 AM UTC
+  async (event) => {
+    console.log("Running stale task cleanup...");
+    
+    try {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      
+      const tasksRef = db.collection("tasks");
+      const q = tasksRef.where("createdAt", "<", sevenDaysAgo);
+      const snapshot = await q.get();
+      
+      if (!snapshot.empty) {
+        const batch = db.batch();
+        let deletedCount = 0;
+        
+        snapshot.docs.forEach((doc) => {
+          const task = doc.data();
+          // Only delete tasks that are not completed or dismissed
+          if (!task.completed && !task.dismissed) {
+            batch.delete(doc.ref);
+            deletedCount++;
+          }
+        });
+        
+        if (deletedCount > 0) {
+          await batch.commit();
+          console.log(`Cleaned up ${deletedCount} stale tasks`);
+        }
+      }
+    } catch (e) {
+      console.error("Stale task cleanup failed:", e);
+    }
+  }
+);

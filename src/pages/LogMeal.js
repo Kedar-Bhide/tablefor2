@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { auth, db, storage } from "../firebase";
-import { collection, addDoc, updateDoc, doc, query, where, getDocs, limit } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { auth, db, query, collection, where, limit, getDocs } from "../firebase";
+import ApiService from "../services/api";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { compressImage } from "../utils/compressImage";
 import { formatLocalDateKey, formatLocalTimeHHMM, getCurrentTimezone } from "../utils/dateTime";
@@ -24,6 +23,23 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
   const [mealType, setMealType] = useState(getMealTypeByTime());
   const [photos, setPhotos] = useState([]);
   const [photoPreviews, setPhotoPreviews] = useState([]);
+  const previewUrlsRef = React.useRef([]);
+
+  // Track preview URLs for cleanup
+  useEffect(() => {
+    previewUrlsRef.current = photoPreviews;
+  }, [photoPreviews]);
+
+  // Cleanup blob URLs on unmount
+  useEffect(() => {
+    return () => {
+      previewUrlsRef.current.forEach((url) => {
+        if (url && url.startsWith("blob:")) {
+          try { URL.revokeObjectURL(url); } catch {}
+        }
+      });
+    };
+  }, []);
   const [saving, setSaving] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isParsingVoice, setIsParsingVoice] = useState(false);
@@ -31,6 +47,7 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
   const isIntentionalStop = React.useRef(false);
   const finalTranscriptRef = React.useRef("");
   const isRecordingRef = React.useRef(false);
+  const lastSaveTimeRef = React.useRef(0);
   const today = new Date();
   const localToday = formatLocalDateKey(today);
   const [mealDate, setMealDate] = useState(localToday);
@@ -259,88 +276,133 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
 
   const handleRemovePhoto = (index) => {
     setPhotos((prev) => prev.filter((_, i) => i !== index));
-    setPhotoPreviews((prev) => prev.filter((_, i) => i !== index));
+    setPhotoPreviews((prev) => {
+      const url = prev[index];
+      if (url && url.startsWith("blob:")) {
+        try { URL.revokeObjectURL(url); } catch {}
+      }
+      return prev.filter((_, i) => i !== index);
+    });
   };
 
   const handleSave = async () => {
-    if (!mealName) return;
+    if (!mealName || !user) return;
+    
+    // Cooldown: prevent rapid re-submission (3 second cooldown)
+    const now = Date.now();
+    if (now - lastSaveTimeRef.current < 3000) {
+      return;
+    }
+    lastSaveTimeRef.current = now;
+    
+    // Validate meal data
+    const validation = ApiService.validateMealData({
+      name: mealName,
+      type: mealType,
+      ingredients: ingredients,
+      portionSize: portionSize,
+    });
+    
+    if (!validation.isValid) {
+      alert(validation.errors.join('\n'));
+      return;
+    }
+    
     setSaving(true);
 
     try {
-      // Upload all photos
+      // Upload photos with retry logic
+      const uploadPhotoWithRetry = async (photoFile, retries = 2) => {
+        for (let attempt = 0; attempt <= retries; attempt++) {
+          try {
+            const compressed = await compressImage(photoFile);
+            const photoRef = `meals/${user.uid}/${Date.now()}_${Math.random()}`;
+            return await ApiService.uploadMealPhoto(compressed, photoRef);
+          } catch (uploadError) {
+            console.error(`Photo upload attempt ${attempt + 1} failed:`, uploadError);
+            if (attempt === retries) throw uploadError;
+            await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+          }
+        }
+      };
+
+      // Upload all photos FIRST (meal must have photos before creation for AI analysis)
       const uploadedURLs = [];
       for (const photoFile of photos) {
-        const compressed = await compressImage(photoFile);
-        const photoRef = ref(storage, `meals/${user.uid}/${Date.now()}_${Math.random()}`);
-        await uploadBytes(photoRef, compressed);
-        const url = await getDownloadURL(photoRef);
-        uploadedURLs.push(url);
+        try {
+          const url = await uploadPhotoWithRetry(photoFile);
+          if (url) uploadedURLs.push(url);
+        } catch (e) {
+          console.error("Photo upload failed:", e);
+        }
       }
-
-    const now = new Date();
-    const createdAt = (() => {
-      if (!showDatePicker) return now;
-      const [y, m, d] = mealDate.split("-").map(Number);
-      const [h, min] = mealTime.split(":").map(Number);
-      return new Date(y, m - 1, d, h, min, 0, 0);
-    })();
-    const localDate = showDatePicker ? mealDate : formatLocalDateKey(now);
-    const localTime = showDatePicker ? mealTime : formatLocalTimeHHMM(now);
-    const timezone = getCurrentTimezone();
-    const utcOffsetMinutesAtLog = -createdAt.getTimezoneOffset();
-    const mealObj = {
-      uid: user.uid,
-      name: mealName,
-      type: mealType,
-      photoURL: uploadedURLs[0] || null,
-      photos: uploadedURLs,
-      isShared: isShared,
-      isRestaurant: cookType === "Restaurant",
-      isPackaged: cookType === "Packaged",
-      createdAt,
-      localDate,
-      localTime,
-      timezone: timezone || null,
-      utcOffsetMinutesAtLog,
-      ingredients: ingredients.trim(),
-      portionSize: portionSize.trim(),
-      nutrition: previewNutrition || null,
-      analysisStatus: previewNutrition ? "completed" : "analyzing",
-      saveToFrequent: saveAsFrequent,
-    };
-
-    // Update meal
-    await addDoc(collection(db, "meals"), mealObj);
-
-    // Update local state so it appears immediately next time
-    if (saveAsFrequent) {
-      setFrequentMeals(prev => [{
-        id: "temp-" + Date.now(),
-        name: mealName.trim(),
+      
+      // Create meal object
+      const now = new Date();
+      const createdAt = (() => {
+        if (!showDatePicker) return now;
+        const [y, m, d] = mealDate.split("-").map(Number);
+        const [h, min] = mealTime.split(":").map(Number);
+        return new Date(y, m - 1, d, h, min, 0, 0);
+      })();
+      const localDate = showDatePicker ? mealDate : formatLocalDateKey(now);
+      const localTime = showDatePicker ? mealTime : formatLocalTimeHHMM(now);
+      const timezone = getCurrentTimezone();
+      const utcOffsetMinutesAtLog = -createdAt.getTimezoneOffset();
+      
+      const mealObj = {
+        uid: user.uid,
+        name: mealName,
+        type: mealType,
+        photoURL: uploadedURLs[0] || null,
+        photos: uploadedURLs,
+        isShared: isShared,
+        isRestaurant: cookType === "Restaurant",
+        isPackaged: cookType === "Packaged",
+        createdAt,
+        localDate,
+        localTime,
+        timezone: timezone || null,
+        utcOffsetMinutesAtLog,
         ingredients: ingredients.trim(),
         portionSize: portionSize.trim(),
         nutrition: previewNutrition || null,
-        mealType: mealType
-      }, ...prev]);
-    }
+        analysisStatus: previewNutrition ? "completed" : "analyzing",
+        saveToFrequent: saveAsFrequent,
+      };
 
-    // Also update user's current timezone/offset to ensure reminders are accurate
-    try {
-      await updateDoc(doc(db, "users", user.uid), {
-        timezone: timezone || null,
-        utcOffsetMinutes: utcOffsetMinutesAtLog,
-        utcOffset: utcOffsetMinutesAtLog / 60,
-      });
-    } catch (e) {
-      console.error("Failed to update user timezone during meal log:", e);
-    }
+      // Create meal with photos already uploaded
+      const createdMeal = await ApiService.createMeal(mealObj);
 
-    setSaving(false);
-    setCurrentPage("today");
-    } catch (e) {
-      console.error("Meal save failed:", e);
+      // Update local state so it appears immediately next time
+      if (saveAsFrequent) {
+        setFrequentMeals(prev => [{
+          id: createdMeal.id,
+          name: mealName.trim(),
+          ingredients: ingredients.trim(),
+          portionSize: portionSize.trim(),
+          nutrition: previewNutrition || null,
+          mealType: mealType
+        }, ...prev]);
+      }
+
+      // Update user's current timezone/offset to ensure reminders are accurate
+      try {
+        await ApiService.updateUser(user.uid, {
+          timezone: timezone || null,
+          utcOffsetMinutes: utcOffsetMinutesAtLog,
+        });
+      } catch (e) {
+        console.error("Failed to update user timezone during meal log:", e);
+      }
+
       setSaving(false);
-    }
+      setCurrentPage("today");
+      } catch (e) {
+        console.error("Meal save failed:", e);
+        alert('Failed to save meal: ' + (e.message || 'Unknown error'));
+        setSaving(false);
+      }
   };
 
   return (
@@ -707,7 +769,7 @@ const styles = {
     maxWidth: "400px",
     margin: "0 auto",
     padding: "1rem 1.2rem",
-    backgroundColor: "#fffaf7",
+    backgroundColor: "#fffaf5",
     minHeight: "100vh",
   },
   back: {
@@ -739,7 +801,8 @@ const styles = {
   },
   title: {
     fontSize: "2.2rem",
-    fontFamily: "'Playfair Display', serif",
+    fontFamily: "'Outfit', sans-serif",
+    fontWeight: 700,
     color: "#333",
     margin: "0 0 1.5rem 0",
   },

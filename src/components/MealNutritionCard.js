@@ -184,12 +184,6 @@ export const getHabitCategories = (nutrition) => {
   return categories.slice(0, 3);
 };
 
-// Backward-compatibility fallback helper (returns primary category)
-export const getHabitCategory = (nutrition) => {
-  const cats = getHabitCategories(nutrition);
-  return cats && cats.length > 0 ? cats[0] : null;
-};
-
 // Returns ALL matched categories (no top-3 cap) — used for stats/synthesis page
 // so every spectrum bucket gets scored even if it didn't make the card
 export const getAllHabitCategories = (nutrition) => {
@@ -262,7 +256,8 @@ export default React.memo(function MealNutritionCard({
   onNutritionChange = null,
   analysisStatus = "completed",
   onRetry = null,
-  isRetrying = false
+  isRetrying = false,
+  showExplainer = true
 }) {
   // ⚑ All hooks MUST come before any early returns (Rules of Hooks)
   const [activePillId, setActivePillId] = useState(null);
@@ -311,8 +306,6 @@ export default React.memo(function MealNutritionCard({
 
   return (
     <div style={styles.mealNutritionCard}>
-      {/* keyframe for the why-strip fade-in */}
-      <style>{`@keyframes _mnc_fadeUp{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}`}</style>
       {categories.length > 0 && (
         <div style={{
           marginBottom: "12px",
@@ -326,8 +319,8 @@ export default React.memo(function MealNutritionCard({
               return (
                 <div
                   key={cat.id || idx}
-                  onMouseEnter={() => setActivePillId(cat.id)}
-                  onMouseLeave={() => setActivePillId(null)}
+                  onMouseEnter={() => showExplainer && setActivePillId(cat.id)}
+                  onMouseLeave={() => showExplainer && setActivePillId(null)}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -367,7 +360,7 @@ export default React.memo(function MealNutritionCard({
           </div>
 
           {/* Tap-to-explain: why-strip */}
-          {activePillId && (() => {
+          {showExplainer && activePillId && (() => {
             const activeCat = categories.find(c => c.id === activePillId);
             if (!activeCat) return null;
             const why = getWhyText(activeCat, nutrition);

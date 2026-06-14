@@ -1,23 +1,28 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore, enableMultiTabIndexedDbPersistence } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
-import { getMessaging, getToken, isSupported, onMessage } from "firebase/messaging";
+import { getFirestore, enableMultiTabIndexedDbPersistence, doc, collection, addDoc, updateDoc, deleteDoc, query, where, getDoc, getDocs, onSnapshot, writeBatch, orderBy, serverTimestamp, setDoc, runTransaction, limit, deleteField } from "firebase/firestore";
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { getMessaging, getToken, isSupported } from "firebase/messaging";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCP_lNulhO_ofoIRy3mqjCGSA0l-sKV5I0",
-  authDomain: "trytablefor2.firebaseapp.com",
-  projectId: "trytablefor2",
-  storageBucket: "trytablefor2.firebasestorage.app",
-  messagingSenderId: "1004615054636",
-  appId: "1:1004615054636:web:83a1ddd1fbbe214c2ba889"
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID,
 };
 
 const app = initializeApp(firebaseConfig);
 
+const db = getFirestore(app);
+
 export const auth = getAuth(app);
 export const provider = new GoogleAuthProvider();
-export const db = getFirestore(app);
+export { db };
+export { doc, collection, addDoc, updateDoc, deleteDoc, query, where, getDoc, getDocs, onSnapshot, writeBatch, orderBy, serverTimestamp, setDoc, runTransaction, limit, deleteField };
+export { ref, uploadBytes, getDownloadURL, deleteObject };
+
 enableMultiTabIndexedDbPersistence(db).catch((err) => {
   if (err.code === "failed-precondition") {
     console.warn("Offline persistence unavailable (multiple tabs open)");
@@ -25,6 +30,7 @@ enableMultiTabIndexedDbPersistence(db).catch((err) => {
     console.warn("Offline persistence not supported in this browser");
   }
 });
+
 export const storage = getStorage(app);
 export let messaging = null;
 if (typeof window !== "undefined") {
@@ -38,8 +44,8 @@ if (typeof window !== "undefined") {
       messaging = null;
     });
 }
-export const VAPID_KEY = "BDOOci-IG6aXEO37dUgyEMk6uV-R_V00SfNmNVSj84QSuAUBAAiOhMKouEyHBA87nornIr5ymx1HtUGpNK8sVs8";
-export { getToken, onMessage };
+export const VAPID_KEY = process.env.REACT_APP_FIREBASE_VAPID_KEY;
+export { getToken };
 
 export function fixStorageUrl(url) {
   if (!url) return url;

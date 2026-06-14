@@ -7,6 +7,14 @@ export async function requestNotificationPermission(uid) {
     const permission = await Notification.requestPermission();
     if (permission !== "granted") {
       console.log("Notification permission denied");
+      // Update notificationsEnabled to false if permission denied
+      try {
+        await updateDoc(doc(db, "users", uid), {
+          notificationsEnabled: false,
+        });
+      } catch (e) {
+        console.error("Failed to update notification status:", e);
+      }
       return null;
     }
 
@@ -15,7 +23,6 @@ export async function requestNotificationPermission(uid) {
       const now = new Date();
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
       const utcOffsetMinutes = -now.getTimezoneOffset();
-      const utcOffset = utcOffsetMinutes / 60;
 
       // Get existing token
       const userSnap = await getDoc(doc(db, "users", uid));
@@ -26,7 +33,6 @@ export async function requestNotificationPermission(uid) {
         await updateDoc(doc(db, "users", uid), {
           fcmToken: token,
           notificationsEnabled: true,
-          utcOffset: utcOffset,
           utcOffsetMinutes: utcOffsetMinutes,
           timezone: timezone,
         });
@@ -34,7 +40,6 @@ export async function requestNotificationPermission(uid) {
       } else {
         // Still update offset/timezone fields even if token unchanged
         await updateDoc(doc(db, "users", uid), {
-          utcOffset: utcOffset,
           utcOffsetMinutes: utcOffsetMinutes,
           timezone: timezone,
         });

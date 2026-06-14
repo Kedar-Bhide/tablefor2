@@ -1,12 +1,14 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { auth, db, fixMealUrls } from "../firebase";
-import { collection, query, where, orderBy, onSnapshot, getDocs, updateDoc, doc } from "firebase/firestore";
+import { collection, query, where, orderBy, getDocs, updateDoc, doc } from "firebase/firestore";
 import { getPhotos } from "../utils/getPhotos";
 import { getMealLocalDateKey } from "../utils/dateTime";
 import PhotoCarousel from "../components/PhotoCarousel";
 import MealNutritionCard from "../components/MealNutritionCard";
 import PartnerResponseCard from "../components/PartnerResponseCard";
+import SkeletonLoader from "../components/SkeletonLoader";
 import { motion, AnimatePresence } from "framer-motion";
+import AuthorizationService from "../services/authorization";
 
 function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, globalPartnerData }) {
   const user = auth.currentUser;
@@ -101,10 +103,13 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
     );
   };
 
-  // Real-time listener for the current 10-day window
+  // One-time fetch for the current 10-day window (no real-time listener needed for gallery)
   useEffect(() => {
     const uid = filter === "mine" ? user.uid : partnerUid;
-    if (!uid) return;
+    if (!uid) {
+      setLoadingGallery(false);
+      return;
+    }
 
     const endDate = new Date();
     const startDate = new Date(endDate.getTime() - PAGE_DAYS * 24 * 60 * 60 * 1000);
@@ -117,19 +122,24 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
       orderBy("createdAt", "asc")
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    let cancelled = false;
+    setLoadingGallery(true);
+    
+    getDocs(q).then((snapshot) => {
+      if (cancelled) return;
       const meals = snapshot.docs.map((d) => fixMealUrls({ id: d.id, ...d.data() })).reverse();
       oldestDateRef.current = startDate;
       setGroupedMeals(groupMeals(meals));
       setLoadingGallery(false);
       setHasMore(meals.length > 0);
-    }, (err) => {
-      console.error("Gallery snapshot failed:", err);
+    }).catch((err) => {
+      if (cancelled) return;
+      console.error("Gallery fetch failed:", err);
       setLoadingGallery(false);
       setHasMore(false);
     });
 
-    return () => unsubscribe();
+    return () => { cancelled = true; };
   }, [filter, partnerUid, user.uid]);
 
   const loadMore = useCallback(async () => {
@@ -183,6 +193,12 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
   }, [filter, partnerUid, user.uid]);
 
   const handleNutritionChange = useCallback(async (key, value) => {
+    // Authorization check: only owner can update nutrition
+    if (!AuthorizationService.canMutateMeal(viewMeal)) {
+      console.error("Unauthorized: Cannot update nutrition on meals you don't own");
+      return;
+    }
+
     try {
       const updatedMeal = {
         ...viewMeal,
@@ -215,6 +231,12 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
   }, [viewMeal]);
 
   const handleReaction = async (meal, emoji) => {
+    // Authorization check: only owner or partner can react
+    if (!AuthorizationService.canInteractWithMeal(meal, globalUserData)) {
+      console.error("Unauthorized: Cannot react to this meal");
+      return;
+    }
+
     try {
       const mealRef = doc(db, "meals", meal.id);
       await updateDoc(mealRef, {
@@ -228,6 +250,13 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
 
   const handleComment = async () => {
     if (!comment.trim() || !viewMeal) return;
+    
+    // Authorization check: only owner or partner can comment
+    if (!AuthorizationService.canInteractWithMeal(viewMeal, globalUserData)) {
+      console.error("Unauthorized: Cannot comment on this meal");
+      return;
+    }
+    
     setSavingComment(true);
     try {
       const mealRef = doc(db, "meals", viewMeal.id);
@@ -251,7 +280,7 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
 
       {partnerUid && (
         <div style={styles.filterRow}>
-          {["mine", "hers"].map((f) => (
+          {["mine", "partner"].map((f) => (
             <button
               key={f}
               style={{
@@ -269,7 +298,18 @@ function Gallery({ galleryDate, setGalleryDate, galleryFilter, globalUserData, g
 
       {/* Grouped Photos */}
       {loadingGallery && Object.keys(groupedMeals).length === 0 ? (
-        <p style={styles.empty}>Loading...</p>
+        <div style={styles.skeletonContainer}>
+          {[1, 2, 3].map((i) => (
+            <div key={i} style={styles.skeletonGroup}>
+              <SkeletonLoader width="60%" height="20px" style={{ marginBottom: "12px" }} />
+              <div style={styles.grid}>
+                {[1, 2, 3, 4].map((j) => (
+                  <SkeletonLoader key={j} width="100%" height="120px" borderRadius="12px" />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       ) : Object.keys(groupedMeals).length === 0 ? (
         <p style={styles.empty}>No photos here yet.</p>
       ) : (
@@ -511,6 +551,12 @@ const styles = {
     borderRadius: "8px",
     fontSize: "0.85rem",
     cursor: "pointer",
+  },
+  skeletonContainer: {
+    padding: "1rem 0",
+  },
+  skeletonGroup: {
+    marginBottom: "1.5rem",
   },
   dateGroup: {
     marginBottom: "1.5rem",

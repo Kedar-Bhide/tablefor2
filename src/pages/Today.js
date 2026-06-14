@@ -13,6 +13,7 @@ import OnboardingPopup from "../components/OnboardingPopup";
 import PhotoCarousel from "../components/PhotoCarousel";
 import MealNutritionCard from "../components/MealNutritionCard";
 import PartnerResponseCard from "../components/PartnerResponseCard";
+import AuthorizationService from "../services/authorization";
 
 function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const user = auth.currentUser;
@@ -101,6 +102,11 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         }
       }));
       if (selectedMeal?.id) {
+        // Authorization check: only owner can update nutrition
+        if (!AuthorizationService.canMutateMeal(selectedMeal)) {
+          console.error("Unauthorized: Cannot update nutrition on meals you don't own");
+          return;
+        }
         await updateDoc(doc(db, "meals", selectedMeal.id), {
           [`nutrition.${key}`]: value
         });
@@ -108,7 +114,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
     } catch (e) {
       console.error("Failed to update nutrition inline", e);
     }
-  }, [selectedMeal?.id]);
+  }, [selectedMeal]);
 
   const handleEditNutritionChange = useCallback((key, value) => {
     if (key === 'calories') setEditCalories(String(value));
@@ -229,7 +235,16 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       where("dismissed", "==", false)
     );
     const unsubscribeTasks = onSnapshot(taskQ, (snapshot) => {
-      const tasks = snapshot.docs.map((d) => fixTaskUrls({ id: d.id, ...d.data() }));
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      
+      const tasks = snapshot.docs
+        .map((d) => fixTaskUrls({ id: d.id, ...d.data() }))
+        .filter(task => {
+          // Filter out tasks older than 7 days (stale tasks)
+          const taskDate = task.createdAt?.toDate?.() || new Date(task.createdAt);
+          return taskDate >= sevenDaysAgo;
+        });
       setPendingTasks(tasks);
     });
 
@@ -260,9 +275,10 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       const isMyOriginal = original.uid === user.uid;
       const loggerTz = isMyOriginal ? myTz : partnerTz;
 
-      if (!loggerTz) return;
+      // Fallback to user's timezone if logger tz is unknown
+      const effectiveTz = loggerTz || myTz || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-      const currentDayInLoggerTz = getLocalDateKeyInTz(now, loggerTz);
+      const currentDayInLoggerTz = getLocalDateKeyInTz(now, effectiveTz);
       const mealDate = getMealLocalDateKey(original);
 
       const isTodayInLoggerTz = mealDate === currentDayInLoggerTz;
@@ -384,6 +400,13 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   const mealCount = displayMeals.length;
 
   const handleDelete = async (mealId) => {
+    // Authorization check: only owner can delete
+    const meal = displayMeals.find(m => m.id === mealId);
+    if (!AuthorizationService.canMutateMeal(meal)) {
+      console.error("Unauthorized: Cannot delete meals you don't own");
+      return;
+    }
+
     try {
       await deleteDoc(doc(db, "meals", mealId));
       setSelectedMeal(null);
@@ -393,6 +416,12 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
   };
 
   const handleReaction = async (meal, emoji) => {
+    // Authorization check: only owner or partner can react
+    if (!AuthorizationService.canInteractWithMeal(meal, globalUserData)) {
+      console.error("Unauthorized: Cannot react to this meal");
+      return;
+    }
+
     try {
       const mealRef = doc(db, "meals", meal.id);
       await updateDoc(mealRef, {
@@ -406,6 +435,13 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
   const handleComment = async () => {
     if (!comment.trim() || !viewMeal) return;
+    
+    // Authorization check: only owner or partner can comment
+    if (!AuthorizationService.canInteractWithMeal(viewMeal, globalUserData)) {
+      console.error("Unauthorized: Cannot comment on this meal");
+      return;
+    }
+    
     setSavingComment(true);
     try {
       const mealRef = doc(db, "meals", viewMeal.id);
@@ -423,6 +459,13 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
   const handleEditSave = async () => {
     if (!selectedMeal || saving || reanalyzing) return;
+    
+    // Authorization check: only owner can edit
+    if (!AuthorizationService.canMutateMeal(selectedMeal)) {
+      console.error("Unauthorized: Cannot edit meals you don't own");
+      return;
+    }
+    
     setSaving(true);
 
     try {
@@ -523,7 +566,14 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
   const handleRemoveEditPhoto = (index) => {
     setEditPhotoPreviews((prev) => prev.filter((_, i) => i !== index));
-    setEditPhotos((prev) => prev.filter((_, i) => i !== index));
+    // Only remove from editPhotos if this index corresponds to a new photo
+    // Existing photos are at the beginning, new photos are appended
+    const existingCount = editPhotoPreviews.length - editPhotos.length;
+    if (index >= existingCount) {
+      // This is a new photo - remove from editPhotos
+      const newPhotoIndex = index - existingCount;
+      setEditPhotos((prev) => prev.filter((_, i) => i !== newPhotoIndex));
+    }
   };
 
   const handleAddEditPhoto = (e) => {
@@ -540,7 +590,10 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
     setWeightCheckInSaving(true);
     try {
       const weight = parseFloat(newWeight);
-      if (isNaN(weight) || weight <= 0) return;
+      if (isNaN(weight) || weight <= 0) {
+        alert("Please enter a valid weight (greater than 0)");
+        return;
+      }
 
       const userRef = doc(db, "users", user.uid);
       const userSnap = await getDoc(userRef);
@@ -548,15 +601,22 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
       const previousWeight = parseFloat(userData.weight_kg) || weight;
       const targetWeight = parseFloat(userData.target_weight_kg) || null;
 
-      // Save new weight + history + check-in date
+      // Save new weight + check-in date
       await updateDoc(userRef, {
         weight_kg: String(weight),
         lastWeightCheckIn: weightCheckIn.checkInDate,
-        weightHistory: [
-          ...(userData.weightHistory || []),
-          { date: weightCheckIn.checkInDate, weight },
-        ],
       });
+
+      // Write weight entry to subcollection (replaces unbounded array)
+      try {
+        await addDoc(collection(db, "users", user.uid, "weightHistory"), {
+          date: weightCheckIn.checkInDate,
+          weight: parseFloat(weight),
+          createdAt: new Date(),
+        });
+      } catch (whErr) {
+        console.error("Failed to write weightHistory subcollection:", whErr);
+      }
 
       // Close popup
       setWeightCheckIn(null);
@@ -587,6 +647,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
         }
       }).catch(() => {
         setInsightBanner("error");
+        setTimeout(() => setInsightBanner(null), 5000);
       });
 
     } catch (e) {
@@ -600,7 +661,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
     if (weightCheckIn?.isLastDay) return; // Can't snooze on last day
     try {
       await updateDoc(doc(db, "users", user.uid), {
-        weightInsightSnooze: new Date().toISOString(),
+        weightInsightSnooze: new Date(),
       });
       setWeightCheckIn(null);
     } catch (e) {
@@ -831,7 +892,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
           <div style={styles.cardRow}>
             <img src={myPhoto} alt="avatar" style={styles.avatar} referrerPolicy="no-referrer" />
             <div style={styles.cardInfo}>
-              <p style={styles.name}>{user.displayName.split(" ")[0]}</p>
+              <p style={styles.name}>{(user.displayName || "You").split(" ")[0]}</p>
               <p style={styles.mealCount}>{mealCount} meal{mealCount !== 1 ? "s" : ""} logged today</p>
             </div>
           </div>
@@ -1183,7 +1244,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
 
           const ismine = displayMeal.uid === user.uid;
           const avatarSrc = ismine ? myPhoto : partnerPhoto;
-          const personName = ismine ? user.displayName.split(" ")[0] : (partnerName ? partnerName.split(" ")[0] : "Partner");
+          const personName = ismine ? (user.displayName || "You").split(" ")[0] : (partnerName ? partnerName.split(" ")[0] : "Partner");
           const isPartnerMeal = meal.uid !== user.uid;
 
           return (
@@ -1863,9 +1924,15 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
           </motion.div>
         )}
       </AnimatePresence>
-      <button style={styles.fab} onClick={() => setCurrentPage("logMeal")}>
+      <motion.button 
+        style={styles.fab} 
+        onClick={() => setCurrentPage("logMeal")}
+        aria-label="Log a new meal"
+        whileHover={{ scale: 1.1 }}
+        whileTap={{ scale: 0.95 }}
+      >
         +
-      </button>
+      </motion.button>
       {/* Weight Check-in Popup */}
       <AnimatePresence>
         {weightCheckIn && (
@@ -2208,6 +2275,7 @@ function Today({ setCurrentPage, globalUserData, globalPartnerData }) {
                 }}
                 editable={true}
                 onNutritionChange={handleTaskNutritionChange}
+                showExplainer={false}
               />
             </div>
 

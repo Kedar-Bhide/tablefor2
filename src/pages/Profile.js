@@ -1,12 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { auth, db, storage, fixStorageUrl } from "../firebase";
+import { auth, db, doc, updateDoc, collection, query, where, onSnapshot, getDoc, runTransaction, limit, deleteField, fixStorageUrl } from "../firebase";
+import ApiService from "../services/api";
 import { signOut } from "firebase/auth";
-import { doc, updateDoc, collection, query, where, onSnapshot, getDocs, getDoc, runTransaction, limit } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { computeBadges } from "../utils/calculateBadges";
 import { calculateWallet, computeWallet, WHITELISTED_WALLET_UIDS } from "../utils/calculateWallet";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { deleteField } from "firebase/firestore";
 import Cropper from "react-easy-crop";
 import { getCroppedImg } from "../utils/cropImage";
 import { motion, AnimatePresence } from "framer-motion";
@@ -31,14 +29,14 @@ function Profile({ user, globalUserData, globalPartnerData }) {
     setSaving(true);
     try {
       const croppedBlob = await getCroppedImg(imageToCrop, croppedAreaPixels);
-      const photoRef = ref(storage, `profiles/${user.uid}`);
-      await uploadBytes(photoRef, croppedBlob);
-      const url = await getDownloadURL(photoRef);
-      await updateDoc(doc(db, "users", user.uid), { photoURL: url });
+      const photoRef = `profiles/${user.uid}`;
+      const url = await ApiService.uploadMealPhoto(croppedBlob, photoRef);
+      await ApiService.updateUser(user.uid, { photoURL: url });
       setPhotoURL(url);
       setImageToCrop(null);
     } catch (e) {
       console.error("Crop save failed:", e);
+      alert('Failed to update profile photo: ' + (e.message || 'Unknown error'));
     }
     setSaving(false);
   };
@@ -146,41 +144,19 @@ function Profile({ user, globalUserData, globalPartnerData }) {
     setMessage("");
 
     try {
-      // Find partner by email
-      const q = query(collection(db, "users"), where("email", "==", partnerEmail));
-      const snapshot = await getDocs(q);
+      // Use Cloud Function for secure email lookup (bypasses Firestore rules)
+      const functions = getFunctions();
+      const lookupPartner = httpsCallable(functions, "lookupPartnerByEmail");
+      const result = await lookupPartner({ email: partnerEmail });
 
-      if (snapshot.empty) {
-        setMessage("❌ No account found with that email");
+      if (!result.data.found) {
+        setMessage(`❌ ${result.data.error || "No account found with that email"}`);
         setShowInviteLink(true);
         setSaving(false);
         return;
       }
 
-      const partnerDoc = snapshot.docs[0];
-      const partnerData = partnerDoc.data();
-      const partnerDocUid = partnerDoc.id;
-
-      // Can't link to yourself
-      if (partnerDocUid === user.uid) {
-        setMessage("❌ You can't link with yourself!");
-        setSaving(false);
-        return;
-      }
-
-      // Already linked
-      if (partnerData.partnerUid) {
-        setMessage("❌ This person is already linked with someone else.");
-        setSaving(false);
-        return;
-      }
-
-      // Partner already has a pending request from someone else
-      if (partnerData.partnerRequest) {
-        setMessage("❌ This person already has a pending request from someone else.");
-        setSaving(false);
-        return;
-      }
+      const { uid: partnerDocUid } = result.data;
 
       // Already sent a request
       if (requestSent) {
@@ -209,14 +185,14 @@ function Profile({ user, globalUserData, globalPartnerData }) {
             fromUid: user.uid,
             fromName: user.displayName || "Someone",
             fromEmail: user.email,
-            sentAt: new Date().toISOString(),
+            sentAt: new Date(),
           },
         });
         transaction.update(doc(db, "users", user.uid), {
           pendingPartnerRequest: {
             toUid: partnerDocUid,
             toEmail: partnerEmail,
-            sentAt: new Date().toISOString(),
+            sentAt: new Date(),
           },
         });
       });
@@ -306,13 +282,19 @@ function Profile({ user, globalUserData, globalPartnerData }) {
   const handleDeclineRequest = async () => {
     if (!incomingRequest) return;
     try {
-      // Remove request from own document
-      await updateDoc(doc(db, "users", user.uid), {
-        partnerRequest: deleteField(),
-      });
-      // Remove pending from requester's document
-      await updateDoc(doc(db, "users", incomingRequest.fromUid), {
-        pendingPartnerRequest: deleteField(),
+      // Use transaction for atomicity
+      await runTransaction(db, async (transaction) => {
+        // Remove request from own document
+        const ownUserRef = doc(db, "users", user.uid);
+        transaction.update(ownUserRef, {
+          partnerRequest: deleteField(),
+        });
+        
+        // Remove pending from requester's document
+        const requesterRef = doc(db, "users", incomingRequest.fromUid);
+        transaction.update(requesterRef, {
+          pendingPartnerRequest: deleteField(),
+        });
       });
       setMessage("Request declined.");
     } catch (e) {
@@ -321,8 +303,12 @@ function Profile({ user, globalUserData, globalPartnerData }) {
     }
   };
 
-  const handleSignOut = () => {
-    signOut(auth);
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.error("Failed to sign out:", e);
+    }
   };
 
   const handleUnlink = async () => {
@@ -332,18 +318,23 @@ function Profile({ user, globalUserData, globalPartnerData }) {
     try {
       const prevPartnerUid = partnerUid;
 
-      // Update own document
-      await updateDoc(doc(db, "users", user.uid), {
-        partnerUid: deleteField(),
-        partnerEmail: deleteField()
-      });
+      // Use transaction for atomicity
+      await runTransaction(db, async (transaction) => {
+        // Update own document
+        const ownUserRef = doc(db, "users", user.uid);
+        transaction.update(ownUserRef, {
+          partnerUid: deleteField(),
+          partnerEmail: deleteField()
+        });
 
-      // Update partner document
-      await updateDoc(doc(db, "users", prevPartnerUid), {
-        partnerUid: deleteField(),
-        partnerEmail: deleteField(),
-        pendingPartnerRequest: deleteField(),
-        unlinkedNotification: true
+        // Update partner document
+        const partnerRef = doc(db, "users", prevPartnerUid);
+        transaction.update(partnerRef, {
+          partnerUid: deleteField(),
+          partnerEmail: deleteField(),
+          pendingPartnerRequest: deleteField(),
+          unlinkedNotification: true
+        });
       });
 
       setMessage("Successfully unlinked.");
@@ -371,6 +362,14 @@ function Profile({ user, globalUserData, globalPartnerData }) {
 
   const handleFieldSave = async (key) => {
     if (editingField !== key) return;
+    
+    // Whitelist allowed fields for profile updates
+    const ALLOWED_FIELDS = ['age', 'height_cm', 'weight_kg', 'target_weight_kg', 'gender', 'name', 'photoURL'];
+    if (!ALLOWED_FIELDS.includes(key)) {
+      console.error("Unauthorized field update:", key);
+      return;
+    }
+    
     try {
       const value = fieldDraft.trim();
       await updateDoc(doc(db, "users", user.uid), { [key]: value });

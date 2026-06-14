@@ -1,5 +1,3 @@
-import { collection, query, where, limit, getDocs, doc, getDoc, updateDoc } from "firebase/firestore";
-import { db } from "../firebase";
 import { BADGES } from "./badges";
 import { formatLocalDateKey, getMealLocalDateKey } from "./dateTime";
 
@@ -86,38 +84,4 @@ export function computeBadges(ownMeals, partnerMeals, lockedBadges = []) {
     ...badge,
     earned: lockedBadges.includes(badge.id) || badge.check(stats),
   }));
-}
-
-export async function calculateBadges(uid, partnerUid = null) {
-  const mealsRef = collection(db, "meals");
-
-  const snap = await getDocs(query(mealsRef, where("uid", "==", uid), limit(1000)));
-  const ownMeals = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-
-  let partnerMeals = [];
-  if (partnerUid) {
-    const partnerSnap = await getDocs(query(mealsRef, where("uid", "==", partnerUid), limit(1000)));
-    partnerMeals = partnerSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  }
-
-  // Fetch previously locked badges from Firestore
-  const userSnap = await getDoc(doc(db, "users", uid));
-  const lockedBadges = userSnap.exists()
-    ? userSnap.data().earnedBadges || []
-    : [];
-
-  const earned = computeBadges(ownMeals, partnerMeals, lockedBadges);
-
-  // Save any newly earned badges back to Firestore
-  const newlyEarned = earned
-    .filter((b) => b.earned && !lockedBadges.includes(b.id))
-    .map((b) => b.id);
-
-  if (newlyEarned.length > 0) {
-    await updateDoc(doc(db, "users", uid), {
-      earnedBadges: [...lockedBadges, ...newlyEarned],
-    });
-  }
-
-  return earned;
 }
