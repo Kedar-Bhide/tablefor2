@@ -282,7 +282,6 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
 
     try {
       // Upload photos with retry logic (non-blocking for meal creation)
-      const uploadedURLs = [];
       const uploadPhotoWithRetry = async (photoFile, retries = 2) => {
         for (let attempt = 0; attempt <= retries; attempt++) {
           try {
