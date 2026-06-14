@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { auth, db, fixMealUrls } from "../firebase";
 import { collection, query, where, getDocs, doc, getDoc, updateDoc, onSnapshot } from "firebase/firestore";
-import DonutChart from "../components/DonutChart";
+import MealSplitChart from "../components/MealSplitChart";
 import { formatLocalDateKey, getMealLocalDateKey } from "../utils/dateTime";
 import { motion, AnimatePresence } from "framer-motion";
 import { Flame, Heart, BarChart2, Calendar, FileText, ChevronLeft, ChevronRight } from "lucide-react";
@@ -766,16 +766,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                 {/* Mine */}
                 <div style={styles.splitSide}>
                   <p style={styles.splitName}>You</p>
-                  {mySplit.length === 0 ? (
-                    <p style={styles.splitEmpty}>No meals</p>
-                  ) : (
-                    <DonutChart 
-                      data={mySplit} 
-                      size={160}
-                      centerLabel={(monthMeals || []).length}
-                      centerSubLabel="meals"
-                    />
-                  )}
+                  <MealSplitChart data={mySplit} totalLabel="meals" />
                 </div>
 
                 {partnerUid && (
@@ -783,16 +774,7 @@ function Weekly({ setCurrentPage, setGalleryDate, setGalleryFilter, globalUserDa
                     <div style={styles.splitDivider} />
                     <div style={styles.splitSide}>
                       <p style={styles.splitName}>{partnerName ? partnerName.split(" ")[0] : "Partner"}</p>
-                      {partnerSplit.length === 0 ? (
-                        <p style={styles.splitEmpty}>No meals</p>
-                      ) : (
-                        <DonutChart 
-                          data={partnerSplit} 
-                          size={160}
-                          centerLabel={(partnerMonthMeals || []).length}
-                          centerSubLabel="meals"
-                        />
-                      )}
+                      <MealSplitChart data={partnerSplit} totalLabel="meals" />
                     </div>
                   </>
                 )}
