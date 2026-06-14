@@ -17,11 +17,11 @@ const renderActiveShape = (props) => {
 
   return (
     <g>
-      <text x={cx} y={cy - 8} textAnchor="middle" fill="#333" fontSize="18" fontWeight="bold">
+      <text x={cx} y={cy - 5} textAnchor="middle" fill="#333" fontSize="14" fontWeight="bold">
         {payload.name}
       </text>
-      <text x={cx} y={cy + 12} textAnchor="middle" fill="#888" fontSize="12">
-        {`${value} meals`}
+      <text x={cx} y={cy + 12} textAnchor="middle" fill="#888" fontSize="11">
+        {`${value} ${value === 1 ? 'meal' : 'meals'}`}
       </text>
       <Sector
         cx={cx}
@@ -103,11 +103,11 @@ function DonutChart({ data, size = 160, centerLabel, centerSubLabel }) {
             textAlign: "center",
             pointerEvents: "none",
           }}>
-            <div style={{ fontSize: "1.5rem", fontWeight: "bold", color: "#333" }}>
+            <div style={{ fontSize: "1.2rem", fontWeight: "bold", color: "#333" }}>
               {centerLabel}
             </div>
             {centerSubLabel && (
-              <div style={{ fontSize: "0.7rem", color: "#888", marginTop: "2px" }}>
+              <div style={{ fontSize: "0.65rem", color: "#888", marginTop: "1px" }}>
                 {centerSubLabel}
               </div>
             )}
