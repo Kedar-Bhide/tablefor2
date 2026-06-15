@@ -8,6 +8,10 @@
 # functions dependencies
 /functions/node_modules
 
+# functions secrets
+/functions/.env
+/functions/serviceAccountKey.json
+
 # testing
 /coverage
 
