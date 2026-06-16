@@ -68,7 +68,9 @@ export function shouldShowWeightCheckIn({
   // Snooze check — only skip if snoozed TODAY
   // Snooze just pushes to next day's first app open
   if (weightInsightSnooze) {
-    const snoozeDate = new Date(weightInsightSnooze);
+    const snoozeDate = weightInsightSnooze?.toDate
+      ? weightInsightSnooze.toDate()
+      : new Date(weightInsightSnooze);
     const snoozeDateStr = formatDate(
       snoozeDate.getFullYear(),
       snoozeDate.getMonth() + 1,

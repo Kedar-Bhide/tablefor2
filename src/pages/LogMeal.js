@@ -316,7 +316,7 @@ function LogMeal({ setCurrentPage, globalUserData, globalPartnerData }) {
         for (let attempt = 0; attempt <= retries; attempt++) {
           try {
             const compressed = await compressImage(photoFile);
-            const photoRef = `meals/${user.uid}/${Date.now()}_${Math.random()}`;
+            const photoRef = `${user.uid}/${Date.now()}_${Math.random()}`;
             return await ApiService.uploadMealPhoto(compressed, photoRef);
           } catch (uploadError) {
             console.error(`Photo upload attempt ${attempt + 1} failed:`, uploadError);
